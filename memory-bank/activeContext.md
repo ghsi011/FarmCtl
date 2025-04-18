@@ -11,7 +11,8 @@
 * Updated root and module `build.gradle.kts` to use `alias(libs.plugins.*)`, Kotlin 2.1 + Compose compiler plugin, jvmTarget 17, and Java 17 compileOptions.
 * Generated Gradle wrapper (`gradlew`) via `gradle wrapper`.
 * Cleaned up `AndroidManifest.xml`: removed invalid package/attribute definitions and missing resource references.
-* Verified clean build success with `./gradlew clean build` on Windows (`.gradlew.bat clean build`).
+* Verified clean build success with `./gradlew clean build` on Windows (`.\gradlew.bat clean build`).
+* Added `CalculatorTest` under `app/src/test/java/com/example/myandroidapp/CalculatorTest.kt` to validate JUnit unit-test setup.
 
 ## Next Steps
 1. Add launcher icons and theme resources under `app/src/main/res`.

@@ -16,7 +16,7 @@
 | Create `local.properties` (or set `ANDROID_HOME`/`ANDROID_SDK_ROOT`) for SDK | TODO |
 | Configure CI workflow to run `./gradlew` and pass build | DONE |
 | Add GitHub Actions workflow with unit‑test step | DONE |
-| Write initial JUnit + MockK sample test | PLANNED |
+| Write initial JUnit + MockK sample test | DONE |
 | Add business logic class and tests | PLANNED |
 | Integrate AndroidX UI test and run in CI | PLANNED |
 
