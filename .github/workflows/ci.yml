@@ -22,7 +22,7 @@ jobs:
           cache: 'gradle'
 
       - name: Cache Gradle wrapper and dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
@@ -38,7 +38,7 @@ jobs:
         run: ./gradlew build --stacktrace
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v2
+        uses: android-actions/setup-android@v3
         with:
           api-level: 34
           build-tools: '34.0.0'
