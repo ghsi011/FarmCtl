@@ -1,31 +1,42 @@
-name: Android CI
+name: CI
 
 on:
-  push:
-    branches: [master]
   pull_request:
-    branches: [master]
+    branches: [ master ]
+  push:
+    branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
-      - name: Cache Gradle
+          cache: 'gradle'
+
+      - name: Cache Gradle wrapper and dependencies
         uses: actions/cache@v3
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run unit tests
+        run: ./gradlew build --stacktrace
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v2
         with:
