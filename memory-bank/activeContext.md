@@ -14,12 +14,25 @@
 * Verified clean build success with `./gradlew clean build` on Windows (`.\gradlew.bat clean build`).
 * Added `CalculatorTest` under `app/src/test/java/com/example/myandroidapp/CalculatorTest.kt` to validate JUnit unit-test setup.
 
-## Next Steps
-1. Add launcher icons and theme resources under `app/src/main/res`.
-2. Implement Compose-based UI in `MainActivity.kt`.
-3. Configure CI to invoke `./gradlew` and ensure workflows pass.
-4. Create `local.properties` or set `ANDROID_HOME`/`ANDROID_SDK_ROOT` for SDK path.
-5. Address manifest namespace warnings and any resource linkage issues.
+## External Feedback Summary (2025‑04‑18 code‑base audit)
+* Template strengths: version‑catalog usage, Kotlin 2.1 / Java 17 alignment, Gradle wrapper 8.13, green CI pipeline, Memory‑Bank docs, local.properties.template.
+* Suggested improvements:
+  1. Stabilise tool‑chain: decide SDK/AGP/Activity combo (stay on AGP 8.4.x or fully embrace 8.5.x + API 35).
+  2. Document compiler‑runtime mapping (Compose 2.1.20 ↔ 1.7.8) and Activity freeze rationale in `libs.versions.toml`.
+  3. Remove workflow redundancy – split unit vs Android steps.
+  4. Add Spotless + detekt and wire into `./gradlew check`.
+  5. Provide Material‑3 theme + placeholder icons.
+  6. Expand `.gitignore`, README quick‑start, LICENCE, Dependabot config.
+  7. Create release buildType.
+  8. Sample ViewModel + Hilt wiring with tests.
+
+## Updated Next Steps (supersedes previous list)
+1. **Tool‑chain stabilisation** – choose SDK 34 + AGP 8.4.x path and update catalog & compileSdk accordingly.
+2. **Static analysis** – integrate Spotless (ktfmt) and detekt; hook into CI.
+3. **CI restructure** – split `unit‑jvm` vs `android‑instrumented` jobs; avoid redundant builds.
+4. **Resources scaffold** – add `theme.xml`, `colors.xml`, default launcher icons; re‑enable manifest theme.
+5. **Docs & licence polish** – update README, `guidlines.md`; add Apache‑2.0 LICENCE & Dependabot config.
+6. **Feature sample** – implement `GreetingViewModel` with Hilt + unit/instrumented tests.
 
 ## Decisions & Considerations
 * Leveraging Gradle version catalogs (`libs.versions.toml`) for centralized version management.

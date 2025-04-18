@@ -19,6 +19,12 @@
 | Write initial JUnit + MockK sample test | DONE |
 | Add business logic class and tests | PLANNED |
 | Integrate AndroidX UI test and run in CI | PLANNED |
+| Stabilise tool‑chain (SDK/AGP) | TODO |
+| Integrate Spotless + detekt & CI | TODO |
+| Restructure CI into unit-jvm & android jobs | TODO |
+| Add Material3 theme + icons | TODO |
+| Expand docs (README, licence) | TODO |
+| Add Dependabot config | TODO |
 
 ## Known Issues
 * None of the build errors block compilation, but the following warnings remain:
