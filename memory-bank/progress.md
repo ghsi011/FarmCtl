@@ -7,10 +7,10 @@
 ## Remaining Tasks
 | Task | Status |
 | ---- | ------ |
-| Add `.github/workflows/ci.yml` | TODO |
-| Create Gradle project structure (`settings.gradle.kts`, `app/`) | TODO |
+| Add `.github/workflows/ci.yml` | DONE |
+| Create Gradle project structure (`settings.gradle.kts`, `app/`) | DONE |
 | Verify CI workflow runs & passes | TODO |
-| Implement sample Compose `MainActivity.kt` | TODO |
+| Implement sample Compose `MainActivity.kt` | DONE |
 
 ## Known Issues
 * None yet – project scaffolding in progress.
