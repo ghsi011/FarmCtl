@@ -47,7 +47,7 @@ jobs:
       - name: Run Instrumented Tests
         run: ./gradlew connectedAndroidTest
       - name: Upload Test Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v3.1.0
         with:
           name: test-results
           path: app/build/reports 
