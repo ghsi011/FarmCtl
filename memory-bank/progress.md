@@ -15,12 +15,11 @@
 | Implement Compose UI in `MainActivity.kt` | TODO |
 | Create `local.properties` (or set `ANDROID_HOME`/`ANDROID_SDK_ROOT`) for SDK | TODO |
 | Configure CI workflow to run `./gradlew` and pass build | TODO |
+| Add GitHub Actions workflow with unit‑test step | PLANNED |
+| Write initial JUnit + MockK sample test | PLANNED |
+| Add business logic class and tests | PLANNED |
+| Integrate AndroidX UI test and run in CI | PLANNED |
 
 ## Known Issues
 * None of the build errors block compilation, but the following warnings remain:
-  * `package="…"` attribute in `AndroidManifest.xml` is ignored (namespace defined in Gradle DSL).
-  * D8 parsing warnings for newer Kotlin metadata vs R8.
-  * KAPT warnings about unrecognized Dagger/Hilt options.
-
----
-_Update this list after each commit or feature completion._ 
+  * `package="…"`

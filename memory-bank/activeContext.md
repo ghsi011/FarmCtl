@@ -26,5 +26,16 @@
 * Targeting Java 17 and Kotlin jvmTarget 17 with AGP 8.5.
 * Stripped unsupported resource attributes in `AndroidManifest.xml` to avoid AAPT linkage errors.
 
+## Iteration Plan (goal: green local & CI test runs)
+
+| Iteration | Theme & Deliverables | Success Criteria |
+|-----------|----------------------|------------------|
+| **1** | • Add GitHub Actions workflow (`ci.yml`) that invokes `./gradlew build test` on push / PR<br>• Check‑in `local.properties.template` & doc for SDK setup<br>• Ensure wrapper caches + "actions/cache" | CI build completes compile‑only stage without errors |
+| **2** | • Introduce JUnit + MockK unit‑test dependencies in catalog<br>• Write first unit test (e.g. pure Kotlin `CalculatorTest`) to prove wiring<br>• Ensure `./gradlew test` passes locally & in CI | 1 green unit test in both environments |
+| **3** | • Add simple business logic class (e.g. `GreetingGenerator`) and corresponding tests<br>• Configure Kotlin coroutines & run blocking test dispatcher if needed | ✓ additional test class green; coverage > 60% core logic |
+| **4** | • Integrate AndroidX Test + Espresso/Compose for UI smoke test (launch `MainActivity`)<br>• Update CI workflow to run `connectedCheck` on emulator‑enabled matrix (or headless Compose testing) | CI runs unit + minimal UI test matrix, all green |
+
+> After iteration 4 the project will have passing unit & UI tests both locally and in CI, fulfilling the user's requirement.
+
 ---
 _Update this file whenever the immediate focus or decisions change._ 
