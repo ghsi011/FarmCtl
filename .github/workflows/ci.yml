@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload JUnit test report
         if: always()
-        uses: actions/upload-test-report@v1
+        uses: mikepenz/action-junit-report@v5
         with:
           report_paths: app/build/test-results/**/*.xml
 
