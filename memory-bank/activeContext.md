@@ -27,7 +27,7 @@
   8. Sample ViewModel + Hilt wiring with tests.
 
 ## Updated Next Steps (supersedes previous list)
-1. **Tool‑chain stabilisation** – choose SDK 34 + AGP 8.4.x path and update catalog & compileSdk accordingly.
+1. **Tool‑chain stabilization** – retain AGP 8.5.x (or newer) and align `compileSdk` (e.g., bump to API 35); update catalog & `compileSdk` accordingly.
 2. **Static analysis** – integrate Spotless (ktfmt) and detekt; hook into CI.
 3. **CI restructure** – split `unit‑jvm` vs `android‑instrumented` jobs; avoid redundant builds.
 4. **Resources scaffold** – add `theme.xml`, `colors.xml`, default launcher icons; re‑enable manifest theme.
