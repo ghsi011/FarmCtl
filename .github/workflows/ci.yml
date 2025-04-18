@@ -50,7 +50,10 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          emulator-options: -no-window -no-audio -gpu swiftshader_indirect
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -no-audio -gpu swiftshader_indirect -wipe-data
+          emulator-boot-timeout: 1200
           script: ./gradlew connectedDebugAndroidTest
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
