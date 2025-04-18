@@ -37,6 +37,12 @@ jobs:
       - name: Run unit tests
         run: ./gradlew test --stacktrace
 
+      - name: Upload JUnit test report
+        if: always()
+        uses: actions/upload-test-report@v1
+        with:
+          report_paths: app/build/test-results/**/*.xml
+
   android:
     needs: unit
     runs-on: macos-latest
