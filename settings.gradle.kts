@@ -1,6 +1,5 @@
-import org.gradle.kotlin.dsl.versionCatalogs
+/* settings.gradle.kts */
 
-// Plugin repositories via pluginManagement
 pluginManagement {
     repositories {
         gradlePluginPortal()
@@ -9,20 +8,15 @@ pluginManagement {
     }
 }
 
-// Version catalog for dependencies
-// (pluginManagement.versionCatalogs is not supported here)
 dependencyResolutionManagement {
+    // Optionally forbid ad‑hoc project repositories
+    // repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
     repositories {
         google()
         mavenCentral()
     }
-    versionCatalogs {
-        create("libs") {
-            from(files("gradle/libs.versions.toml"))
-        }
-    }
 }
 
-// Project definition
 rootProject.name = "MyAndroidApp"
-include(":app") 
+include(":app")

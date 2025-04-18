@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.androidApp)
     alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.kotlinKapt)
+    alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.daggerHilt)
 }
 
@@ -23,11 +24,11 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
+        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 }
 
