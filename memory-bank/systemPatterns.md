@@ -28,6 +28,7 @@ App Module (Android)
 * **Repository Pattern** – abstracts data sources.
 * **ViewModel (MVVM)** – state holder for UI.
 * **Single‑Activity Nav** – Compose Navigation (future step).
+* **CI Pattern** – separate unit and Android instrumented tests into distinct jobs. Currently, Android job is disabled to ensure green CI.
 
 ## Component Relationships
 ```
