@@ -19,7 +19,7 @@
 | Write initial JUnit + MockK sample test | DONE |
 | Add business logic class and tests | PLANNED |
 | Integrate AndroidX UI test and run in CI | PLANNED |
-| Stabilise tool‑chain (SDK/AGP) | TODO |
+| Stabilise tool-chain (SDK/AGP) | DONE |
 | Integrate Spotless + detekt & CI | TODO |
 | Restructure CI into unit-jvm & android jobs | TODO -> Restructure CI into unit-jvm only job (android disabled) | DONE |
 | Add Material3 theme + icons | TODO |
@@ -29,4 +29,5 @@
 ## Known Issues
 * None of the build errors block compilation, but the following warnings remain:
   * `package="…"`
+* Warnings from D8 about Kotlin metadata/R8 compatibility with Compose Compiler.
 * CI pipeline was failing due to instrumented tests; now disabled temporarily.

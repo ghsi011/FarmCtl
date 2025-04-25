@@ -13,7 +13,7 @@ Setting up a modern Android project from scratch is time‑consuming and error�
 • AI coding assistants that must bootstrap Android code without IDE assistance.
 
 ## How This Template Solves the Problem
-1. Provides a pre‑configured Gradle + Kotlin project targeting API 34.
+1. Provides a pre‑configured Gradle + Kotlin project targeting API 35.
 2. Centralises dependency versions for easy upgrades.
 3. Supplies tested sample workflow for GitHub Actions.
 4. Embeds Memory Bank docs for knowledge persistence.

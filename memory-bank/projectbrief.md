@@ -28,8 +28,8 @@ Provide a well‑documented, command‑line–friendly Android project template 
 ## Core Requirements
 | Area | Requirement |
 | ---- | ----------- |
-| SDK | Compile/target SDK 34, min SDK ≥21 |
-| Build | Kotlin DSL with AGP ≥8, JDK 17 |
+| SDK | Compile/target SDK 35, min SDK ≥21 |
+| Build | Kotlin DSL with AGP ≥8.5, JDK 17 |
 | Libraries | Compose, Material3, Room, Hilt, AndroidX core & lifecycle |
 | Testing | JUnit4, MockK, Espresso, Hilt test rule |
 | CI | Ubuntu‑based workflow: checkout → JDK → cache → SDK → build → test → artifacts |

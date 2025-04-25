@@ -1,4 +1,4 @@
-# Setting Up a Minimal Android Development Environment (Kotlin, API 34+) 🚀
+# Setting Up a Minimal Android Development Environment (Kotlin, API 35+) 🚀
 
 Creating a lean Android project that is fully manageable via the terminal involves setting up Kotlin, configuring Android 14 (API level 34) settings, adding essential libraries, and ensuring everything (including tests and deployment) works via command-line. Below is a step-by-step guide with explanations, code snippets, and directory structures to help you build this environment.
 
@@ -7,11 +7,11 @@ Creating a lean Android project that is fully manageable via the terminal involv
 Before initializing the project, make sure your system is ready:
 
 - **Java Development Kit (JDK)** – Install JDK 17 (required by modern Android Gradle plugins). Ensure `JAVA_HOME` is set accordingly.
-- **Android SDK and Build Tools** – Install the Android SDK **command-line tools**. Using the `sdkmanager` utility (part of the Android SDK), download the latest SDK platform for Android 14 (API 34) and the latest build-tools. For example:  
+- **Android SDK and Build Tools** – Install the Android SDK **command-line tools**. Using the `sdkmanager` utility (part of the Android SDK), download the latest SDK platform for Android 15 (API 35) and the latest build-tools. For example:  
   ```bash
-  sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+  sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
   ``` 
-  This will install the API 34 SDK, build tools, and platform tools (which include `adb`).
+  This will install the API 35 SDK, build tools, and platform tools (which include `adb`).
 - **Environment Variables** – Set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) to your SDK install path, and add the SDK's platform-tools and tools to your `PATH` (for access to `adb`, `sdkmanager`, etc. ([The Missing Bit | Setting up an android app from scratch without IDE](https://www.kuon.ch/post/2020-01-12-android-app/#:~:text=If%20you%20are%20not%20on,to%20install%20the%20SDK))】. For example:  
   ```bash
   # In ~/.bashrc or ~/.zshrc
@@ -83,7 +83,7 @@ Gradle's interactive `init` wizard will prompt you for project type and language
            super.onCreate(savedInstanceState)
            setContent {
                MaterialTheme {
-                   Text("Hello, Android 14!")
+                   Text("Hello, Android 15!")
                }
            }
        }
@@ -112,7 +112,7 @@ MyAndroidApp/
 └── memory.md                       # AI memory/notes file (explained in Step 7)
 ```
 
-## Step 3: Configure Gradle for Kotlin and Android API Level 34
+## Step 3: Configure Gradle for Kotlin and Android API Level 35
 
 Now configure the Gradle build scripts for an Android app using Kotlin:
 
@@ -150,11 +150,11 @@ Now configure the Gradle build scripts for an Android app using Kotlin:
 
   android {
       namespace = "com.example.myandroidapp"
-      compileSdk = 34
+      compileSdk = 35
       defaultConfig {
           applicationId = "com.example.myandroidapp"
           minSdk = 21
-          targetSdk = 34
+          targetSdk = 35
           versionCode = 1
           versionName = "1.0"
           testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -190,12 +190,12 @@ Now configure the Gradle build scripts for an Android app using Kotlin:
   ```
 
   Let's break down some key points in this module configuration:
-  - We set `compileSdk = 34` and `targetSdk = 34` to use Android 14 (ensuring the app meets the latest Play Store requirement of targeting API 3 ([Meet Google Play's target API level requirement - Android Developers](https://developer.android.com/google/play/requirements/target-sdk#:~:text=Developers%20developer,for%20Wear%20OS%20and))】). We chose `minSdk = 21` (Android 5.0) for broad device support, but you can adjust it.
+  - We set `compileSdk = 35` and `targetSdk = 35` to use Android 15 (ensuring the app meets the latest Play Store requirement of targeting API 35 ([Meet Google Play's target API level requirement - Android Developers](https://developer.android.com/google/play/requirements/target-sdk#:~:text=Developers%20developer,for%20Wear%20OS%20and))】). We chose `minSdk = 21` (Android 5.0) for broad device support, but you can adjust it.
   - `buildFeatures.compose = true` enables Jetpack Compose in the build, and we specify a Kotlin Compose Compiler extension version to match our Compose library versio ([Compose  |  Jetpack  |  Android Developers](https://developer.android.com/jetpack/androidx/releases/compose#:~:text=android%20,true))】.
   - We apply Kotlin KAPT plugin for annotation processing since libraries like Room and Hilt use annotation processors.
   - The `dependencies` block uses **type-safe aliases** (like `libs.compose.ui`) which will be defined in our version catalog (next step). We include **AndroidX Core KTX** for base Android utilities, **Lifecycle Runtime KTX** for app lifecycle support, **Activity Compose** for Compose integration in activities, **Jetpack Compose UI** libraries (core UI and Material3 components), **Hilt** for dependency injection, and **Room** for database access. Test dependencies for JUnit4, MockK, AndroidX JUnit (ext), and Espresso are also added.
 
-At this point, the Gradle scripts define a Kotlin-based Android app module with modern libraries and target API 34. Next, we'll manage the library versions in one place.
+At this point, the Gradle scripts define a Kotlin-based Android app module with modern libraries and target API 35. Next, we'll manage the library versions in one place.
 
 ## Step 4: Centralize Dependency Versions with Gradle Version Catalog
 
@@ -293,7 +293,7 @@ class MainActivityTest {
     @Test
     fun launchMainActivity_checkHelloText() {
         launchActivity<MainActivity>()
-        onView(withText("Hello, Android 14!")).check(matches(isDisplayed()))
+        onView(withText("Hello, Android 15!")).check(matches(isDisplayed()))
     }
 }
 ```
@@ -392,8 +392,8 @@ To automate building, testing, and quality checks on every commit and pull reque
          - name: Set up Android SDK
            uses: android-actions/setup-android@v2
            with:
-             api-level: 34
-             build-tools: '34.0.0'
+             api-level: 35
+             build-tools: '35.0.0'
          - name: Build and Test
            run: ./gradlew build
          - name: Run Instrumented Tests
@@ -411,7 +411,7 @@ Feel free to adjust workflow settings to suit your project.
 
 By following these steps, you now have:
 
-- A clean **Kotlin-based Android project** targeting API level 34.
+- A clean **Kotlin-based Android project** targeting API level 35.
 - Modern libraries (Jetpack Compose, Hilt, Room, etc.) integrated for a solid foundation.
 - A **centralized dependency version catalog** to manage versions easily.
 - Full support for **unit and UI testing** using JUnit, Espresso, and MockK.
@@ -423,5 +423,5 @@ This minimal environment is ready for AI-assisted development – you can now co
 **Sources:**
 
 - Official Android documentation on command-line buil ([Build your app from the command line  |  Android Studio  |  Android Developers](https://developer.android.com/build/building-cmdline#:~:text=You%20can%20execute%20all%20the,you%20create%20with%20Android%20Studio))2】 and testi ([Test from the command line  |  Android Studio  |  Android Developers](https://developer.android.com/studio/test/command-line#:~:text=XML%20test%20result%20files%3A%20%60path_to_your_project%2Fmodule_name%2Fbuild%2Ftest,directory))0】.  
-- Android API level 34 requirement (Google Play target API mandat ([Meet Google Play's target API level requirement - Android Developers](https://developer.android.com/google/play/requirements/target-sdk#:~:text=Developers%20developer,for%20Wear%20OS%20and))8】.  
+- Android API level 35 requirement (Google Play target API mandat ([Meet Google Play's target API level requirement - Android Developers](https://developer.android.com/google/play/requirements/target-sdk#:~:text=Developers%20developer,for%20Wear%20OS%20and))8】.  
 - Gradle Version Catalog usage for centralized dependency manageme ([Migrate your build to version catalogs  |  Android Studio  |  Android Developers](https://developer.android.com/build/migrate-to-catalogs#:~:text=Gradle%20version%20catalogs%20enable%20you,way%20with%20Android%20Studio%20assistance)) ([Migrate your build to version catalogs  |  Android Studio  |  Android Developers](https://developer.android.com/build/migrate-to-catalogs#:~:text=Start%20by%20creating%20a%20version,recommend%20using%20this%20default%20name))6】.

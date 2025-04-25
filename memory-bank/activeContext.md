@@ -14,6 +14,7 @@
 * Verified clean build success with `./gradlew clean build` on Windows (`.\gradlew.bat clean build`).
 * Added `CalculatorTest` under `app/src/test/java/com/example/myandroidapp/CalculatorTest.kt` to validate JUnit unit-test setup.
 * Temporarily disabled Android instrumented tests by removing the `android` job from `.github/workflows/ci.yml` to stabilize the CI pipeline.
+* Bumped `compileSdk` to 35 and `targetSdk` to 35 in `app/build.gradle.kts`, and installed Android SDK 35 & Build-Tools 35.0.0.
 
 ## External Feedback Summary (2025‑04‑18 code‑base audit)
 * Template strengths: version‑catalog usage, Kotlin 2.1 / Java 17 alignment, Gradle wrapper 8.13, green CI pipeline, Memory‑Bank docs, local.properties.template.
