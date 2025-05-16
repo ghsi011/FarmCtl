@@ -53,7 +53,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        api-level: [35] # Choose an API level appropriate for your project
+        api-level: [34] # Reverted to API 34 for stability
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -93,11 +93,12 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
-          target: google_apis # Or default, if google_apis is not needed
+          target: google_apis
           arch: x86_64
-          profile: Nexus 6 # A common profile
+          profile: Nexus 6
+          avd-name: test_avd
+          emulator-options: "no-boot-anim skip-adb-auth"
           script: ./gradlew connectedCheck --stacktrace
-          avd-name: test_avd # Optional: specify a name for the AVD
 
       - name: Upload Android test report
         if: always() # Uploads artifacts even if the job fails
