@@ -1,0 +1,45 @@
+rulesets:
+  # Style rules (from detekt-formatting, often used alongside Spotless for non-format-related style issues)
+  style:
+    active: true
+    # MaxLineLength: # Covered by Spotless/ktfmt
+    #   active: true
+    #   maxLineLength: 120
+    #   excludeCommentStatements: true
+    MagicNumber:
+      active: true
+      ignoreNumbers: '-1,0,1,2,100,1000'
+    UnnecessaryAbstractClass:
+      active: true
+    UnnecessaryParentheses:
+      active: true
+    UnusedPrivateMember:
+      active: true # Good for catching dead code
+
+  # Potential Bugs
+  potential-bugs:
+    active: true
+    Deprecation:
+      active: true
+    EqualsWithHashCodeExist:
+      active: true
+    UnreachableCode:
+      active: true
+
+  # Complexity - keep it simple for now
+  # complexity:
+  #   active: true
+  #   LongMethod:
+  #     threshold: 60
+  #   ComplexMethod:
+  #     threshold: 15
+
+  # Comments - disabled as per project setup
+  # comments:
+  #   active: false
+  #   CommentOverPrivateFunction:
+  #     active: false
+  #   UndocumentedPublicClass:
+  #     active: false
+  #   UndocumentedPublicFunction:
+  #     active: false 

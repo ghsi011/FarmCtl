@@ -18,6 +18,8 @@ espresso         = "3.5.1"
 androidxTestExt  = "1.1.5"
 mockk            = "1.14.0"
 material         = "1.11.0"
+spotless         = "6.25.0"
+detekt           = "1.23.6"
 
 # Library coordinates ---------------------------------------------------------
 [libraries]
@@ -43,4 +45,6 @@ androidApp     = { id = "com.android.application",            version.ref = "agp
 kotlinAndroid  = { id = "org.jetbrains.kotlin.android",       version.ref = "kotlin" }
 kotlinKapt     = { id = "org.jetbrains.kotlin.kapt",          version.ref = "kotlin" }
 kotlinCompose  = { id = "org.jetbrains.kotlin.plugin.compose",version.ref = "composeCompiler" }
-daggerHilt     = { id = "com.google.dagger.hilt.android",     version.ref = "hilt" } 
+daggerHilt     = { id = "com.google.dagger.hilt.android",     version.ref = "hilt" }
+spotless       = { id = "com.diffplug.spotless", version.ref = "spotless" }
+detekt         = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
