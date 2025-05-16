@@ -84,7 +84,7 @@ jobs:
         with:
           path: |
             ~/.android/avd/*
-            ~/.android/sdk/system-images/android-${{ matrix.api-level }}/google_apis/x86_64/*
+            ~/.android/sdk/system-images/android-${{ matrix.api-level }}/google_apis/arm64-v8a/*
           key: avd-${{ matrix.api-level }}-${{ runner.os }}-${{ hashFiles('**/build.gradle.kts', '**/gradle/libs.versions.toml') }}
           restore-keys: |
             avd-${{ matrix.api-level }}-${{ runner.os }}-
@@ -94,7 +94,7 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis
-          arch: x86_64
+          arch: arm64-v8a
           profile: Nexus 6
           avd-name: test_avd
           emulator-options: "no-boot-anim skip-adb-auth"
