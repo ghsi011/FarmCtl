@@ -48,3 +48,60 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         with:
           report_paths: app/build/test-results/**/*.xml
+
+  instrumented-tests:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        api-level: [35] # Choose an API level appropriate for your project
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Cache Gradle wrapper and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: AVD Cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/sdk/system-images/android-${{ matrix.api-level }}/google_apis/x86_64/*
+          key: avd-${{ matrix.api-level }}-${{ runner.os }}-${{ hashFiles('**/build.gradle.kts', '**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            avd-${{ matrix.api-level }}-${{ runner.os }}-
+
+      - name: Run Instrumented Tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis # Or default, if google_apis is not needed
+          arch: x86_64
+          profile: Nexus 6 # A common profile
+          script: ./gradlew connectedCheck --stacktrace
+          avd-name: test_avd # Optional: specify a name for the AVD
+
+      - name: Upload Android test report
+        if: always() # Uploads artifacts even if the job fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-report-${{ matrix.api-level }}
+          path: app/build/reports/androidTests/connected/

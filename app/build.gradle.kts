@@ -16,7 +16,7 @@ android {
 		targetSdk = 35
 		versionCode = 1
 		versionName = "1.0"
-		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+		testInstrumentationRunner = "com.example.myandroidapp.MyCustomTestRunner"
 	}
 
 	buildFeatures {
@@ -53,4 +53,9 @@ dependencies {
 	androidTestImplementation(libs.androidx.junit.ext)
 	androidTestImplementation(libs.androidx.test.espresso)
 	implementation(libs.material.components)
+
+	// Hilt Testing support
+	androidTestImplementation(libs.hilt.android.testing)
+	kaptAndroidTest(libs.hilt.compiler)
+	androidTestImplementation(libs.compose.ui.test.junit4)
 }
