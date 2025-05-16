@@ -2,7 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:label="MyAndroidApp">
+        android:label="MyAndroidApp"
+        android:theme="@style/Theme.MyAndroidApp">
         <activity
             android:name=".MainActivity"
             android:exported="true">

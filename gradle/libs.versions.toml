@@ -17,6 +17,7 @@ junit4           = "4.13.2"
 espresso         = "3.5.1"
 androidxTestExt  = "1.1.5"
 mockk            = "1.14.0"
+material         = "1.11.0"
 
 # Library coordinates ---------------------------------------------------------
 [libraries]
@@ -34,6 +35,7 @@ junit4                        = { module = "junit:junit",                       
 androidx-junit-ext            = { module = "androidx.test.ext:junit",                 version.ref = "androidxTestExt" }
 androidx-test-espresso        = { module = "androidx.test.espresso:espresso-core",    version.ref = "espresso" }
 mockk                         = { module = "io.mockk:mockk",                          version.ref = "mockk" }
+material-components             = { module = "com.google.android.material:material",    version.ref = "material" }
 
 # Gradle‑plugin aliases --------------------------------------------------------
 [plugins]
