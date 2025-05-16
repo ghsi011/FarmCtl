@@ -53,5 +53,30 @@
 
 > After iteration 4 the project will have passing unit & UI tests both locally and in CI, fulfilling the user's requirement.
 
+## Next Steps
+1. **Resource / Theming Clean-up**
+   - Create `res/values/colors.xml`, `typography.xml`, `theme.xml` for Compose-Material3.
+   - Generate proper launcher icons (Android Studio's Image Asset tool or `mipmap-anydpi-v26`).
+   - Switch Compose code to use custom Compose MaterialTheme (colors + typography).
+
+2. **Static Analysis**
+   - Add Spotless (ktfmt) + detekt; wire them into `./gradlew check` and CI.
+
+3. **CI Matrix**
+   - Re-enable a minimal instrumented-test job (emulator API 35) running `connectedCheck`.
+   - Cache the AVD to keep run-time reasonable.
+
+4. **Sample App Logic**
+   - Add a simple `GreetingViewModel` injected with Hilt + a repository stub.
+   - Write one unit test and one Espresso/Compose UI test to verify the greeting flow.
+
+5. **Documentation & House-Keeping**
+   - Expand README with build/run/test instructions and a screenshot.
+   - Add LICENCE (Apache-2.0) and Dependabot config.
+   - Update Memory-Bank docs after each milestone (especially `activeContext.md` & `progress.md`).
+
+6. **Optional Tool-Chain Bump**
+   - When AGP 8.6 (or a stable 9.x) officially supports SDK 35, update the version catalog, run a build, and address any breaking changes.
+
 ---
 _Update this file whenever the immediate focus or decisions change._ 
