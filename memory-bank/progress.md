@@ -11,48 +11,25 @@
 ## Remaining Tasks
 | Task | Status |
 | ---- | ------ |
-| Add launcher icons & style resources under `app/src/main/res` | TODO |
-| Implement Compose UI in `MainActivity.kt` | TODO |
+| **CI: Instrumented Tests** - Add new job to `ci.yml` for `connectedCheck` (emulator API 35, AVD caching). | TODO |
+| **Architecture: ViewModel & Hilt** - Create `GreetingViewModel`, inject into `MainActivity`. | TODO |
+| **Testing: ViewModel Unit Tests** - Write JUnit/MockK tests for `GreetingViewModel`. | TODO |
+| **Architecture: Repository Layer** - Define `GreetingRepository` interface & stub implementation, inject into ViewModel. | TODO |
+| **Testing: Instrumented UI Test** - Verify greeting display via Espresso/Compose test. | TODO |
+| **Project Polish: Docs & Repo Essentials** - Expand README, add LICENSE, Dependabot. | TODO |
 | Create `local.properties` (or set `ANDROID_HOME`/`ANDROID_SDK_ROOT`) for SDK | TODO |
-| Configure CI workflow to run `./gradlew` and pass build | DONE |
-| Add GitHub Actions workflow with unit‑test step | DONE |
-| Write initial JUnit + MockK sample test | DONE |
-| Add business logic class and tests | PLANNED |
-| Integrate AndroidX UI test and run in CI | PLANNED |
-| Stabilise tool-chain (SDK/AGP) | DONE |
-| Integrate Spotless + detekt & CI | TODO |
-| Restructure CI into unit-jvm & android jobs | TODO -> Restructure CI into unit-jvm only job (android disabled) | DONE |
-| Add Material3 theme + icons | TODO |
-| Expand docs (README, licence) | TODO |
-| Add Dependabot config | TODO |
+| Stabilise tool-chain (SDK/AGP) - Optional: Await AGP 8.6/9.x for official SDK 35 support. | PLANNED |
 
 ## Known Issues
-* None of the build errors block compilation, but the following warnings remain:
-  * `package="…"`
-* Warnings from D8 about Kotlin metadata/R8 compatibility with Compose Compiler.
-* CI pipeline was failing due to instrumented tests; now disabled temporarily.
+* Warnings from D8 about Kotlin metadata/R8 compatibility with Compose Compiler (monitor with AGP/Kotlin updates).
+* `package="…"` attribute warning in manifest (cosmetic, investigate if problematic).
 
-## Next Steps
-1. **Resource / Theming Clean-up**
-   - Create `res/values/colors.xml`, `typography.xml`, `theme.xml` for Compose-Material3.
-   - Generate proper launcher icons (Android Studio's Image Asset tool or `mipmap-anydpi-v26`).
-   - Switch Compose code to use custom Compose MaterialTheme (colors + typography).
+## Next Steps (High-Level Iterations)
+1.  **Enhance CI with Instrumented Tests** (Emulator, AVD caching)
+2.  **Introduce Basic ViewModel with Hilt**
+3.  **Unit Test the ViewModel**
+4.  **Implement Basic Repository Layer**
+5.  **Instrumented UI Test for Greeting**
+6.  **Polish Documentation & Repo Essentials**
 
-2. **Static Analysis**
-   - Add Spotless (ktfmt) + detekt; wire them into `./gradlew check` and CI.
-
-3. **CI Matrix**
-   - Re-enable a minimal instrumented-test job (emulator API 35) running `connectedCheck`.
-   - Cache the AVD to keep run-time reasonable.
-
-4. **Sample App Logic**
-   - Add a simple `GreetingViewModel` injected with Hilt + a repository stub.
-   - Write one unit test and one Espresso/Compose UI test to verify the greeting flow.
-
-5. **Documentation & House-Keeping**
-   - Expand README with build/run/test instructions and a screenshot.
-   - Add LICENCE (Apache-2.0) and Dependabot config.
-   - Update Memory-Bank docs after each milestone (especially `activeContext.md` & `progress.md`).
-
-6. **Optional Tool-Chain Bump**
-   - When AGP 8.6 (or a stable 9.x) officially supports SDK 35, update the version catalog, run a build, and address any breaking changes.
+<!-- Detailed tasks for current iteration will be tracked under a separate heading or in a dedicated task management tool/issue. -->

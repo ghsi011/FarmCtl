@@ -42,16 +42,18 @@
 * Targeting Java 17 and Kotlin jvmTarget 17 with AGP 8.5.
 * Stripped unsupported resource attributes in `AndroidManifest.xml` to avoid AAPT linkage errors.
 
-## Iteration Plan (goal: green local & CI test runs)
+## Iteration Plan (goal: green local & CI test runs, basic MVVM structure)
 
 | Iteration | Theme & Deliverables | Success Criteria |
 |-----------|----------------------|------------------|
-| **1** | • Add GitHub Actions workflow (`ci.yml`) that invokes `./gradlew build test` on push / PR<br>• Check‑in `local.properties.template` & doc for SDK setup<br>• Ensure wrapper caches + "actions/cache" | CI build completes compile‑only stage without errors |
-| **2** | • Introduce JUnit + MockK unit‑test dependencies in catalog<br>• Write first unit test (e.g. pure Kotlin `CalculatorTest`) to prove wiring<br>• Ensure `./gradlew test` passes locally & in CI | 1 green unit test in both environments |
-| **3** | • Add simple business logic class (e.g. `GreetingGenerator`) and corresponding tests<br>• Configure Kotlin coroutines & run blocking test dispatcher if needed | ✓ additional test class green; coverage > 60% core logic |
-| **4** | • Integrate AndroidX Test + Espresso/Compose for UI smoke test (launch `MainActivity`)<br>• Update CI workflow to run `connectedCheck` on emulator‑enabled matrix (or headless Compose testing) | CI runs unit + minimal UI test matrix, all green |
+| **1** | **Enhance CI with Instrumented Tests** <br> • Add new job to `ci.yml` for `connectedCheck`. <br> • Configure Android emulator (API 35). <br> • Implement AVD caching. | Instrumented tests run successfully on an emulator in CI. CI pipeline green for unit, static analysis, and instrumented tests. |
+| **2** | **Introduce Basic ViewModel with Hilt** <br> • Create `GreetingViewModel.kt` with basic state. <br> • Inject ViewModel into `MainActivity` using Hilt. <br> • Update `MainActivity` to use ViewModel state. | App UI displays greeting sourced from ViewModel. Hilt injection works. |
+| **3** | **Unit Test the ViewModel** <br> • Create `GreetingViewModelTest.kt`. <br> • Write JUnit/MockK tests for ViewModel logic. | ViewModel unit tests pass with good coverage. |
+| **4** | **Implement Basic Repository Layer** <br> • Define `GreetingRepository` interface. <br> • Create `GreetingRepositoryImpl.kt` (stubbed). <br> • Inject Repository into ViewModel. | ViewModel uses Repository to fetch data. DI graph remains valid. |
+| **5** | **Instrumented UI Test for Greeting** <br> • Create `MainActivityGreetingTest.kt`. <br> • Use Espresso/Compose test to verify UI displays ViewModel data. | UI test passes, confirming end-to-end data flow to UI for the greeting. |
+| **6** | **Polish Documentation & Repo Essentials** <br> • Expand `README.md` (build, test, run instructions, screenshot). <br> • Add `LICENSE` file (e.g., Apache 2.0). <br> • Add `Dependabot` config. | Project is well-documented for new users/contributors. Basic repo hygiene in place. |
 
-> After iteration 4 the project will have passing unit & UI tests both locally and in CI, fulfilling the user's requirement.
+> After these 6 iterations, the project will have a robust CI pipeline, a basic but testable MVVM architecture, and improved documentation.
 
 ## Next Steps
 1. **Resource / Theming Clean-up**
