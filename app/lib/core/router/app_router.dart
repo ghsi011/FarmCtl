@@ -22,9 +22,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ThermostatsRoute.path,
                 name: ThermostatsRoute.name,
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: ThermostatsPage(),
-                ),
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: ThermostatsPage()),
               ),
             ],
           ),
@@ -33,9 +32,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: SettingsRoute.path,
                 name: SettingsRoute.name,
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: SettingsPage(),
-                ),
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: SettingsPage()),
               ),
             ],
           ),
@@ -46,15 +44,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 class AppScaffold extends StatelessWidget {
-  const AppScaffold({
-    required this.navigationShell,
-    super.key,
-  });
+  const AppScaffold({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
   void _goBranch(int index) {
-    navigationShell.goBranch(index, initialLocation: index == navigationShell.currentIndex);
+    navigationShell.goBranch(
+      index,
+      initialLocation: index == navigationShell.currentIndex,
+    );
   }
 
   @override
@@ -68,10 +66,7 @@ class AppScaffold extends StatelessWidget {
             icon: Icon(Icons.thermostat),
             label: 'Thermostats',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
         onDestinationSelected: _goBranch,
       ),

@@ -74,12 +74,16 @@ class ThermostatCard extends StatelessWidget {
                   children: [
                     Text(
                       temperature,
-                      style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       lastUpdated,
-                      style: textTheme.bodyMedium?.copyWith(color: colorScheme.outline),
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.outline,
+                      ),
                     ),
                   ],
                 ),
