@@ -5,7 +5,7 @@ The development roadmap is split into ten iterations. Each iteration corresponds
 ## Iteration 1 — Bootstrap Flutter Workspace & Baseline App Shell
 * **Goal**: Create the Flutter application skeleton (`app/`) with null-safe setup, shared package configuration, and placeholder UI showing a static thermostat list.
 * **Key Tasks**:
-  * Initialise Flutter project with Material 3 theming and Riverpod wired up.
+  * Initialize Flutter project with Material 3 theming and Riverpod wired up.
   * Add shared packages (`flutter_riverpod`, `go_router`, `freezed`, `dio`, `drift`).
   * Implement placeholder home screen with navigation drawer and stub thermostat card.
   * Document build instructions in README.
