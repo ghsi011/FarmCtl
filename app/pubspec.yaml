@@ -1,0 +1,26 @@
+name: farmctl
+description: Smart thermostat monitoring client.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.4.10
+  go_router: ^13.2.1
+  freezed_annotation: ^2.4.1
+  dio: ^5.4.0
+  drift: ^2.14.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.8
+  freezed: ^2.4.7
+
+flutter:
+  uses-material-design: true
