@@ -5,9 +5,22 @@ FarmCtl is a smart-thermostat monitoring client targeting Android. The Flutter w
 ## Getting Started
 
 ### Prerequisites
-1. [Install Flutter](https://docs.flutter.dev/get-started/install) (3.16 or newer recommended).
-2. Enable Android toolchain support and accept the Android SDK licenses.
-3. Start an Android emulator or connect a device with developer mode enabled.
+You can either install Flutter globally or use the repository-managed SDK bootstrap described below.
+
+1. Enable Android toolchain support and accept the Android SDK licenses.
+2. Start an Android emulator or connect a device with developer mode enabled.
+
+#### Repository-managed Flutter SDK
+
+The repository includes helper scripts that download the Flutter SDK into `.tooling/flutter` and expose a shell environment with the correct `PATH`.
+
+```bash
+./tool/setup_flutter.sh          # downloads/updates the SDK
+source ./tool/flutter_env.sh     # adds flutter and dart to PATH for the current shell
+flutter doctor                   # optional health check
+```
+
+You can add `source /path/to/repo/tool/flutter_env.sh` to your shell profile if you want the SDK available automatically whenever you work on FarmCtl.
 
 ### Running the App
 ```bash
