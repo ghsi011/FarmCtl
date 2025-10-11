@@ -15,7 +15,8 @@
 * Background **watchdog** that continuously monitors sensors and triggers **audible alarms** (Android alarm-app-like behavior) when values go out of range.
 * Historical graphs over: **1h, 24h, 7d, 30d, 365d, all-time**, using **Gist revision history**.
 * Configurable alarm sound using **system sound picker** (alarms/tones/music).
-* Works on **Android smartphones** (Android 14.0+). Tablet support optional.
+* Works on **Android smartphones**. minSdkVersion = **26** (Android 8.0+), targetSdkVersion = **34** (Android 14).
+  Tested and optimized on Android 14+. Tablet support optional.
 * Full automated test coverage: unit + instrumentation/system tests.
 
 **Out of scope**
@@ -155,11 +156,13 @@ Use a relational store (e.g., SQLite) with the following conceptual schema:
 
 * `AlertConfig` (one row global)
   `pollIntervalMin (INT)`, `exactAlarmsEnabled (BOOL)`,
-  `soundUri (TEXT|NULL)`, `vibrate (BOOL)`, `volumeBoost (BOOL)`
+  `soundUri (TEXT|NULL)`, `vibrate (BOOL)`, `volumeBoost (BOOL)`,
+  `pauseAllUntil (TS|NULL)`
 
 * `ThermostatState` (derived/cache)
   `thermostatId (FK)`, `lastFetchAt (TS|NULL)`, `lastStatus ("OK"|"OUT_OF_RANGE"|"NETWORK_ERROR"|"PARSE_ERROR"|"AUTH_ERROR")`,
-  `lastValueC (REAL|NULL)`, `lastAlarmAt (TS|NULL)`
+  `lastValueC (REAL|NULL)`, `lastAlarmAt (TS|NULL)`,
+  `snoozedUntil (TS|NULL)`, `silenceUntilOk (BOOL)`
 
 * `EventLog`
   `id`, `thermostatId`, `time`, `level ("INFO"|"WARN"|"ERROR")`, `message`
@@ -380,7 +383,7 @@ Display clear rationale dialogs where needed.
 
 ## 17) Deliverables Checklist (for the AI generator)
 
-* Android app project (SDK 26+), with:
+* App with:
 
   * Implemented screens & flows per **UI Specification**.
   * Background watchdog with **Foreground Service**, notifications, and optional **exact alarms**.
