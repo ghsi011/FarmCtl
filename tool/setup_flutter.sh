@@ -20,8 +20,15 @@ fi
 
 if [ -n "${FLUTTER_VERSION}" ]; then
   echo "Checking out Flutter version ${FLUTTER_VERSION}" >&2
-  git -C "${FLUTTER_DIR}" fetch --depth 1 origin "refs/tags/${FLUTTER_VERSION}" || true
-  if git -C "${FLUTTER_DIR}" rev-parse "${FLUTTER_VERSION}" >/dev/null 2>&1; then
+  if ! git -C "${FLUTTER_DIR}" fetch --depth 1 origin "refs/tags/${FLUTTER_VERSION}"; then
+    # Fetch failed; check if it's because the tag doesn't exist
+    if ! git -C "${FLUTTER_DIR}" rev-parse "${FLUTTER_VERSION}" >/dev/null 2>&1; then
+      echo "Requested FLUTTER_VERSION ${FLUTTER_VERSION} was not found. Remaining on ${FLUTTER_CHANNEL}." >&2
+    else
+      echo "Error fetching tag ${FLUTTER_VERSION} from origin. Aborting." >&2
+      exit 1
+    fi
+  elif git -C "${FLUTTER_DIR}" rev-parse "${FLUTTER_VERSION}" >/dev/null 2>&1; then
     git -C "${FLUTTER_DIR}" checkout "${FLUTTER_VERSION}"
   else
     echo "Requested FLUTTER_VERSION ${FLUTTER_VERSION} was not found. Remaining on ${FLUTTER_CHANNEL}." >&2
