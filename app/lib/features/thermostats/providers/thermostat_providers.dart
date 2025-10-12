@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/thermostat_client.dart';
 import '../data/thermostat_database.dart';
 import '../data/thermostat_repository.dart';
-import '../models/thermostat.dart';
+import '../data/thermostat_service.dart';
+import '../models/thermostat_state.dart';
 
 final thermostatDatabaseProvider = Provider<ThermostatDatabase>((ref) {
   final database = ThermostatDatabase();
@@ -15,7 +17,17 @@ final thermostatRepositoryProvider = Provider<ThermostatRepository>((ref) {
   return ThermostatRepository(database);
 });
 
-final thermostatsProvider = StreamProvider<List<Thermostat>>((ref) {
+final thermostatNetworkProvider = Provider<ThermostatNetworkDataSource>((ref) {
+  return ThermostatHttpClient();
+});
+
+final thermostatServiceProvider = Provider<ThermostatService>((ref) {
+  final repository = ref.watch(thermostatRepositoryProvider);
+  final network = ref.watch(thermostatNetworkProvider);
+  return ThermostatService(repository: repository, network: network);
+});
+
+final thermostatsProvider = StreamProvider<List<ThermostatSummary>>((ref) {
   final repository = ref.watch(thermostatRepositoryProvider);
   return repository.watchThermostats();
 });

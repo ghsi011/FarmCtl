@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_repository.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
+import 'package:farmctl/features/thermostats/models/thermostat_state.dart';
 
 void main() {
   late ThermostatDatabase database;
@@ -31,7 +32,7 @@ void main() {
 
     expect(created.name, draft.name);
     expect(stored, hasLength(1));
-    expect(stored.first.id, created.id);
+    expect(stored.first.thermostat.id, created.id);
   });
 
   test('update applies changes', () async {
@@ -70,10 +71,20 @@ void main() {
       ),
     );
 
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.ok,
+      valueC: 12.3,
+      fetchedAt: DateTime.utc(2025, 1, 1, 12),
+      etag: 'etag',
+    );
+
     await repository.delete(thermostat.id);
     final stored = await repository.fetchThermostats();
 
     expect(stored, isEmpty);
+    final state = await repository.loadState(thermostat.id);
+    expect(state, isNull);
   });
 
   test('create throws on invalid data', () async {
@@ -88,5 +99,42 @@ void main() {
       () => repository.create(draft),
       throwsA(isA<ThermostatValidationException>()),
     );
+  });
+
+  test('saveState upserts thermostat state', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Nursery',
+        rawUrl: 'https://example.com/nursery',
+        minC: 5,
+        maxC: 18,
+      ),
+    );
+
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.ok,
+      valueC: 9.5,
+      fetchedAt: DateTime.utc(2025, 1, 2, 8),
+      etag: 'tag',
+    );
+
+    var state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.ok);
+    expect(state.lastValueC, 9.5);
+
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.httpError,
+      valueC: null,
+      fetchedAt: DateTime.utc(2025, 1, 2, 9),
+      etag: null,
+    );
+
+    state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.httpError);
+    expect(state.lastValueC, 9.5);
   });
 }

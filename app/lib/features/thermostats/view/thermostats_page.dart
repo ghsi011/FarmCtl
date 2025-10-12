@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/thermostat.dart';
+import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_form_dialog.dart';
@@ -10,96 +11,57 @@ class ThermostatsPage extends ConsumerWidget {
   const ThermostatsPage({super.key});
 
   Future<void> _createThermostat(BuildContext context, WidgetRef ref) async {
-    final draft = await showDialog<ThermostatDraft>(
+    final saved = await showDialog<Thermostat>(
       context: context,
-      builder: (context) => const ThermostatFormDialog(),
+      builder: (context) => ThermostatFormDialog(
+        onSubmit: (draft) {
+          final service = ref.read(thermostatServiceProvider);
+          return service.createAndTest(draft);
+        },
+      ),
     );
 
-    if (!context.mounted) {
+    if (!context.mounted || saved == null) {
       return;
     }
 
-    if (draft == null) {
-      return;
-    }
-
-    final repository = ref.read(thermostatRepositoryProvider);
-    try {
-      await repository.create(draft);
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Thermostat added.')));
-    } on ThermostatValidationException catch (error) {
-      final first = error.result.errors.first;
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(first.message)));
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save thermostat: $error')),
-      );
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Thermostat added.')));
   }
 
   Future<void> _editThermostat(
     BuildContext context,
     WidgetRef ref,
-    Thermostat thermostat,
+    ThermostatSummary summary,
   ) async {
-    final draft = await showDialog<ThermostatDraft>(
+    final thermostat = summary.thermostat;
+    final updated = await showDialog<Thermostat>(
       context: context,
-      builder: (context) => ThermostatFormDialog(initial: thermostat),
+      builder: (context) => ThermostatFormDialog(
+        initial: thermostat,
+        onSubmit: (draft) {
+          final service = ref.read(thermostatServiceProvider);
+          return service.updateAndTest(thermostat, draft);
+        },
+      ),
     );
 
-    if (!context.mounted) {
+    if (!context.mounted || updated == null) {
       return;
     }
 
-    if (draft == null) {
-      return;
-    }
-
-    final repository = ref.read(thermostatRepositoryProvider);
-    try {
-      await repository.update(thermostat, draft);
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Thermostat updated.')));
-    } on ThermostatValidationException catch (error) {
-      final first = error.result.errors.first;
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(first.message)));
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update thermostat: $error')),
-      );
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Thermostat updated.')));
   }
 
   Future<void> _deleteThermostat(
     BuildContext context,
     WidgetRef ref,
-    Thermostat thermostat,
+    ThermostatSummary summary,
   ) async {
+    final thermostat = summary.thermostat;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -162,11 +124,11 @@ class ThermostatsPage extends ConsumerWidget {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemBuilder: (context, index) {
-              final thermostat = thermostats[index];
+              final summary = thermostats[index];
               return ThermostatCard(
-                thermostat: thermostat,
-                onEdit: () => _editThermostat(context, ref, thermostat),
-                onDelete: () => _deleteThermostat(context, ref, thermostat),
+                summary: summary,
+                onEdit: () => _editThermostat(context, ref, summary),
+                onDelete: () => _deleteThermostat(context, ref, summary),
               );
             },
             separatorBuilder: (context, index) => const SizedBox(height: 12),

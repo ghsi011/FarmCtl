@@ -32,6 +32,25 @@ class ThermostatEntries extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class ThermostatStateEntries extends Table {
+  TextColumn get thermostatId => text()();
+
+  RealColumn get lastValueC => real().nullable()();
+
+  TextColumn get lastStatus => text().nullable()();
+
+  DateTimeColumn get lastFetchedAt => dateTime().nullable()();
+
+  TextColumn get etag => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column<Object>> get primaryKey => {thermostatId};
+}
+
 class AlertConfigEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
 
@@ -57,7 +76,14 @@ LazyDatabase _openConnection() {
   });
 }
 
-@DriftDatabase(tables: [ThermostatEntries, AlertConfigEntries])
+typedef ThermostatWithStateRow = ({
+  ThermostatEntry thermostat,
+  ThermostatStateEntry? state,
+});
+
+@DriftDatabase(
+  tables: [ThermostatEntries, AlertConfigEntries, ThermostatStateEntries],
+)
 class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase() : super(_openConnection());
 
@@ -72,10 +98,44 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     )..orderBy([(tbl) => OrderingTerm.asc(tbl.name)])).get();
   }
 
-  Stream<List<ThermostatEntry>> watchThermostats() {
-    return (select(
-      thermostatEntries,
-    )..orderBy([(tbl) => OrderingTerm.asc(tbl.name)])).watch();
+  Future<List<ThermostatWithStateRow>> listThermostatsWithState() {
+    final query = select(thermostatEntries).join([
+      leftOuterJoin(
+        thermostatStateEntries,
+        thermostatStateEntries.thermostatId.equalsExp(thermostatEntries.id),
+      ),
+    ])..orderBy([OrderingTerm.asc(thermostatEntries.name)]);
+
+    return query.get().then(
+      (rows) => rows
+          .map(
+            (row) => (
+              thermostat: row.readTable(thermostatEntries),
+              state: row.readTableOrNull(thermostatStateEntries),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<ThermostatWithStateRow>> watchThermostatsWithState() {
+    final query = select(thermostatEntries).join([
+      leftOuterJoin(
+        thermostatStateEntries,
+        thermostatStateEntries.thermostatId.equalsExp(thermostatEntries.id),
+      ),
+    ])..orderBy([OrderingTerm.asc(thermostatEntries.name)]);
+
+    return query.watch().map(
+      (rows) => rows
+          .map(
+            (row) => (
+              thermostat: row.readTable(thermostatEntries),
+              state: row.readTableOrNull(thermostatStateEntries),
+            ),
+          )
+          .toList(),
+    );
   }
 
   Future<ThermostatEntry?> getThermostat(String id) {
@@ -84,11 +144,29 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     )..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
   }
 
+  Future<ThermostatStateEntry?> getThermostatState(String id) {
+    return (select(
+      thermostatStateEntries,
+    )..where((tbl) => tbl.thermostatId.equals(id))).getSingleOrNull();
+  }
+
   Future<void> upsertThermostat(ThermostatEntriesCompanion data) async {
     await into(thermostatEntries).insertOnConflictUpdate(data);
   }
 
+  Future<void> upsertThermostatState(
+    ThermostatStateEntriesCompanion data,
+  ) async {
+    await into(thermostatStateEntries).insertOnConflictUpdate(data);
+  }
+
   Future<void> deleteThermostatById(String id) async {
     await (delete(thermostatEntries)..where((tbl) => tbl.id.equals(id))).go();
+  }
+
+  Future<void> deleteThermostatStateById(String id) async {
+    await (delete(
+      thermostatStateEntries,
+    )..where((tbl) => tbl.thermostatId.equals(id))).go();
   }
 }

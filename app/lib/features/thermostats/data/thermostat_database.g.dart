@@ -1049,6 +1049,493 @@ class AlertConfigEntriesCompanion extends UpdateCompanion<AlertConfigEntry> {
   }
 }
 
+class $ThermostatStateEntriesTable extends ThermostatStateEntries
+    with TableInfo<$ThermostatStateEntriesTable, ThermostatStateEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ThermostatStateEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _thermostatIdMeta = const VerificationMeta(
+    'thermostatId',
+  );
+  @override
+  late final GeneratedColumn<String> thermostatId = GeneratedColumn<String>(
+    'thermostat_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastValueCMeta = const VerificationMeta(
+    'lastValueC',
+  );
+  @override
+  late final GeneratedColumn<double> lastValueC = GeneratedColumn<double>(
+    'last_value_c',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastStatusMeta = const VerificationMeta(
+    'lastStatus',
+  );
+  @override
+  late final GeneratedColumn<String> lastStatus = GeneratedColumn<String>(
+    'last_status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastFetchedAtMeta = const VerificationMeta(
+    'lastFetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastFetchedAt =
+      GeneratedColumn<DateTime>(
+        'last_fetched_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _etagMeta = const VerificationMeta('etag');
+  @override
+  late final GeneratedColumn<String> etag = GeneratedColumn<String>(
+    'etag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    thermostatId,
+    lastValueC,
+    lastStatus,
+    lastFetchedAt,
+    etag,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'thermostat_state_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ThermostatStateEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('thermostat_id')) {
+      context.handle(
+        _thermostatIdMeta,
+        thermostatId.isAcceptableOrUnknown(
+          data['thermostat_id']!,
+          _thermostatIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_thermostatIdMeta);
+    }
+    if (data.containsKey('last_value_c')) {
+      context.handle(
+        _lastValueCMeta,
+        lastValueC.isAcceptableOrUnknown(
+          data['last_value_c']!,
+          _lastValueCMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_status')) {
+      context.handle(
+        _lastStatusMeta,
+        lastStatus.isAcceptableOrUnknown(data['last_status']!, _lastStatusMeta),
+      );
+    }
+    if (data.containsKey('last_fetched_at')) {
+      context.handle(
+        _lastFetchedAtMeta,
+        lastFetchedAt.isAcceptableOrUnknown(
+          data['last_fetched_at']!,
+          _lastFetchedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('etag')) {
+      context.handle(
+        _etagMeta,
+        etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {thermostatId};
+  @override
+  ThermostatStateEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ThermostatStateEntry(
+      thermostatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}thermostat_id'],
+      )!,
+      lastValueC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}last_value_c'],
+      ),
+      lastStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_status'],
+      ),
+      lastFetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_fetched_at'],
+      ),
+      etag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}etag'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ThermostatStateEntriesTable createAlias(String alias) {
+    return $ThermostatStateEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class ThermostatStateEntry extends DataClass
+    implements Insertable<ThermostatStateEntry> {
+  final String thermostatId;
+  final double? lastValueC;
+  final String? lastStatus;
+  final DateTime? lastFetchedAt;
+  final String? etag;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ThermostatStateEntry({
+    required this.thermostatId,
+    this.lastValueC,
+    this.lastStatus,
+    this.lastFetchedAt,
+    this.etag,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['thermostat_id'] = Variable<String>(thermostatId);
+    if (!nullToAbsent || lastValueC != null) {
+      map['last_value_c'] = Variable<double>(lastValueC);
+    }
+    if (!nullToAbsent || lastStatus != null) {
+      map['last_status'] = Variable<String>(lastStatus);
+    }
+    if (!nullToAbsent || lastFetchedAt != null) {
+      map['last_fetched_at'] = Variable<DateTime>(lastFetchedAt);
+    }
+    if (!nullToAbsent || etag != null) {
+      map['etag'] = Variable<String>(etag);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ThermostatStateEntriesCompanion toCompanion(bool nullToAbsent) {
+    return ThermostatStateEntriesCompanion(
+      thermostatId: Value(thermostatId),
+      lastValueC: lastValueC == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastValueC),
+      lastStatus: lastStatus == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastStatus),
+      lastFetchedAt: lastFetchedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastFetchedAt),
+      etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ThermostatStateEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ThermostatStateEntry(
+      thermostatId: serializer.fromJson<String>(json['thermostatId']),
+      lastValueC: serializer.fromJson<double?>(json['lastValueC']),
+      lastStatus: serializer.fromJson<String?>(json['lastStatus']),
+      lastFetchedAt: serializer.fromJson<DateTime?>(json['lastFetchedAt']),
+      etag: serializer.fromJson<String?>(json['etag']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'thermostatId': serializer.toJson<String>(thermostatId),
+      'lastValueC': serializer.toJson<double?>(lastValueC),
+      'lastStatus': serializer.toJson<String?>(lastStatus),
+      'lastFetchedAt': serializer.toJson<DateTime?>(lastFetchedAt),
+      'etag': serializer.toJson<String?>(etag),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ThermostatStateEntry copyWith({
+    String? thermostatId,
+    Value<double?> lastValueC = const Value.absent(),
+    Value<String?> lastStatus = const Value.absent(),
+    Value<DateTime?> lastFetchedAt = const Value.absent(),
+    Value<String?> etag = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ThermostatStateEntry(
+    thermostatId: thermostatId ?? this.thermostatId,
+    lastValueC: lastValueC.present ? lastValueC.value : this.lastValueC,
+    lastStatus: lastStatus.present ? lastStatus.value : this.lastStatus,
+    lastFetchedAt: lastFetchedAt.present
+        ? lastFetchedAt.value
+        : this.lastFetchedAt,
+    etag: etag.present ? etag.value : this.etag,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ThermostatStateEntry copyWithCompanion(ThermostatStateEntriesCompanion data) {
+    return ThermostatStateEntry(
+      thermostatId: data.thermostatId.present
+          ? data.thermostatId.value
+          : this.thermostatId,
+      lastValueC: data.lastValueC.present
+          ? data.lastValueC.value
+          : this.lastValueC,
+      lastStatus: data.lastStatus.present
+          ? data.lastStatus.value
+          : this.lastStatus,
+      lastFetchedAt: data.lastFetchedAt.present
+          ? data.lastFetchedAt.value
+          : this.lastFetchedAt,
+      etag: data.etag.present ? data.etag.value : this.etag,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThermostatStateEntry(')
+          ..write('thermostatId: $thermostatId, ')
+          ..write('lastValueC: $lastValueC, ')
+          ..write('lastStatus: $lastStatus, ')
+          ..write('lastFetchedAt: $lastFetchedAt, ')
+          ..write('etag: $etag, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    thermostatId,
+    lastValueC,
+    lastStatus,
+    lastFetchedAt,
+    etag,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ThermostatStateEntry &&
+          other.thermostatId == this.thermostatId &&
+          other.lastValueC == this.lastValueC &&
+          other.lastStatus == this.lastStatus &&
+          other.lastFetchedAt == this.lastFetchedAt &&
+          other.etag == this.etag &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ThermostatStateEntriesCompanion
+    extends UpdateCompanion<ThermostatStateEntry> {
+  final Value<String> thermostatId;
+  final Value<double?> lastValueC;
+  final Value<String?> lastStatus;
+  final Value<DateTime?> lastFetchedAt;
+  final Value<String?> etag;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ThermostatStateEntriesCompanion({
+    this.thermostatId = const Value.absent(),
+    this.lastValueC = const Value.absent(),
+    this.lastStatus = const Value.absent(),
+    this.lastFetchedAt = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ThermostatStateEntriesCompanion.insert({
+    required String thermostatId,
+    this.lastValueC = const Value.absent(),
+    this.lastStatus = const Value.absent(),
+    this.lastFetchedAt = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : thermostatId = Value(thermostatId);
+  static Insertable<ThermostatStateEntry> custom({
+    Expression<String>? thermostatId,
+    Expression<double>? lastValueC,
+    Expression<String>? lastStatus,
+    Expression<DateTime>? lastFetchedAt,
+    Expression<String>? etag,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (thermostatId != null) 'thermostat_id': thermostatId,
+      if (lastValueC != null) 'last_value_c': lastValueC,
+      if (lastStatus != null) 'last_status': lastStatus,
+      if (lastFetchedAt != null) 'last_fetched_at': lastFetchedAt,
+      if (etag != null) 'etag': etag,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ThermostatStateEntriesCompanion copyWith({
+    Value<String>? thermostatId,
+    Value<double?>? lastValueC,
+    Value<String?>? lastStatus,
+    Value<DateTime?>? lastFetchedAt,
+    Value<String?>? etag,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ThermostatStateEntriesCompanion(
+      thermostatId: thermostatId ?? this.thermostatId,
+      lastValueC: lastValueC ?? this.lastValueC,
+      lastStatus: lastStatus ?? this.lastStatus,
+      lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
+      etag: etag ?? this.etag,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (thermostatId.present) {
+      map['thermostat_id'] = Variable<String>(thermostatId.value);
+    }
+    if (lastValueC.present) {
+      map['last_value_c'] = Variable<double>(lastValueC.value);
+    }
+    if (lastStatus.present) {
+      map['last_status'] = Variable<String>(lastStatus.value);
+    }
+    if (lastFetchedAt.present) {
+      map['last_fetched_at'] = Variable<DateTime>(lastFetchedAt.value);
+    }
+    if (etag.present) {
+      map['etag'] = Variable<String>(etag.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThermostatStateEntriesCompanion(')
+          ..write('thermostatId: $thermostatId, ')
+          ..write('lastValueC: $lastValueC, ')
+          ..write('lastStatus: $lastStatus, ')
+          ..write('lastFetchedAt: $lastFetchedAt, ')
+          ..write('etag: $etag, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ThermostatDatabase extends GeneratedDatabase {
   _$ThermostatDatabase(QueryExecutor e) : super(e);
   $ThermostatDatabaseManager get managers => $ThermostatDatabaseManager(this);
@@ -1056,6 +1543,8 @@ abstract class _$ThermostatDatabase extends GeneratedDatabase {
       $ThermostatEntriesTable(this);
   late final $AlertConfigEntriesTable alertConfigEntries =
       $AlertConfigEntriesTable(this);
+  late final $ThermostatStateEntriesTable thermostatStateEntries =
+      $ThermostatStateEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1063,6 +1552,7 @@ abstract class _$ThermostatDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     thermostatEntries,
     alertConfigEntries,
+    thermostatStateEntries,
   ];
 }
 
@@ -1612,6 +2102,271 @@ typedef $$AlertConfigEntriesTableProcessedTableManager =
       AlertConfigEntry,
       PrefetchHooks Function()
     >;
+typedef $$ThermostatStateEntriesTableCreateCompanionBuilder =
+    ThermostatStateEntriesCompanion Function({
+      required String thermostatId,
+      Value<double?> lastValueC,
+      Value<String?> lastStatus,
+      Value<DateTime?> lastFetchedAt,
+      Value<String?> etag,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ThermostatStateEntriesTableUpdateCompanionBuilder =
+    ThermostatStateEntriesCompanion Function({
+      Value<String> thermostatId,
+      Value<double?> lastValueC,
+      Value<String?> lastStatus,
+      Value<DateTime?> lastFetchedAt,
+      Value<String?> etag,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ThermostatStateEntriesTableFilterComposer
+    extends Composer<_$ThermostatDatabase, $ThermostatStateEntriesTable> {
+  $$ThermostatStateEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get thermostatId => $composableBuilder(
+    column: $table.thermostatId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lastValueC => $composableBuilder(
+    column: $table.lastValueC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ThermostatStateEntriesTableOrderingComposer
+    extends Composer<_$ThermostatDatabase, $ThermostatStateEntriesTable> {
+  $$ThermostatStateEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get thermostatId => $composableBuilder(
+    column: $table.thermostatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lastValueC => $composableBuilder(
+    column: $table.lastValueC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ThermostatStateEntriesTableAnnotationComposer
+    extends Composer<_$ThermostatDatabase, $ThermostatStateEntriesTable> {
+  $$ThermostatStateEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get thermostatId => $composableBuilder(
+    column: $table.thermostatId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get lastValueC => $composableBuilder(
+    column: $table.lastValueC,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastStatus => $composableBuilder(
+    column: $table.lastStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get etag =>
+      $composableBuilder(column: $table.etag, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ThermostatStateEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$ThermostatDatabase,
+          $ThermostatStateEntriesTable,
+          ThermostatStateEntry,
+          $$ThermostatStateEntriesTableFilterComposer,
+          $$ThermostatStateEntriesTableOrderingComposer,
+          $$ThermostatStateEntriesTableAnnotationComposer,
+          $$ThermostatStateEntriesTableCreateCompanionBuilder,
+          $$ThermostatStateEntriesTableUpdateCompanionBuilder,
+          (
+            ThermostatStateEntry,
+            BaseReferences<
+              _$ThermostatDatabase,
+              $ThermostatStateEntriesTable,
+              ThermostatStateEntry
+            >,
+          ),
+          ThermostatStateEntry,
+          PrefetchHooks Function()
+        > {
+  $$ThermostatStateEntriesTableTableManager(
+    _$ThermostatDatabase db,
+    $ThermostatStateEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ThermostatStateEntriesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ThermostatStateEntriesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ThermostatStateEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> thermostatId = const Value.absent(),
+                Value<double?> lastValueC = const Value.absent(),
+                Value<String?> lastStatus = const Value.absent(),
+                Value<DateTime?> lastFetchedAt = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ThermostatStateEntriesCompanion(
+                thermostatId: thermostatId,
+                lastValueC: lastValueC,
+                lastStatus: lastStatus,
+                lastFetchedAt: lastFetchedAt,
+                etag: etag,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String thermostatId,
+                Value<double?> lastValueC = const Value.absent(),
+                Value<String?> lastStatus = const Value.absent(),
+                Value<DateTime?> lastFetchedAt = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ThermostatStateEntriesCompanion.insert(
+                thermostatId: thermostatId,
+                lastValueC: lastValueC,
+                lastStatus: lastStatus,
+                lastFetchedAt: lastFetchedAt,
+                etag: etag,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ThermostatStateEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ThermostatDatabase,
+      $ThermostatStateEntriesTable,
+      ThermostatStateEntry,
+      $$ThermostatStateEntriesTableFilterComposer,
+      $$ThermostatStateEntriesTableOrderingComposer,
+      $$ThermostatStateEntriesTableAnnotationComposer,
+      $$ThermostatStateEntriesTableCreateCompanionBuilder,
+      $$ThermostatStateEntriesTableUpdateCompanionBuilder,
+      (
+        ThermostatStateEntry,
+        BaseReferences<
+          _$ThermostatDatabase,
+          $ThermostatStateEntriesTable,
+          ThermostatStateEntry
+        >,
+      ),
+      ThermostatStateEntry,
+      PrefetchHooks Function()
+    >;
 
 class $ThermostatDatabaseManager {
   final _$ThermostatDatabase _db;
@@ -1620,4 +2375,9 @@ class $ThermostatDatabaseManager {
       $$ThermostatEntriesTableTableManager(_db, _db.thermostatEntries);
   $$AlertConfigEntriesTableTableManager get alertConfigEntries =>
       $$AlertConfigEntriesTableTableManager(_db, _db.alertConfigEntries);
+  $$ThermostatStateEntriesTableTableManager get thermostatStateEntries =>
+      $$ThermostatStateEntriesTableTableManager(
+        _db,
+        _db.thermostatStateEntries,
+      );
 }
