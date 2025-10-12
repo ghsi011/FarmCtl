@@ -170,4 +170,20 @@ For each active iteration, maintain the following subsections directly in this f
   - Next: Ensure CI workflow runs from `app/` and passes analyze/test/build.
   - Next: Replace UI stub temperatures with live data flow per Iteration 4; wire polling and state.
 
-### Iteration 3
+### Iteration 3 - Thermostat Domain & Persistence Foundation
+
+- Executive Summary
+  - Added Drift-backed persistence with `thermostats` and `alert_config` tables and repository abstractions.
+  - Implemented domain validation for thermostat inputs (name, HTTPS raw URL, min/max °C bounds, range ordering).
+  - Replaced placeholder UI with Riverpod-powered list tied to the database and CRUD dialogs for add/edit/delete.
+  - Introduced unit tests for validation and repository flows alongside updated widget bootstrap coverage.
+- Progress Journal
+  - 2025-10-13: Created Drift database schema, repository, and Riverpod providers for thermostats; wired list UI to live data.
+  - 2025-10-13: Built form dialogs with validation, hooked up CRUD actions, and refreshed widget test overrides.
+  - 2025-10-13: Added validation/repository unit tests and generated Drift code via build_runner.
+- Decision Log
+  - 2025-10-13: Context: Persisting thermostats locally with schema evolution in mind. Options: hand-rolled sqflite vs Drift ORM. Decision: Adopt Drift for typed schema and stream queries. Impact: Simplifies migrations and integrates cleanly with Riverpod streams.
+  - 2025-10-13: Context: Thermostat IDs. Options: auto-increment ints vs UUID strings. Decision: Use UUIDs to align with Spec data model. Impact: Prevents future ID collisions when syncing remote sources.
+- Open Risks & Next Steps
+  - Need to layer in live temperature fetching and validation gating (Iteration 4) using the new repository foundation.
+  - Evaluate background job implications for Drift database access once monitoring service work begins.
