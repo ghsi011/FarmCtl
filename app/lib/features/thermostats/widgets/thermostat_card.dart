@@ -1,53 +1,18 @@
 import 'package:flutter/material.dart';
 
-enum ThermostatStatus { normal, warning, critical }
+import '../models/thermostat.dart';
 
 class ThermostatCard extends StatelessWidget {
   const ThermostatCard({
-    required this.name,
-    required this.temperature,
-    required this.lastUpdated,
-    this.status = ThermostatStatus.normal,
+    required this.thermostat,
+    this.onEdit,
+    this.onDelete,
     super.key,
   });
 
-  final String name;
-  final String temperature;
-  final String lastUpdated;
-  final ThermostatStatus status;
-
-  Color _statusColor(ColorScheme colorScheme) {
-    switch (status) {
-      case ThermostatStatus.normal:
-        return colorScheme.primary;
-      case ThermostatStatus.warning:
-        return colorScheme.tertiary;
-      case ThermostatStatus.critical:
-        return colorScheme.error;
-    }
-  }
-
-  IconData _statusIcon() {
-    switch (status) {
-      case ThermostatStatus.normal:
-        return Icons.check_circle;
-      case ThermostatStatus.warning:
-        return Icons.error_outline;
-      case ThermostatStatus.critical:
-        return Icons.warning_amber;
-    }
-  }
-
-  String _statusLabel() {
-    switch (status) {
-      case ThermostatStatus.normal:
-        return 'Within range';
-      case ThermostatStatus.warning:
-        return 'Check soon';
-      case ThermostatStatus.critical:
-        return 'Out of range';
-    }
-  }
+  final Thermostat thermostat;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -62,45 +27,59 @@ class ThermostatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(name, style: textTheme.titleLarge),
-            const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.thermostat, size: 36, color: colorScheme.primary),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      temperature,
-                      style: textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(thermostat.name, style: textTheme.titleLarge),
+                      const SizedBox(height: 8),
+                      Text(
+                        thermostat.rawUrl,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      lastUpdated,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.outline,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const Spacer(),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Icon(_statusIcon(), color: _statusColor(colorScheme)),
-                    const SizedBox(height: 4),
-                    Text(
-                      _statusLabel(),
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: _statusColor(colorScheme),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                if (onEdit != null || onDelete != null)
+                  PopupMenuButton<_ThermostatMenuAction>(
+                    onSelected: (value) {
+                      switch (value) {
+                        case _ThermostatMenuAction.edit:
+                          onEdit?.call();
+                          break;
+                        case _ThermostatMenuAction.delete:
+                          onDelete?.call();
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (onEdit != null)
+                        const PopupMenuItem(
+                          value: _ThermostatMenuAction.edit,
+                          child: Text('Edit'),
+                        ),
+                      if (onDelete != null)
+                        const PopupMenuItem(
+                          value: _ThermostatMenuAction.delete,
+                          child: Text('Delete'),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(Icons.thermostat, color: colorScheme.primary),
+                const SizedBox(width: 12),
+                Text(
+                  'Range: ${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                  style: textTheme.bodyLarge,
                 ),
               ],
             ),
@@ -110,3 +89,5 @@ class ThermostatCard extends StatelessWidget {
     );
   }
 }
+
+enum _ThermostatMenuAction { edit, delete }

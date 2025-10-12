@@ -14,11 +14,20 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
     - `features/<feature>/widgets/` — reusable UI components for the feature
     - Suggested (use when needed): `features/<feature>/providers/`, `features/<feature>/models/`, `features/<feature>/data/`
   - `test/` — Flutter tests (widget/unit)
-- `docs/ImplementationPlan.md` — technical plan and architecture notes
 - `Spec.md` — product and UX specification
-- `iterations.md` — running log of scoped work/decisions
 - `README.md` — quickstart and high‑level overview
 - `tool/` — helper scripts for managing a repo‑local Flutter SDK
+- `.agent/` — ExecPlans and temporary research (gitignored subdirectories for scratch work)
+
+## 🗂️ ExecPlans
+
+When writing **complex features** or **significant refactors**, use an **ExecPlan**
+(as described in `.agent/PLANS.md`) from **design to implementation**.
+
+ALWAYS check to see if an active ExecPlan is present and read it!!! 
+
+Write new plans to the `.agent` directory.
+Place any temporary research, clones, etc., in a **.gitignored subdirectory** of `.agent`.
 
 ## Tooling & Setup
 - Flutter channel: stable (see `app/.metadata`).
@@ -64,8 +73,7 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 3) Wire up navigation in `core/router/app_router.dart`.
 4) Write or update tests in `app/test/`.
 5) Run format, analyze, and tests before finishing.
-6) Update `docs/ImplementationPlan.md` and/or `iterations.md` if the architecture or scope changes; update `Spec.md` if behavior/UX changes.
-7) Record an entry in `iterations.md` (Executive Summary + Decision Log) reflecting the change.
+6) Update or create an ExecPlan under `.agent/` as architecture/scope evolves; update `Spec.md` if behavior/UX changes.
 
 ## Testing Guidelines
 - Prefer widget tests for UI contracts and navigation, co‑located under `app/test/`.
@@ -73,25 +81,13 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 - Name tests descriptively and assert visible user outcomes (e.g., tab labels, routed content), similar to `app/test/widget_test.dart`.
 
 ## Dependencies
-- Keep the dependency set lean. Before adding a new package to `pubspec.yaml`, ensure it’s justifiable and aligns with the Implementation Plan.
+- Keep the dependency set lean. Before adding a new package to `pubspec.yaml`, ensure it’s justifiable and aligns with the relevant ExecPlan.
 - After edits to `pubspec.yaml`, run `flutter pub get` and commit the updated `pubspec.lock` as appropriate for the platform.
 
 ## Documentation Expectations
-- When implementing scope from `Spec.md`, note any deviations or decisions in `iterations.md`.
-- When changing architecture or introducing new patterns, update `docs/ImplementationPlan.md`.
+- When implementing scope from `Spec.md`, document decisions and progress in the relevant ExecPlan under `.agent/`.
+- When changing architecture or introducing new patterns, update the relevant ExecPlan.
 - Keep `README.md` accurate for run/test commands if they change.
-
-### Living Progress Journal & Decision Log (required)
-- Maintain a living record inside `iterations.md` for each active iteration. For every iteration, include:
-  - Executive Summary: 3–6 bullet points of what changed and why.
-  - Progress Journal: dated notes capturing meaningful steps, risks/mitigations, and links to commits/CI runs.
-  - Decision Log: concise entries for decisions (context → options → decision → impact).
-  - Open Risks & Next Steps: outstanding concerns and what will be tackled next.
-- Update the journal at least:
-  - At iteration kickoff (plan and success criteria)
-  - After significant decisions/changes land
-  - At iteration close (outcomes vs acceptance criteria)
-- PRs that materially change scope/behavior should update `iterations.md` in the same change.
 
 ## Review Friendly Changes
 - Keep patches small and atomic; include only directly related changes.
