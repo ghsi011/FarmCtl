@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# Run dart format at repo root (or within app if dart not at root)
+set -euo pipefail
+
+run_format() {
+  if command -v dart >/dev/null 2>&1; then
+    dart format .
+    return 0
+  fi
+  if [ -d "app" ] && command -v "$(pwd)/app/.dart_tool/dart" >/dev/null 2>&1; then
+    "$(pwd)/app/.dart_tool/dart" format .
+    return 0
+  fi
+  # Fallback: try through flutter
+  if command -v flutter >/dev/null 2>&1; then
+    flutter format .
+    return 0
+  fi
+  echo "dart/flutter not found in PATH; skipping format" >&2
+}
+
+# Snapshot index to detect changes after formatting
+STASH_NAME="pre-commit-format-$(date +%s)"
+git stash push -k -u -m "$STASH_NAME" >/dev/null 2>&1 || true
+
+# Restore staged files into working tree to format them
+git reset --hard -q
+git checkout -q -- .
+
+run_format || true
+
+# See if formatting changed anything
+if ! git diff --quiet; then
+  echo "Pre-commit: dart format modified files. Please review and re-stage changes." >&2
+  # Keep formatted changes for developer to stage
+  # Drop the stash if it exists (working tree now has formatted files)
+  git stash drop -q || true
+  exit 1
+fi
+
+# No changes: restore stash (if any) and continue
+git stash pop -q || true
+exit 0
+
+
