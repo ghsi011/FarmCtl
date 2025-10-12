@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../models/thermostat.dart';
+import '../models/thermostat_state.dart';
 
 class ThermostatCard extends StatelessWidget {
   const ThermostatCard({
-    required this.thermostat,
+    required this.summary,
     this.onEdit,
     this.onDelete,
     super.key,
   });
 
-  final Thermostat thermostat;
+  final ThermostatSummary summary;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
@@ -19,6 +19,8 @@ class ThermostatCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final thermostat = summary.thermostat;
+    final state = summary.state;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -83,6 +85,8 @@ class ThermostatCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            _LastSeenStatus(state: state),
           ],
         ),
       ),
@@ -91,3 +95,75 @@ class ThermostatCard extends StatelessWidget {
 }
 
 enum _ThermostatMenuAction { edit, delete }
+
+class _LastSeenStatus extends StatelessWidget {
+  const _LastSeenStatus({this.state});
+
+  final ThermostatState? state;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (state == null || state!.lastFetchedAt == null) {
+      return Text(
+        'No successful readings yet.',
+        style: textTheme.bodyMedium?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    final fetchedAt = state!.lastFetchedAt!;
+    final value = state!.lastValueC;
+    final status = state!.status;
+    final now = DateTime.now().toUtc();
+    final difference = now.difference(fetchedAt);
+    final relative = _formatRelativeDuration(difference);
+
+    final statusText = switch (status) {
+      ThermostatReadingStatus.ok =>
+        value != null
+            ? '${value.toStringAsFixed(1)}°C • Updated $relative'
+            : 'Updated $relative',
+      ThermostatReadingStatus.networkError =>
+        'Last attempt failed: network error',
+      ThermostatReadingStatus.httpError => 'Last attempt failed: server error',
+      ThermostatReadingStatus.parseError =>
+        'Last attempt failed: invalid payload',
+      ThermostatReadingStatus.unknown => 'Last seen $relative',
+    };
+
+    final isError = status != ThermostatReadingStatus.ok;
+
+    return Text(
+      statusText,
+      style: textTheme.bodyMedium?.copyWith(
+        color: isError ? colorScheme.error : colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  String _formatRelativeDuration(Duration difference) {
+    final seconds = difference.inSeconds.abs();
+    if (seconds < 60) {
+      return 'just now';
+    }
+    final minutes = difference.inMinutes;
+    if (minutes.abs() < 60) {
+      final value = minutes.abs();
+      final unit = value == 1 ? 'min' : 'mins';
+      return '$value $unit ago';
+    }
+    final hours = difference.inHours;
+    if (hours.abs() < 24) {
+      final value = hours.abs();
+      final unit = value == 1 ? 'hour' : 'hours';
+      return '$value $unit ago';
+    }
+    final days = difference.inDays;
+    final unit = days.abs() == 1 ? 'day' : 'days';
+    return '${days.abs()} $unit ago';
+  }
+}

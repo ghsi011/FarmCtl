@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/thermostat_client.dart';
 import '../models/thermostat.dart';
 
 class ThermostatFormDialog extends StatefulWidget {
-  const ThermostatFormDialog({super.key, this.initial});
+  const ThermostatFormDialog({required this.onSubmit, this.initial, super.key});
 
+  final Future<Thermostat> Function(ThermostatDraft draft) onSubmit;
   final Thermostat? initial;
 
   @override
@@ -19,6 +21,8 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
   late final TextEditingController _maxController;
   String? _rangeError;
   Map<ThermostatValidationField, String> _fieldErrors = {};
+  String? _submitError;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -43,11 +47,12 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     setState(() {
       _fieldErrors = {};
       _rangeError = null;
+      _submitError = null;
     });
 
     if (!_formKey.currentState!.validate()) {
@@ -76,8 +81,8 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     }
 
     final draft = ThermostatDraft(
-      name: _nameController.text,
-      rawUrl: _urlController.text,
+      name: _nameController.text.trim(),
+      rawUrl: _urlController.text.trim(),
       minC: minValue,
       maxC: maxValue,
     );
@@ -97,7 +102,50 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
       return;
     }
 
-    Navigator.of(context).pop(draft);
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final saved = await widget.onSubmit(draft);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(saved);
+    } on ThermostatValidationException catch (error) {
+      final map = <ThermostatValidationField, String>{};
+      String? rangeError;
+      for (final item in error.result.errors) {
+        map[item.field] = item.message;
+        if (item.field == ThermostatValidationField.range) {
+          rangeError = item.message;
+        }
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _fieldErrors = map;
+        _rangeError = rangeError;
+        _isSubmitting = false;
+      });
+    } on ThermostatFetchException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _submitError = error.message;
+        _isSubmitting = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _submitError = 'Failed to save thermostat: $error';
+        _isSubmitting = false;
+      });
+    }
   }
 
   @override
@@ -119,6 +167,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                 ),
                 textCapitalization: TextCapitalization.words,
                 autofocus: true,
+                enabled: !_isSubmitting,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Enter a name.';
@@ -135,6 +184,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                   errorText: _fieldErrors[ThermostatValidationField.rawUrl],
                 ),
                 keyboardType: TextInputType.url,
+                enabled: !_isSubmitting,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Enter a raw URL.';
@@ -156,6 +206,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                         signed: true,
                         decimal: true,
                       ),
+                      enabled: !_isSubmitting,
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -170,6 +221,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                         signed: true,
                         decimal: true,
                       ),
+                      enabled: !_isSubmitting,
                     ),
                   ),
                 ],
@@ -186,18 +238,36 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                   ),
                 ),
               ],
+              if (_submitError != null) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _submitError!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _submit,
-          child: Text(isEditing ? 'Save' : 'Add'),
+          onPressed: _isSubmitting ? null : _submit,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Test & Save'),
         ),
       ],
     );
