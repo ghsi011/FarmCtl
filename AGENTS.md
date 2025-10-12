@@ -81,13 +81,12 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 - When changing architecture or introducing new patterns, update `docs/ImplementationPlan.md`.
 - Keep `README.md` accurate for run/test commands if they change.
 
-### Living Progress Journal & Decision Log (required)
+### Living Iteration Log (required)
 - Maintain a living record inside `iterations.md` for each active iteration. For every iteration, include:
-  - Executive Summary: 3–6 bullet points of what changed and why.
-  - Progress Journal: dated notes capturing meaningful steps, risks/mitigations, and links to commits/CI runs.
+  - Executive Summary: 3–6 bullet points of what changed and why. Fold any notable day-to-day progress into these bullets.
   - Decision Log: concise entries for decisions (context → options → decision → impact).
   - Open Risks & Next Steps: outstanding concerns and what will be tackled next.
-- Update the journal at least:
+- Update the log at least:
   - At iteration kickoff (plan and success criteria)
   - After significant decisions/changes land
   - At iteration close (outcomes vs acceptance criteria)

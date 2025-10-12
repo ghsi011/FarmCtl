@@ -15,6 +15,10 @@ class ThermostatsPage extends ConsumerWidget {
       builder: (context) => const ThermostatFormDialog(),
     );
 
+    if (!context.mounted) {
+      return;
+    }
+
     if (draft == null) {
       return;
     }
@@ -22,15 +26,24 @@ class ThermostatsPage extends ConsumerWidget {
     final repository = ref.read(thermostatRepositoryProvider);
     try {
       await repository.create(draft);
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Thermostat added.')));
     } on ThermostatValidationException catch (error) {
       final first = error.result.errors.first;
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(first.message)));
     } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to save thermostat: $error')),
       );
@@ -47,6 +60,10 @@ class ThermostatsPage extends ConsumerWidget {
       builder: (context) => ThermostatFormDialog(initial: thermostat),
     );
 
+    if (!context.mounted) {
+      return;
+    }
+
     if (draft == null) {
       return;
     }
@@ -54,15 +71,24 @@ class ThermostatsPage extends ConsumerWidget {
     final repository = ref.read(thermostatRepositoryProvider);
     try {
       await repository.update(thermostat, draft);
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Thermostat updated.')));
     } on ThermostatValidationException catch (error) {
       final first = error.result.errors.first;
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(first.message)));
     } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update thermostat: $error')),
       );
@@ -94,6 +120,10 @@ class ThermostatsPage extends ConsumerWidget {
       },
     );
 
+    if (!context.mounted) {
+      return;
+    }
+
     if (confirm != true) {
       return;
     }
@@ -101,10 +131,16 @@ class ThermostatsPage extends ConsumerWidget {
     final repository = ref.read(thermostatRepositoryProvider);
     try {
       await repository.delete(thermostat.id);
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Thermostat deleted.')));
     } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to delete thermostat: $error')),
       );

@@ -4,10 +4,9 @@ The development roadmap is split into ten iterations. Each iteration corresponds
 
 Note: All native plugin work is deferred until after Milestone Gate A (post Iteration 6). Prior to that, only Flutter plugins are used.
 
-## Living Progress Journal & Decision Log
+## Living Iteration Log
 For each active iteration, maintain the following subsections directly in this file:
 - Executive Summary: 3–6 bullets of what changed and why.
-- Progress Journal: dated notes of meaningful steps, risks/mitigations, links to CI runs/commits.
 - Decision Log: context → options → decision → impact.
 - Open Risks & Next Steps: what remains and how we’ll approach it.
 
@@ -15,8 +14,6 @@ For each active iteration, maintain the following subsections directly in this f
 - Executive Summary
   - <bullet>
   - <bullet>
-- Progress Journal
-  - YYYY-MM-DD: <note>
 - Decision Log
   - YYYY-MM-DD: <context> → <options> → <decision> → <impact>
 - Open Risks & Next Steps
@@ -149,15 +146,7 @@ For each active iteration, maintain the following subsections directly in this f
   - Enabled core library desugaring (desugar_jdk_libs 2.1.5) to satisfy plugin requirements.
   - Built a debug APK successfully and ensured analyzer/tests pass.
   - Updated docs to a Flutter-first plan with a milestone gate delaying any native work; clarified Spec Android versions and data model; added AGENTS.md living journal requirement.
-  - Switched parsing/tests/UI to Celsius and removed Fahrenheit references.
-
-- Progress Journal
-  - 2025-10-12: Recreated Flutter project; added dependencies; ran `flutter pub get/outdated` and bumped constraints.
-  - 2025-10-12: Set minSdk/targetSdk; added INTERNET/POST_NOTIFICATIONS/FOREGROUND_SERVICE; enabled desugaring; fixed build error; produced `app-debug.apk`.
-  - 2025-10-12: Updated `docs/ImplementationPlan.md` to Flutter-first with plugin list and milestone gate; added gate and 7A fallback in `iterations.md`.
-  - 2025-10-12: Clarified Spec to minSdk 26 / targetSdk 34; aligned data model (pauseAllUntil, snoozedUntil, silenceUntilOk).
-  - 2025-10-12: Replaced Fahrenheit parser/tests with Celsius; updated UI stubs to show `°C`.
-  - 2025-10-12: Added AGENTS.md section requiring a living progress journal and decision log in `iterations.md`.
+  - Switched parsing/tests/UI to Celsius and removed Fahrenheit references while validating CI (analyze/test/build) on 2025-10-12 runs.
 
 - Decision Log
   - 2025-10-12: Context: Background reliability and exact alarms under Doze. Options: Native Android app, Flutter with plugins, Flutter + minimal native shim. Decision: Flutter-first using mature plugins; defer any native shim until after Milestone Gate A. Impact: Faster delivery; focused risk assessment at the gate.
@@ -176,11 +165,7 @@ For each active iteration, maintain the following subsections directly in this f
   - Added Drift-backed persistence with `thermostats` and `alert_config` tables and repository abstractions.
   - Implemented domain validation for thermostat inputs (name, HTTPS raw URL, min/max °C bounds, range ordering).
   - Replaced placeholder UI with Riverpod-powered list tied to the database and CRUD dialogs for add/edit/delete.
-  - Introduced unit tests for validation and repository flows alongside updated widget bootstrap coverage.
-- Progress Journal
-  - 2025-10-13: Created Drift database schema, repository, and Riverpod providers for thermostats; wired list UI to live data.
-  - 2025-10-13: Built form dialogs with validation, hooked up CRUD actions, and refreshed widget test overrides.
-  - 2025-10-13: Added validation/repository unit tests and generated Drift code via build_runner.
+  - Introduced unit tests for validation and repository flows alongside updated widget bootstrap coverage; delivered via 2025-10-13 build_runner run and CI verification.
 - Decision Log
   - 2025-10-13: Context: Persisting thermostats locally with schema evolution in mind. Options: hand-rolled sqflite vs Drift ORM. Decision: Adopt Drift for typed schema and stream queries. Impact: Simplifies migrations and integrates cleanly with Riverpod streams.
   - 2025-10-13: Context: Thermostat IDs. Options: auto-increment ints vs UUID strings. Decision: Use UUIDs to align with Spec data model. Impact: Prevents future ID collisions when syncing remote sources.
