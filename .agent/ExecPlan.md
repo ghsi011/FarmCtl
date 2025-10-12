@@ -116,7 +116,6 @@ To be completed at milestone close:
 
 ## References
 - Specification: `docs/Spec.md`
-- Iteration roadmap and journal: `docs/iterations.md`
 - Implementation architecture: `docs/ImplementationPlan.md`
 - Working instructions for agents: `AGENTS.md`
 
