@@ -65,6 +65,7 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 4) Write or update tests in `app/test/`.
 5) Run format, analyze, and tests before finishing.
 6) Update `docs/ImplementationPlan.md` and/or `iterations.md` if the architecture or scope changes; update `Spec.md` if behavior/UX changes.
+7) Record an entry in `iterations.md` (Executive Summary + Decision Log) reflecting the change.
 
 ## Testing Guidelines
 - Prefer widget tests for UI contracts and navigation, co‑located under `app/test/`.
@@ -79,6 +80,18 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 - When implementing scope from `Spec.md`, note any deviations or decisions in `iterations.md`.
 - When changing architecture or introducing new patterns, update `docs/ImplementationPlan.md`.
 - Keep `README.md` accurate for run/test commands if they change.
+
+### Living Progress Journal & Decision Log (required)
+- Maintain a living record inside `iterations.md` for each active iteration. For every iteration, include:
+  - Executive Summary: 3–6 bullet points of what changed and why.
+  - Progress Journal: dated notes capturing meaningful steps, risks/mitigations, and links to commits/CI runs.
+  - Decision Log: concise entries for decisions (context → options → decision → impact).
+  - Open Risks & Next Steps: outstanding concerns and what will be tackled next.
+- Update the journal at least:
+  - At iteration kickoff (plan and success criteria)
+  - After significant decisions/changes land
+  - At iteration close (outcomes vs acceptance criteria)
+- PRs that materially change scope/behavior should update `iterations.md` in the same change.
 
 ## Review Friendly Changes
 - Keep patches small and atomic; include only directly related changes.

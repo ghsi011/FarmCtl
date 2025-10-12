@@ -8,22 +8,20 @@ class ThermostatsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Thermostats'),
-      ),
+      appBar: AppBar(title: const Text('Thermostats')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: const [
           ThermostatCard(
             name: 'Main Barn',
-            temperature: '68°F',
+            temperature: '20°C',
             lastUpdated: 'Updated 5 minutes ago',
             status: ThermostatStatus.normal,
           ),
           SizedBox(height: 12),
           ThermostatCard(
             name: 'Propagation Greenhouse',
-            temperature: '72°F',
+            temperature: '22°C',
             lastUpdated: 'Updated 10 minutes ago',
             status: ThermostatStatus.warning,
           ),

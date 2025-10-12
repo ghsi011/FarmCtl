@@ -9,7 +9,9 @@ class FarmCtlApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
-    final colorScheme = ColorScheme.fromSeed(seedColor: const Color(0xFF4CAF50));
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF4CAF50),
+    );
 
     return MaterialApp.router(
       title: 'FarmCtl',

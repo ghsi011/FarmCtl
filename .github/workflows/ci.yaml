@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Show Flutter version
+        run: flutter --version
+        working-directory: app
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: app
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+        working-directory: app
+
+      - name: Analyze
+        run: flutter analyze
+        working-directory: app
+
+      - name: Install Dart package dependencies
+        run: dart pub get
+        working-directory: packages/farmctl_parsing
+
+      - name: Run Dart unit tests
+        working-directory: packages/farmctl_parsing
+        run: dart test
+
+      - name: Run Flutter tests
+        run: flutter test
+        working-directory: app
+
+      - name: Assemble debug APK
+        run: flutter build apk --debug
+        working-directory: app
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: farmctl-debug-apk
+          path: app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

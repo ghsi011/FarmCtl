@@ -31,6 +31,25 @@ flutter run
 
 The application launches with Material 3 theming, Riverpod-provided state management, and a bottom navigation bar exposing the Thermostats and Settings tabs. The Thermostats tab shows a static thermostat card that will be replaced with live data in future iterations.
 
+### Quality Checks
+
+Run the automated checks before pushing to ensure the CI workflow will pass:
+
+```bash
+cd app
+flutter pub get
+dart format .
+flutter analyze
+flutter test
+flutter build apk --debug
+
+# Dart-only unit tests
+cd ../packages/farmctl_parsing
+dart test
+```
+
+The repository includes a [`.pre-commit-config.yaml`](.pre-commit-config.yaml) that formats changed Dart files and runs `flutter analyze`. After installing [`pre-commit`](https://pre-commit.com/#install), enable the hooks with `pre-commit install`.
+
 ### Project Structure Highlights
 - `lib/` — Flutter source code organised by feature, including navigation (`core/router`) and feature modules (`features/thermostats`, `features/settings`).
 - `pubspec.yaml` — Dependency manifest including Riverpod, GoRouter, Freezed annotations, Dio, and Drift for future iterations.
