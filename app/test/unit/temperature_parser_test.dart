@@ -10,10 +10,7 @@ void main() {
 
     test('supports decimal and negative readings', () {
       expect(parseCelsiusTemperature('Reading: -4.5 °c'), equals(-4.5));
-      expect(
-        parseCelsiusTemperature('now 12.75C recorded'),
-        equals(12.75),
-      );
+      expect(parseCelsiusTemperature('now 12.75C recorded'), equals(12.75));
     });
 
     test('returns null when no Celsius token is found', () {
