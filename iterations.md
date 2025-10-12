@@ -4,6 +4,24 @@ The development roadmap is split into ten iterations. Each iteration corresponds
 
 Note: All native plugin work is deferred until after Milestone Gate A (post Iteration 6). Prior to that, only Flutter plugins are used.
 
+## Living Progress Journal & Decision Log
+For each active iteration, maintain the following subsections directly in this file:
+- Executive Summary: 3–6 bullets of what changed and why.
+- Progress Journal: dated notes of meaningful steps, risks/mitigations, links to CI runs/commits.
+- Decision Log: context → options → decision → impact.
+- Open Risks & Next Steps: what remains and how we’ll approach it.
+
+### Journal Template (copy for each iteration)
+- Executive Summary
+  - <bullet>
+  - <bullet>
+- Progress Journal
+  - YYYY-MM-DD: <note>
+- Decision Log
+  - YYYY-MM-DD: <context> → <options> → <decision> → <impact>
+- Open Risks & Next Steps
+  - <risk/next step>
+
 ## Iteration 1 - Bootstrap Flutter Workspace & Baseline App Shell
 * Goal: Create the Flutter app skeleton (`app/`) with null-safe setup, shared package configuration, and a baseline UI with bottom navigation (Thermostats, Settings) and a static thermostat card.
 * Key Tasks:
@@ -118,3 +136,38 @@ Note: All native plugin work is deferred until after Milestone Gate A (post Iter
   - Update documentation (README, Spec updates) and prepare release notes.
 * Acceptance: App meets acceptance criteria, CI remains green, and documentation reflects final behavior.
 
+---
+
+## Active Iteration Journal 
+
+### Iteration 1+2 (Bootstrap Flutter Workspace & Baseline App Shell +Configure CI Pipeline & Static Analysis Gates)
+
+- Executive Summary
+  - Created a supported Flutter app under `app/` via `flutter create -t app app`.
+  - Set Android targets to minSdk 26 and targetSdk 34; added required permissions.
+  - Added Flutter-first dependencies (workmanager, android_alarm_manager_plus, flutter_local_notifications, dio, drift, etc.).
+  - Enabled core library desugaring (desugar_jdk_libs 2.1.5) to satisfy plugin requirements.
+  - Built a debug APK successfully and ensured analyzer/tests pass.
+  - Updated docs to a Flutter-first plan with a milestone gate delaying any native work; clarified Spec Android versions and data model; added AGENTS.md living journal requirement.
+  - Switched parsing/tests/UI to Celsius and removed Fahrenheit references.
+
+- Progress Journal
+  - 2025-10-12: Recreated Flutter project; added dependencies; ran `flutter pub get/outdated` and bumped constraints.
+  - 2025-10-12: Set minSdk/targetSdk; added INTERNET/POST_NOTIFICATIONS/FOREGROUND_SERVICE; enabled desugaring; fixed build error; produced `app-debug.apk`.
+  - 2025-10-12: Updated `docs/ImplementationPlan.md` to Flutter-first with plugin list and milestone gate; added gate and 7A fallback in `iterations.md`.
+  - 2025-10-12: Clarified Spec to minSdk 26 / targetSdk 34; aligned data model (pauseAllUntil, snoozedUntil, silenceUntilOk).
+  - 2025-10-12: Replaced Fahrenheit parser/tests with Celsius; updated UI stubs to show `°C`.
+  - 2025-10-12: Added AGENTS.md section requiring a living progress journal and decision log in `iterations.md`.
+
+- Decision Log
+  - 2025-10-12: Context: Background reliability and exact alarms under Doze. Options: Native Android app, Flutter with plugins, Flutter + minimal native shim. Decision: Flutter-first using mature plugins; defer any native shim until after Milestone Gate A. Impact: Faster delivery; focused risk assessment at the gate.
+  - 2025-10-12: Context: Android SDK targets. Options: Keep defaults vs align with Spec. Decision: Set minSdk 26, targetSdk 34. Impact: Consistency across docs/build and modern API support.
+  - 2025-10-12: Context: Unit handling. Options: Support °F and °C vs Celsius-only. Decision: Celsius-only per Spec; remove Fahrenheit. Impact: Simpler parsing/tests; consistent UI.
+  - 2025-10-12: Context: Build failure due to desugaring. Options: Disable dependency vs enable desugaring. Decision: Enable core library desugaring; use desugar_jdk_libs 2.1.5. Impact: Unblocked build with plugin compatibility.
+
+- Open Risks & Next Steps
+  - Risk: Plugin-based background/alarms reliability on OEMs (Samsung/Xiaomi). Next: Execute Milestone Gate A tests post Iteration 6; document outcomes.
+  - Next: Ensure CI workflow runs from `app/` and passes analyze/test/build.
+  - Next: Replace UI stub temperatures with live data flow per Iteration 4; wire polling and state.
+
+### Iteration 3
