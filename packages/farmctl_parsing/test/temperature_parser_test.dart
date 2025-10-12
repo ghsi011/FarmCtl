@@ -2,21 +2,21 @@ import 'package:farmctl_parsing/temperature_parser.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('parseFahrenheitTemperature', () {
-    test('extracts Fahrenheit value when present', () {
-      expect(parseFahrenheitTemperature('Temperature: 68°F'), equals(68));
+  group('parseCelsiusTemperature', () {
+    test('extracts Celsius value when present', () {
+      expect(parseCelsiusTemperature('Temperature: 8.13°C'), equals(8.13));
     });
 
     test('handles decimals and negative numbers', () {
-      expect(parseFahrenheitTemperature('Reading:-10.5F'), equals(-10.5));
+      expect(parseCelsiusTemperature('Reading:-10.5C'), equals(-10.5));
       expect(
-        parseFahrenheitTemperature('value 101.25 °f recorded'),
-        equals(101.25),
+        parseCelsiusTemperature('value 12.25 °c recorded'),
+        equals(12.25),
       );
     });
 
     test('returns null when no match is found', () {
-      expect(parseFahrenheitTemperature('no reading available'), isNull);
+      expect(parseCelsiusTemperature('no reading available'), isNull);
     });
   });
 }

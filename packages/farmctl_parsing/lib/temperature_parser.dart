@@ -1,11 +1,10 @@
 /// Utilities for parsing thermostat readings from plain-text sources.
 ///
-/// These helpers will evolve alongside the FarmCtl networking stack. For now
-/// the parser extracts the first Fahrenheit value it finds in the provided
-/// string.
-double? parseFahrenheitTemperature(String raw) {
+/// Extracts the first Celsius value found in the provided string. Tolerates
+/// optional degree symbol and whitespace, is case-insensitive for the unit.
+double? parseCelsiusTemperature(String raw) {
   final match = RegExp(
-    r'(-?\d+(?:\.\d+)?)\s*°?F',
+    r'(-?\d+(?:\.\d+)?)\s*°?C',
     caseSensitive: false,
   ).firstMatch(raw);
   if (match == null) {
