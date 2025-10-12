@@ -24,6 +24,8 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 When writing **complex features** or **significant refactors**, use an **ExecPlan**
 (as described in `.agent/PLANS.md`) from **design to implementation**.
 
+ALWAYS check to see if an active ExecPlan is present and read it!!! 
+
 Write new plans to the `.agent` directory.
 Place any temporary research, clones, etc., in a **.gitignored subdirectory** of `.agent`.
 
