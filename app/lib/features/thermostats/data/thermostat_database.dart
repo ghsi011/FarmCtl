@@ -61,7 +61,7 @@ LazyDatabase _openConnection() {
 class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase() : super(_openConnection());
 
-  ThermostatDatabase.forTesting(QueryExecutor executor) : super(executor);
+  ThermostatDatabase.forTesting(super.executor);
 
   @override
   int get schemaVersion => 1;

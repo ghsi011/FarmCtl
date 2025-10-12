@@ -1,46 +1,37 @@
 #!/usr/bin/env bash
 
-# Run dart format at repo root (or within app if dart not at root)
 set -euo pipefail
 
-run_format() {
-  if command -v dart >/dev/null 2>&1; then
-    dart format .
-    return 0
-  fi
-  if [ -d "app" ] && command -v "$(pwd)/app/.dart_tool/dart" >/dev/null 2>&1; then
-    "$(pwd)/app/.dart_tool/dart" format .
-    return 0
-  fi
-  # Fallback: try through flutter
-  if command -v flutter >/dev/null 2>&1; then
-    flutter format .
-    return 0
-  fi
-  echo "dart/flutter not found in PATH; skipping format" >&2
-}
+# Find staged Dart files only
+mapfile -t STAGED_DART < <(git diff --cached --name-only --diff-filter=ACM -- '*.dart')
 
-# Snapshot index to detect changes after formatting
-STASH_NAME="pre-commit-format-$(date +%s)"
-git stash push -k -u -m "$STASH_NAME" >/dev/null 2>&1 || true
+# Nothing to do
+if [ "${#STAGED_DART[@]}" -eq 0 ]; then
+  exit 0
+fi
 
-# Restore staged files into working tree to format them
-git reset --hard -q
-git checkout -q -- .
-
-run_format || true
-
-# See if formatting changed anything
-if ! git diff --quiet; then
-  echo "Pre-commit: dart format modified files. Please review and re-stage changes." >&2
-  # Keep formatted changes for developer to stage
-  # Drop the stash if it exists (working tree now has formatted files)
-  git stash drop -q || true
+# Choose formatter
+format_cmd=""
+if command -v dart >/dev/null 2>&1; then
+  format_cmd="dart format -o write"
+elif command -v flutter >/dev/null 2>&1; then
+  format_cmd="flutter format"
+else
+  echo "Pre-commit: dart or flutter not found in PATH; cannot run formatter." >&2
   exit 1
 fi
 
-# No changes: restore stash (if any) and continue
-git stash pop -q || true
+# Run formatter on staged Dart files (working tree), then require re-stage
+${format_cmd} "${STAGED_DART[@]}" >/dev/null
+
+# If formatter changed any of those files relative to the index, block commit
+if ! git diff --quiet -- "${STAGED_DART[@]}"; then
+  echo "Pre-commit: Formatting applied to Dart files. Please review and 'git add' the changes, then commit again." >&2
+  # Show which files changed
+  git diff --name-only -- "${STAGED_DART[@]}" >&2 || true
+  exit 1
+fi
+
 exit 0
 
 
