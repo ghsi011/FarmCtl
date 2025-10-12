@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:uuid/uuid.dart';
 
 import '../models/thermostat.dart';
+import '../models/thermostat_state.dart';
 import 'thermostat_database.dart';
 
 final _uuid = const Uuid();
@@ -11,15 +12,33 @@ class ThermostatRepository {
 
   final ThermostatDatabase _database;
 
-  Stream<List<Thermostat>> watchThermostats() {
-    return _database.watchThermostats().map(
-      (rows) => rows.map(Thermostat.fromEntry).toList(),
+  Stream<List<ThermostatSummary>> watchThermostats() {
+    return _database.watchThermostatsWithState().map(
+      (rows) => rows
+          .map(
+            (row) => ThermostatSummary(
+              thermostat: Thermostat.fromEntry(row.thermostat),
+              state: row.state != null
+                  ? ThermostatState.fromEntry(row.state!)
+                  : null,
+            ),
+          )
+          .toList(),
     );
   }
 
-  Future<List<Thermostat>> fetchThermostats() async {
-    final rows = await _database.listThermostats();
-    return rows.map(Thermostat.fromEntry).toList();
+  Future<List<ThermostatSummary>> fetchThermostats() async {
+    final rows = await _database.listThermostatsWithState();
+    return rows
+        .map(
+          (row) => ThermostatSummary(
+            thermostat: Thermostat.fromEntry(row.thermostat),
+            state: row.state != null
+                ? ThermostatState.fromEntry(row.state!)
+                : null,
+          ),
+        )
+        .toList();
   }
 
   Future<Thermostat> create(ThermostatDraft draft) async {
@@ -77,5 +96,39 @@ class ThermostatRepository {
 
   Future<void> delete(String id) async {
     await _database.deleteThermostatById(id);
+    await _database.deleteThermostatStateById(id);
+  }
+
+  Future<ThermostatState?> loadState(String id) async {
+    final entry = await _database.getThermostatState(id);
+    if (entry == null) {
+      return null;
+    }
+    return ThermostatState.fromEntry(entry);
+  }
+
+  Future<void> saveState({
+    required String thermostatId,
+    required ThermostatReadingStatus status,
+    double? valueC,
+    DateTime? fetchedAt,
+    String? etag,
+  }) async {
+    final now = DateTime.now().toUtc();
+    await _database.upsertThermostatState(
+      ThermostatStateEntriesCompanion(
+        thermostatId: drift.Value(thermostatId),
+        lastStatus: drift.Value(status.name),
+        lastValueC: valueC != null
+            ? drift.Value(valueC)
+            : const drift.Value.absent(),
+        lastFetchedAt: fetchedAt != null
+            ? drift.Value(fetchedAt)
+            : const drift.Value.absent(),
+        etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
+        createdAt: const drift.Value.absent(),
+        updatedAt: drift.Value(now),
+      ),
+    );
   }
 }
