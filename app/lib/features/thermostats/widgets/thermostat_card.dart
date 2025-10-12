@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 
 class ThermostatCard extends StatelessWidget {
