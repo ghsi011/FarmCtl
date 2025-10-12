@@ -94,15 +94,15 @@ class ThermostatDatabase extends _$ThermostatDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (Migrator m) async {
-          await m.createAll();
-        },
-        onUpgrade: (Migrator m, int from, int to) async {
-          if (from < 2) {
-            await m.createTable(thermostatStateEntries);
-          }
-        },
-      );
+    onCreate: (Migrator m) async {
+      await m.createAll();
+    },
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 2) {
+        await m.createTable(thermostatStateEntries);
+      }
+    },
+  );
 
   Future<List<ThermostatEntry>> listThermostats() {
     return (select(
