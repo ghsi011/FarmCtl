@@ -129,4 +129,46 @@ void main() {
       ),
     );
   });
+
+  test('fetchHistory returns sorted revision samples', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        if (options.path.endsWith('/commits')) {
+          return ResponseBody.fromString(
+            '[{"version":"rev2","committed_at":"2025-01-02T12:00:00Z"},{"version":"rev1","committed_at":"2025-01-02T10:00:00Z"}]',
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        }
+        if (options.path.contains('rev2')) {
+          return ResponseBody.fromString(
+            '{"files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 11.0 C"}}}',
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        }
+        if (options.path.contains('rev1')) {
+          return ResponseBody.fromString(
+            '{"files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 10.5 C"}}}',
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final samples = await client.fetchHistory(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(samples, hasLength(2));
+    expect(samples.first.valueC, 10.5);
+    expect(samples.last.revisionId, 'rev2');
+  });
 }

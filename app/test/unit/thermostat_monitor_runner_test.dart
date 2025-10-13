@@ -26,6 +26,11 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
     }
     return result;
   }
+
+  @override
+  Future<List<ThermostatHistorySample>> fetchHistory(String gistId) async {
+    return const [];
+  }
 }
 
 class _RecordingAlarmDispatcher implements ThermostatAlarmDispatcher {

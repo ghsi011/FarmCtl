@@ -14,6 +14,8 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
   ThermostatFetchSuccess? _result;
   ThermostatFetchException? _exception;
   Object? _otherError;
+  List<ThermostatHistorySample> history = const [];
+  ThermostatFetchException? historyException;
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
@@ -29,6 +31,14 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
       throw StateError('No result configured');
     }
     return result;
+  }
+
+  @override
+  Future<List<ThermostatHistorySample>> fetchHistory(String gistId) async {
+    if (historyException != null) {
+      throw historyException!;
+    }
+    return history;
   }
 }
 
@@ -258,5 +268,36 @@ void main() {
         lessThan(1000),
       );
     });
+  });
+
+  test('refreshHistory persists revision samples', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'History Sensor',
+        rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        minC: 0,
+        maxC: 20,
+      ),
+    );
+
+    network.history = [
+      ThermostatHistorySample(
+        revisionId: 'rev1',
+        valueC: 11.5,
+        observedAt: DateTime.utc(2025, 1, 1, 12),
+      ),
+      ThermostatHistorySample(
+        revisionId: 'rev2',
+        valueC: 12.0,
+        observedAt: DateTime.utc(2025, 1, 1, 13),
+      ),
+    ];
+
+    await service.refreshHistory(thermostat.id);
+
+    final samples = await repository.watchHistory(thermostat.id).first;
+    expect(samples, hasLength(2));
+    expect(samples.last.valueC, 12.0);
+    expect(samples.first.source, 'revision');
   });
 }

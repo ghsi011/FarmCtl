@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/settings/view/settings_page.dart';
 import '../../features/thermostats/view/alarm_fullscreen_page.dart';
+import '../../features/thermostats/view/thermostat_detail_page.dart';
 import '../../features/thermostats/view/thermostats_page.dart';
 import 'router_keys.dart';
 
@@ -40,6 +41,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 name: ThermostatsRoute.name,
                 pageBuilder: (context, state) =>
                     const NoTransitionPage(child: ThermostatsPage()),
+                routes: [
+                  GoRoute(
+                    path: ThermostatDetailRoute.path,
+                    name: ThermostatDetailRoute.name,
+                    builder: (context, state) {
+                      final thermostatId = state.pathParameters['id'];
+                      if (thermostatId == null) {
+                        return const SizedBox.shrink();
+                      }
+                      return ThermostatDetailPage(thermostatId: thermostatId);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -93,6 +107,13 @@ class AppScaffold extends StatelessWidget {
 class ThermostatsRoute {
   static const name = 'thermostats';
   static const path = '/thermostats';
+}
+
+class ThermostatDetailRoute {
+  static const name = 'thermostat-detail';
+  static const path = 'detail/:id';
+
+  static String pathFor(String thermostatId) => 'detail/$thermostatId';
 }
 
 class SettingsRoute {

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:uuid/uuid.dart';
 
+import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import 'thermostat_database.dart';
@@ -107,8 +108,11 @@ class ThermostatRepository {
   }
 
   Future<void> delete(String id) async {
-    await _database.deleteThermostatById(id);
-    await _database.deleteThermostatStateById(id);
+    await _database.transaction(() async {
+      await _database.deleteTemperatureReadingsByThermostat(id);
+      await _database.deleteThermostatStateById(id);
+      await _database.deleteThermostatById(id);
+    });
   }
 
   Future<ThermostatState?> loadState(String id) async {
@@ -189,5 +193,62 @@ class ThermostatRepository {
         updatedAt: drift.Value(now),
       ),
     );
+  }
+
+  Future<Thermostat?> findById(String id) async {
+    final entry = await _database.getThermostat(id);
+    return entry != null ? Thermostat.fromEntry(entry) : null;
+  }
+
+  Stream<List<TemperatureSample>> watchHistory(
+    String thermostatId, {
+    DateTime? since,
+  }) {
+    return _database
+        .watchTemperatureReadings(thermostatId, since: since)
+        .map(
+          (rows) => rows
+              .map(
+                (row) => TemperatureSample(
+                  id: row.id,
+                  thermostatId: row.thermostatId,
+                  valueC: row.valueC,
+                  observedAt: row.observedAt,
+                  source: row.source,
+                  sourceId: row.sourceId,
+                ),
+              )
+              .toList(),
+        );
+  }
+
+  Future<void> replaceHistory({
+    required String thermostatId,
+    required Iterable<TemperatureSample> samples,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final rows = samples
+        .map(
+          (sample) => TemperatureReadingsCompanion(
+            id: drift.Value(sample.id),
+            thermostatId: drift.Value(sample.thermostatId),
+            source: drift.Value(sample.source),
+            valueC: drift.Value(sample.valueC),
+            observedAt: drift.Value(sample.observedAt),
+            sourceId: sample.sourceId != null
+                ? drift.Value(sample.sourceId)
+                : const drift.Value.absent(),
+            createdAt: drift.Value(now),
+            updatedAt: drift.Value(now),
+          ),
+        )
+        .toList();
+
+    await _database.transaction(() async {
+      await _database.deleteTemperatureReadingsByThermostat(thermostatId);
+      if (rows.isNotEmpty) {
+        await _database.insertTemperatureReadings(rows);
+      }
+    });
   }
 }

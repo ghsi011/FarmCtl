@@ -1754,6 +1754,522 @@ class ThermostatStateEntriesCompanion
   }
 }
 
+class $TemperatureReadingsTable extends TemperatureReadings
+    with TableInfo<$TemperatureReadingsTable, TemperatureReading> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TemperatureReadingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _thermostatIdMeta = const VerificationMeta(
+    'thermostatId',
+  );
+  @override
+  late final GeneratedColumn<String> thermostatId = GeneratedColumn<String>(
+    'thermostat_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES thermostat_entries (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueCMeta = const VerificationMeta('valueC');
+  @override
+  late final GeneratedColumn<double> valueC = GeneratedColumn<double>(
+    'value_c',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _observedAtMeta = const VerificationMeta(
+    'observedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> observedAt = GeneratedColumn<DateTime>(
+    'observed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    thermostatId,
+    source,
+    valueC,
+    observedAt,
+    sourceId,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'temperature_readings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TemperatureReading> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('thermostat_id')) {
+      context.handle(
+        _thermostatIdMeta,
+        thermostatId.isAcceptableOrUnknown(
+          data['thermostat_id']!,
+          _thermostatIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_thermostatIdMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('value_c')) {
+      context.handle(
+        _valueCMeta,
+        valueC.isAcceptableOrUnknown(data['value_c']!, _valueCMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueCMeta);
+    }
+    if (data.containsKey('observed_at')) {
+      context.handle(
+        _observedAtMeta,
+        observedAt.isAcceptableOrUnknown(data['observed_at']!, _observedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_observedAtMeta);
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TemperatureReading map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TemperatureReading(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      thermostatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}thermostat_id'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      valueC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}value_c'],
+      )!,
+      observedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}observed_at'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $TemperatureReadingsTable createAlias(String alias) {
+    return $TemperatureReadingsTable(attachedDatabase, alias);
+  }
+}
+
+class TemperatureReading extends DataClass
+    implements Insertable<TemperatureReading> {
+  final String id;
+  final String thermostatId;
+  final String source;
+  final double valueC;
+  final DateTime observedAt;
+  final String? sourceId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const TemperatureReading({
+    required this.id,
+    required this.thermostatId,
+    required this.source,
+    required this.valueC,
+    required this.observedAt,
+    this.sourceId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['thermostat_id'] = Variable<String>(thermostatId);
+    map['source'] = Variable<String>(source);
+    map['value_c'] = Variable<double>(valueC);
+    map['observed_at'] = Variable<DateTime>(observedAt);
+    if (!nullToAbsent || sourceId != null) {
+      map['source_id'] = Variable<String>(sourceId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  TemperatureReadingsCompanion toCompanion(bool nullToAbsent) {
+    return TemperatureReadingsCompanion(
+      id: Value(id),
+      thermostatId: Value(thermostatId),
+      source: Value(source),
+      valueC: Value(valueC),
+      observedAt: Value(observedAt),
+      sourceId: sourceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory TemperatureReading.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TemperatureReading(
+      id: serializer.fromJson<String>(json['id']),
+      thermostatId: serializer.fromJson<String>(json['thermostatId']),
+      source: serializer.fromJson<String>(json['source']),
+      valueC: serializer.fromJson<double>(json['valueC']),
+      observedAt: serializer.fromJson<DateTime>(json['observedAt']),
+      sourceId: serializer.fromJson<String?>(json['sourceId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'thermostatId': serializer.toJson<String>(thermostatId),
+      'source': serializer.toJson<String>(source),
+      'valueC': serializer.toJson<double>(valueC),
+      'observedAt': serializer.toJson<DateTime>(observedAt),
+      'sourceId': serializer.toJson<String?>(sourceId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  TemperatureReading copyWith({
+    String? id,
+    String? thermostatId,
+    String? source,
+    double? valueC,
+    DateTime? observedAt,
+    Value<String?> sourceId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => TemperatureReading(
+    id: id ?? this.id,
+    thermostatId: thermostatId ?? this.thermostatId,
+    source: source ?? this.source,
+    valueC: valueC ?? this.valueC,
+    observedAt: observedAt ?? this.observedAt,
+    sourceId: sourceId.present ? sourceId.value : this.sourceId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  TemperatureReading copyWithCompanion(TemperatureReadingsCompanion data) {
+    return TemperatureReading(
+      id: data.id.present ? data.id.value : this.id,
+      thermostatId: data.thermostatId.present
+          ? data.thermostatId.value
+          : this.thermostatId,
+      source: data.source.present ? data.source.value : this.source,
+      valueC: data.valueC.present ? data.valueC.value : this.valueC,
+      observedAt: data.observedAt.present
+          ? data.observedAt.value
+          : this.observedAt,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TemperatureReading(')
+          ..write('id: $id, ')
+          ..write('thermostatId: $thermostatId, ')
+          ..write('source: $source, ')
+          ..write('valueC: $valueC, ')
+          ..write('observedAt: $observedAt, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    thermostatId,
+    source,
+    valueC,
+    observedAt,
+    sourceId,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TemperatureReading &&
+          other.id == this.id &&
+          other.thermostatId == this.thermostatId &&
+          other.source == this.source &&
+          other.valueC == this.valueC &&
+          other.observedAt == this.observedAt &&
+          other.sourceId == this.sourceId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class TemperatureReadingsCompanion extends UpdateCompanion<TemperatureReading> {
+  final Value<String> id;
+  final Value<String> thermostatId;
+  final Value<String> source;
+  final Value<double> valueC;
+  final Value<DateTime> observedAt;
+  final Value<String?> sourceId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const TemperatureReadingsCompanion({
+    this.id = const Value.absent(),
+    this.thermostatId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.valueC = const Value.absent(),
+    this.observedAt = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TemperatureReadingsCompanion.insert({
+    required String id,
+    required String thermostatId,
+    required String source,
+    required double valueC,
+    required DateTime observedAt,
+    this.sourceId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       thermostatId = Value(thermostatId),
+       source = Value(source),
+       valueC = Value(valueC),
+       observedAt = Value(observedAt);
+  static Insertable<TemperatureReading> custom({
+    Expression<String>? id,
+    Expression<String>? thermostatId,
+    Expression<String>? source,
+    Expression<double>? valueC,
+    Expression<DateTime>? observedAt,
+    Expression<String>? sourceId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (thermostatId != null) 'thermostat_id': thermostatId,
+      if (source != null) 'source': source,
+      if (valueC != null) 'value_c': valueC,
+      if (observedAt != null) 'observed_at': observedAt,
+      if (sourceId != null) 'source_id': sourceId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TemperatureReadingsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? thermostatId,
+    Value<String>? source,
+    Value<double>? valueC,
+    Value<DateTime>? observedAt,
+    Value<String?>? sourceId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return TemperatureReadingsCompanion(
+      id: id ?? this.id,
+      thermostatId: thermostatId ?? this.thermostatId,
+      source: source ?? this.source,
+      valueC: valueC ?? this.valueC,
+      observedAt: observedAt ?? this.observedAt,
+      sourceId: sourceId ?? this.sourceId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (thermostatId.present) {
+      map['thermostat_id'] = Variable<String>(thermostatId.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (valueC.present) {
+      map['value_c'] = Variable<double>(valueC.value);
+    }
+    if (observedAt.present) {
+      map['observed_at'] = Variable<DateTime>(observedAt.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TemperatureReadingsCompanion(')
+          ..write('id: $id, ')
+          ..write('thermostatId: $thermostatId, ')
+          ..write('source: $source, ')
+          ..write('valueC: $valueC, ')
+          ..write('observedAt: $observedAt, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ThermostatDatabase extends GeneratedDatabase {
   _$ThermostatDatabase(QueryExecutor e) : super(e);
   $ThermostatDatabaseManager get managers => $ThermostatDatabaseManager(this);
@@ -1763,6 +2279,8 @@ abstract class _$ThermostatDatabase extends GeneratedDatabase {
       $AlertConfigEntriesTable(this);
   late final $ThermostatStateEntriesTable thermostatStateEntries =
       $ThermostatStateEntriesTable(this);
+  late final $TemperatureReadingsTable temperatureReadings =
+      $TemperatureReadingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1771,7 +2289,18 @@ abstract class _$ThermostatDatabase extends GeneratedDatabase {
     thermostatEntries,
     alertConfigEntries,
     thermostatStateEntries,
+    temperatureReadings,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'thermostat_entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('temperature_readings', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$ThermostatEntriesTableCreateCompanionBuilder =
@@ -1800,6 +2329,47 @@ typedef $$ThermostatEntriesTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
+
+final class $$ThermostatEntriesTableReferences
+    extends
+        BaseReferences<
+          _$ThermostatDatabase,
+          $ThermostatEntriesTable,
+          ThermostatEntry
+        > {
+  $$ThermostatEntriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $TemperatureReadingsTable,
+    List<TemperatureReading>
+  >
+  _temperatureReadingsRefsTable(_$ThermostatDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.temperatureReadings,
+        aliasName: $_aliasNameGenerator(
+          db.thermostatEntries.id,
+          db.temperatureReadings.thermostatId,
+        ),
+      );
+
+  $$TemperatureReadingsTableProcessedTableManager get temperatureReadingsRefs {
+    final manager = $$TemperatureReadingsTableTableManager(
+      $_db,
+      $_db.temperatureReadings,
+    ).filter((f) => f.thermostatId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _temperatureReadingsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
 
 class $$ThermostatEntriesTableFilterComposer
     extends Composer<_$ThermostatDatabase, $ThermostatEntriesTable> {
@@ -1854,6 +2424,31 @@ class $$ThermostatEntriesTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> temperatureReadingsRefs(
+    Expression<bool> Function($$TemperatureReadingsTableFilterComposer f) f,
+  ) {
+    final $$TemperatureReadingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.temperatureReadings,
+      getReferencedColumn: (t) => t.thermostatId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TemperatureReadingsTableFilterComposer(
+            $db: $db,
+            $table: $db.temperatureReadings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ThermostatEntriesTableOrderingComposer
@@ -1950,6 +2545,32 @@ class $$ThermostatEntriesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> temperatureReadingsRefs<T extends Object>(
+    Expression<T> Function($$TemperatureReadingsTableAnnotationComposer a) f,
+  ) {
+    final $$TemperatureReadingsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.temperatureReadings,
+          getReferencedColumn: (t) => t.thermostatId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$TemperatureReadingsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.temperatureReadings,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ThermostatEntriesTableTableManager
@@ -1963,16 +2584,9 @@ class $$ThermostatEntriesTableTableManager
           $$ThermostatEntriesTableAnnotationComposer,
           $$ThermostatEntriesTableCreateCompanionBuilder,
           $$ThermostatEntriesTableUpdateCompanionBuilder,
-          (
-            ThermostatEntry,
-            BaseReferences<
-              _$ThermostatDatabase,
-              $ThermostatEntriesTable,
-              ThermostatEntry
-            >,
-          ),
+          (ThermostatEntry, $$ThermostatEntriesTableReferences),
           ThermostatEntry,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool temperatureReadingsRefs})
         > {
   $$ThermostatEntriesTableTableManager(
     _$ThermostatDatabase db,
@@ -2039,9 +2653,47 @@ class $$ThermostatEntriesTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ThermostatEntriesTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({temperatureReadingsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (temperatureReadingsRefs) db.temperatureReadings,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (temperatureReadingsRefs)
+                    await $_getPrefetchedData<
+                      ThermostatEntry,
+                      $ThermostatEntriesTable,
+                      TemperatureReading
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ThermostatEntriesTableReferences
+                          ._temperatureReadingsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$ThermostatEntriesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).temperatureReadingsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.thermostatId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
         ),
       );
 }
@@ -2056,16 +2708,9 @@ typedef $$ThermostatEntriesTableProcessedTableManager =
       $$ThermostatEntriesTableAnnotationComposer,
       $$ThermostatEntriesTableCreateCompanionBuilder,
       $$ThermostatEntriesTableUpdateCompanionBuilder,
-      (
-        ThermostatEntry,
-        BaseReferences<
-          _$ThermostatDatabase,
-          $ThermostatEntriesTable,
-          ThermostatEntry
-        >,
-      ),
+      (ThermostatEntry, $$ThermostatEntriesTableReferences),
       ThermostatEntry,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool temperatureReadingsRefs})
     >;
 typedef $$AlertConfigEntriesTableCreateCompanionBuilder =
     AlertConfigEntriesCompanion Function({
@@ -2669,6 +3314,407 @@ typedef $$ThermostatStateEntriesTableProcessedTableManager =
       ThermostatStateEntry,
       PrefetchHooks Function()
     >;
+typedef $$TemperatureReadingsTableCreateCompanionBuilder =
+    TemperatureReadingsCompanion Function({
+      required String id,
+      required String thermostatId,
+      required String source,
+      required double valueC,
+      required DateTime observedAt,
+      Value<String?> sourceId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$TemperatureReadingsTableUpdateCompanionBuilder =
+    TemperatureReadingsCompanion Function({
+      Value<String> id,
+      Value<String> thermostatId,
+      Value<String> source,
+      Value<double> valueC,
+      Value<DateTime> observedAt,
+      Value<String?> sourceId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$TemperatureReadingsTableReferences
+    extends
+        BaseReferences<
+          _$ThermostatDatabase,
+          $TemperatureReadingsTable,
+          TemperatureReading
+        > {
+  $$TemperatureReadingsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ThermostatEntriesTable _thermostatIdTable(_$ThermostatDatabase db) =>
+      db.thermostatEntries.createAlias(
+        $_aliasNameGenerator(
+          db.temperatureReadings.thermostatId,
+          db.thermostatEntries.id,
+        ),
+      );
+
+  $$ThermostatEntriesTableProcessedTableManager get thermostatId {
+    final $_column = $_itemColumn<String>('thermostat_id')!;
+
+    final manager = $$ThermostatEntriesTableTableManager(
+      $_db,
+      $_db.thermostatEntries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_thermostatIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$TemperatureReadingsTableFilterComposer
+    extends Composer<_$ThermostatDatabase, $TemperatureReadingsTable> {
+  $$TemperatureReadingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get valueC => $composableBuilder(
+    column: $table.valueC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ThermostatEntriesTableFilterComposer get thermostatId {
+    final $$ThermostatEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.thermostatId,
+      referencedTable: $db.thermostatEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ThermostatEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.thermostatEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TemperatureReadingsTableOrderingComposer
+    extends Composer<_$ThermostatDatabase, $TemperatureReadingsTable> {
+  $$TemperatureReadingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get valueC => $composableBuilder(
+    column: $table.valueC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ThermostatEntriesTableOrderingComposer get thermostatId {
+    final $$ThermostatEntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.thermostatId,
+      referencedTable: $db.thermostatEntries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ThermostatEntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.thermostatEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TemperatureReadingsTableAnnotationComposer
+    extends Composer<_$ThermostatDatabase, $TemperatureReadingsTable> {
+  $$TemperatureReadingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<double> get valueC =>
+      $composableBuilder(column: $table.valueC, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get observedAt => $composableBuilder(
+    column: $table.observedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ThermostatEntriesTableAnnotationComposer get thermostatId {
+    final $$ThermostatEntriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.thermostatId,
+          referencedTable: $db.thermostatEntries,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ThermostatEntriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.thermostatEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$TemperatureReadingsTableTableManager
+    extends
+        RootTableManager<
+          _$ThermostatDatabase,
+          $TemperatureReadingsTable,
+          TemperatureReading,
+          $$TemperatureReadingsTableFilterComposer,
+          $$TemperatureReadingsTableOrderingComposer,
+          $$TemperatureReadingsTableAnnotationComposer,
+          $$TemperatureReadingsTableCreateCompanionBuilder,
+          $$TemperatureReadingsTableUpdateCompanionBuilder,
+          (TemperatureReading, $$TemperatureReadingsTableReferences),
+          TemperatureReading,
+          PrefetchHooks Function({bool thermostatId})
+        > {
+  $$TemperatureReadingsTableTableManager(
+    _$ThermostatDatabase db,
+    $TemperatureReadingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TemperatureReadingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TemperatureReadingsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$TemperatureReadingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> thermostatId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<double> valueC = const Value.absent(),
+                Value<DateTime> observedAt = const Value.absent(),
+                Value<String?> sourceId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TemperatureReadingsCompanion(
+                id: id,
+                thermostatId: thermostatId,
+                source: source,
+                valueC: valueC,
+                observedAt: observedAt,
+                sourceId: sourceId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String thermostatId,
+                required String source,
+                required double valueC,
+                required DateTime observedAt,
+                Value<String?> sourceId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TemperatureReadingsCompanion.insert(
+                id: id,
+                thermostatId: thermostatId,
+                source: source,
+                valueC: valueC,
+                observedAt: observedAt,
+                sourceId: sourceId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$TemperatureReadingsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({thermostatId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (thermostatId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.thermostatId,
+                                referencedTable:
+                                    $$TemperatureReadingsTableReferences
+                                        ._thermostatIdTable(db),
+                                referencedColumn:
+                                    $$TemperatureReadingsTableReferences
+                                        ._thermostatIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TemperatureReadingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ThermostatDatabase,
+      $TemperatureReadingsTable,
+      TemperatureReading,
+      $$TemperatureReadingsTableFilterComposer,
+      $$TemperatureReadingsTableOrderingComposer,
+      $$TemperatureReadingsTableAnnotationComposer,
+      $$TemperatureReadingsTableCreateCompanionBuilder,
+      $$TemperatureReadingsTableUpdateCompanionBuilder,
+      (TemperatureReading, $$TemperatureReadingsTableReferences),
+      TemperatureReading,
+      PrefetchHooks Function({bool thermostatId})
+    >;
 
 class $ThermostatDatabaseManager {
   final _$ThermostatDatabase _db;
@@ -2682,4 +3728,6 @@ class $ThermostatDatabaseManager {
         _db,
         _db.thermostatStateEntries,
       );
+  $$TemperatureReadingsTableTableManager get temperatureReadings =>
+      $$TemperatureReadingsTableTableManager(_db, _db.temperatureReadings);
 }

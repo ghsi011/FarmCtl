@@ -8,6 +8,7 @@ class ThermostatCard extends StatelessWidget {
     this.onEdit,
     this.onDelete,
     this.onRefresh,
+    this.onTap,
     super.key,
   });
 
@@ -15,6 +16,7 @@ class ThermostatCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onRefresh;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -26,76 +28,79 @@ class ThermostatCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(thermostat.name, style: textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      Text(
-                        thermostat.rawUrl,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(thermostat.name, style: textTheme.titleLarge),
+                        const SizedBox(height: 8),
+                        Text(
+                          thermostat.rawUrl,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (onRefresh != null)
-                  IconButton(
-                    onPressed: onRefresh,
-                    tooltip: 'Refresh',
-                    icon: const Icon(Icons.refresh),
+                  if (onRefresh != null)
+                    IconButton(
+                      onPressed: onRefresh,
+                      tooltip: 'Refresh',
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  if (onEdit != null || onDelete != null)
+                    PopupMenuButton<_ThermostatMenuAction>(
+                      onSelected: (value) {
+                        switch (value) {
+                          case _ThermostatMenuAction.edit:
+                            onEdit?.call();
+                            break;
+                          case _ThermostatMenuAction.delete:
+                            onDelete?.call();
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (onEdit != null)
+                          const PopupMenuItem(
+                            value: _ThermostatMenuAction.edit,
+                            child: Text('Edit'),
+                          ),
+                        if (onDelete != null)
+                          const PopupMenuItem(
+                            value: _ThermostatMenuAction.delete,
+                            child: Text('Delete'),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.thermostat, color: colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Range: ${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                    style: textTheme.bodyLarge,
                   ),
-                if (onEdit != null || onDelete != null)
-                  PopupMenuButton<_ThermostatMenuAction>(
-                    onSelected: (value) {
-                      switch (value) {
-                        case _ThermostatMenuAction.edit:
-                          onEdit?.call();
-                          break;
-                        case _ThermostatMenuAction.delete:
-                          onDelete?.call();
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      if (onEdit != null)
-                        const PopupMenuItem(
-                          value: _ThermostatMenuAction.edit,
-                          child: Text('Edit'),
-                        ),
-                      if (onDelete != null)
-                        const PopupMenuItem(
-                          value: _ThermostatMenuAction.delete,
-                          child: Text('Delete'),
-                        ),
-                    ],
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(Icons.thermostat, color: colorScheme.primary),
-                const SizedBox(width: 12),
-                Text(
-                  'Range: ${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
-                  style: textTheme.bodyLarge,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _LastSeenStatus(state: state),
-          ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              _LastSeenStatus(state: state),
+            ],
+          ),
         ),
       ),
     );

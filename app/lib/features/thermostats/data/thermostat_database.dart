@@ -29,7 +29,7 @@ class ThermostatEntries extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
-  Set<Column<Object>> get primaryKey => {id};
+  Set<Column>? get primaryKey => {id};
 }
 
 class ThermostatStateEntries extends Table {
@@ -57,7 +57,7 @@ class ThermostatStateEntries extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
-  Set<Column<Object>> get primaryKey => {thermostatId};
+  Set<Column>? get primaryKey => {thermostatId};
 }
 
 class AlertConfigEntries extends Table {
@@ -77,6 +77,32 @@ class AlertConfigEntries extends Table {
   DateTimeColumn get pauseAllUntil => dateTime().nullable()();
 }
 
+@TableIndex(
+  name: 'temperature_readings_thermostat_observed_idx',
+  columns: {#thermostatId, #observedAt},
+)
+class TemperatureReadings extends Table {
+  TextColumn get id => text()();
+
+  TextColumn get thermostatId =>
+      text().references(ThermostatEntries, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get source => text()();
+
+  RealColumn get valueC => real()();
+
+  DateTimeColumn get observedAt => dateTime()();
+
+  TextColumn get sourceId => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column>? get primaryKey => {id};
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final directory = await getApplicationDocumentsDirectory();
@@ -91,7 +117,12 @@ typedef ThermostatWithStateRow = ({
 });
 
 @DriftDatabase(
-  tables: [ThermostatEntries, AlertConfigEntries, ThermostatStateEntries],
+  tables: [
+    ThermostatEntries,
+    AlertConfigEntries,
+    ThermostatStateEntries,
+    TemperatureReadings,
+  ],
 )
 class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase() : super(_openConnection());
@@ -99,7 +130,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -129,6 +160,9 @@ class ThermostatDatabase extends _$ThermostatDatabase {
           thermostatStateEntries,
           thermostatStateEntries.silenceUntilOk,
         );
+      }
+      if (from < 5) {
+        await m.createTable(temperatureReadings);
       }
     },
   );
@@ -227,5 +261,48 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     await (delete(
       thermostatStateEntries,
     )..where((tbl) => tbl.thermostatId.equals(id))).go();
+  }
+
+  Future<void> deleteTemperatureReadingsByThermostat(String id) async {
+    await (delete(
+      temperatureReadings,
+    )..where((tbl) => tbl.thermostatId.equals(id))).go();
+  }
+
+  Future<void> insertTemperatureReadings(
+    List<TemperatureReadingsCompanion> rows,
+  ) async {
+    if (rows.isEmpty) {
+      return;
+    }
+    await batch((batch) {
+      batch.insertAllOnConflictUpdate(temperatureReadings, rows);
+    });
+  }
+
+  Stream<List<TemperatureReading>> watchTemperatureReadings(
+    String thermostatId, {
+    DateTime? since,
+  }) {
+    final query = select(temperatureReadings)
+      ..where((tbl) => tbl.thermostatId.equals(thermostatId))
+      ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
+    if (since != null) {
+      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+    }
+    return query.watch();
+  }
+
+  Future<List<TemperatureReading>> listTemperatureReadings(
+    String thermostatId, {
+    DateTime? since,
+  }) {
+    final query = select(temperatureReadings)
+      ..where((tbl) => tbl.thermostatId.equals(thermostatId))
+      ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
+    if (since != null) {
+      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+    }
+    return query.get();
   }
 }

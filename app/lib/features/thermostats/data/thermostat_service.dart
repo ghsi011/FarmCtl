@@ -1,3 +1,4 @@
+import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import 'thermostat_client.dart';
@@ -139,6 +140,30 @@ class ThermostatService {
         fetchedAt: now,
       );
     }
+  }
+
+  Future<void> refreshHistory(String thermostatId) async {
+    final thermostat = await _repository.findById(thermostatId);
+    if (thermostat == null) {
+      throw StateError('Thermostat not found for id $thermostatId');
+    }
+
+    final revisions = await _network.fetchHistory(thermostat.rawUrl.trim());
+    final samples = revisions
+        .map(
+          (revision) => TemperatureSample.revision(
+            thermostatId: thermostatId,
+            revisionId: revision.revisionId,
+            valueC: revision.valueC,
+            observedAt: revision.observedAt,
+          ),
+        )
+        .toList();
+
+    await _repository.replaceHistory(
+      thermostatId: thermostatId,
+      samples: samples,
+    );
   }
 }
 
