@@ -14,14 +14,28 @@ class AlarmFullScreenPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(thermostatSummaryProvider(thermostatId));
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: summaryAsync.when(
-          data: (summary) {
-            if (summary == null) {
-              return const _MissingThermostat();
-            }
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colorScheme.surface,
+                colorScheme.surface.withValues(alpha: 0.9),
+              ],
+            ),
+          ),
+          child: summaryAsync.when(
+            data: (summary) {
+              if (summary == null) {
+                return const _MissingThermostat();
+              }
             final thermostat = summary.thermostat;
             final state = summary.state;
             return _AlarmContent(
@@ -104,7 +118,7 @@ class _AlarmContent extends ConsumerWidget {
               Text(
                 valueText,
                 style: textTheme.displayMedium?.copyWith(
-                  color: colorScheme.onSurface,
+                  color: colorScheme.error,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -112,7 +126,7 @@ class _AlarmContent extends ConsumerWidget {
               Text(
                 'Target range ${minC.toStringAsFixed(1)}°C – ${maxC.toStringAsFixed(1)}°C',
                 style: textTheme.titleMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.8),
+                  color: colorScheme.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -170,7 +184,7 @@ class _AlarmContent extends ConsumerWidget {
               child: Text(
                 line,
                 style: textTheme.titleMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.9),
+                  color: colorScheme.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -269,10 +283,15 @@ class _MissingThermostat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
       child: Text(
         'Thermostat not found.',
-        style: TextStyle(color: Colors.white),
+        style: textTheme.titleMedium?.copyWith(
+          color: colorScheme.onSurface,
+        ),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -285,13 +304,17 @@ class _AlarmError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
           'Failed to load alarm details: $error',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white),
+          style: textTheme.titleMedium?.copyWith(
+            color: colorScheme.onSurface,
+          ),
         ),
       ),
     );
