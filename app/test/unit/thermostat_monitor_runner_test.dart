@@ -157,62 +157,64 @@ void main() {
     expect(alarms.triggered, isEmpty);
   });
 
-  test('run clears narrow-range hysteresis alarm when value returns in range',
-      () async {
-    final thermostat = await repository.create(
-      ThermostatDraft(
-        name: 'Nursery',
-        rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-        minC: 19,
-        maxC: 20,
-      ),
-    );
+  test(
+    'run clears narrow-range hysteresis alarm when value returns in range',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Nursery',
+          rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          minC: 19,
+          maxC: 20,
+        ),
+      );
 
-    await database.upsertThermostat(
-      ThermostatEntriesCompanion(
-        id: drift.Value(thermostat.id),
-        name: drift.Value(thermostat.name),
-        rawUrl: drift.Value(thermostat.rawUrl),
-        minC: drift.Value(thermostat.minC),
-        maxC: drift.Value(thermostat.maxC),
-        hysteresisEnabled: const drift.Value(true),
-        monitoringEnabled: drift.Value(thermostat.monitoringEnabled),
-        createdAt: drift.Value(thermostat.createdAt),
-        updatedAt: drift.Value(thermostat.updatedAt),
-      ),
-    );
+      await database.upsertThermostat(
+        ThermostatEntriesCompanion(
+          id: drift.Value(thermostat.id),
+          name: drift.Value(thermostat.name),
+          rawUrl: drift.Value(thermostat.rawUrl),
+          minC: drift.Value(thermostat.minC),
+          maxC: drift.Value(thermostat.maxC),
+          hysteresisEnabled: const drift.Value(true),
+          monitoringEnabled: drift.Value(thermostat.monitoringEnabled),
+          createdAt: drift.Value(thermostat.createdAt),
+          updatedAt: drift.Value(thermostat.updatedAt),
+        ),
+      );
 
-    await repository.saveState(
-      thermostatId: thermostat.id,
-      status: ThermostatReadingStatus.outOfRange,
-      valueC: 21,
-      fetchedAt: DateTime.utc(2025, 1, 1, 11, 55),
-      etag: 'etag',
-      message: 'Out of range',
-    );
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.outOfRange,
+        valueC: 21,
+        fetchedAt: DateTime.utc(2025, 1, 1, 11, 55),
+        etag: 'etag',
+        message: 'Out of range',
+      );
 
-    network._result = ThermostatFetchSuccess(
-      valueC: 19.6,
-      fetchedAt: DateTime.utc(2025, 1, 1, 12),
-      etag: 'etag-2',
-    );
+      network._result = ThermostatFetchSuccess(
+        valueC: 19.6,
+        fetchedAt: DateTime.utc(2025, 1, 1, 12),
+        etag: 'etag-2',
+      );
 
-    final runner = ThermostatMonitorRunner(
-      repository: repository,
-      network: network,
-      alarmDispatcher: alarms,
-      clock: () => DateTime.utc(2025, 1, 1, 12, 1),
-    );
+      final runner = ThermostatMonitorRunner(
+        repository: repository,
+        network: network,
+        alarmDispatcher: alarms,
+        clock: () => DateTime.utc(2025, 1, 1, 12, 1),
+      );
 
-    await runner.run();
+      await runner.run();
 
-    final state = await repository.loadState(thermostat.id);
-    expect(state, isNotNull);
-    expect(state!.status, ThermostatReadingStatus.ok);
-    expect(state.lastValueC, 19.6);
-    expect(state.statusMessage, 'Fetched 19.6°C');
-    expect(alarms.triggered, isEmpty);
-  });
+      final state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.status, ThermostatReadingStatus.ok);
+      expect(state.lastValueC, 19.6);
+      expect(state.statusMessage, 'Fetched 19.6°C');
+      expect(alarms.triggered, isEmpty);
+    },
+  );
 
   test('run respects snooze window', () async {
     final thermostat = await repository.create(
