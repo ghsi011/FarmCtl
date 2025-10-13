@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:dio_smart_retry/dio_smart_retry.dart';
@@ -7,7 +8,7 @@ import 'package:farmctl_parsing/temperature_parser.dart';
 import '../models/thermostat_state.dart';
 
 abstract class ThermostatNetworkDataSource {
-  Future<ThermostatFetchSuccess> fetchCurrent(String url);
+  Future<ThermostatFetchSuccess> fetchCurrent(String gistId);
 }
 
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
@@ -46,13 +47,49 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   }
 
   @override
-  Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
+  Future<ThermostatFetchSuccess> fetchCurrent(String gistId) async {
+    try {
+      final input = gistId.trim();
+      if (!_looksLikeGistId(input)) {
+        throw ThermostatFetchException(
+          status: ThermostatReadingStatus.parseError,
+          message: 'Invalid Gist ID.',
+        );
+      }
+      return _fetchFromGistApi(input);
+    } on ThermostatFetchException {
+      rethrow;
+    } on DioException catch (error) {
+      throw ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'Failed to reach GitHub Gist API.',
+        cause: error,
+      );
+    } catch (error) {
+      throw ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'Failed to fetch from Gist API.',
+        cause: error,
+      );
+    }
+  }
+
+  bool _looksLikeGistId(String input) {
+    // Gist IDs are hex, typically 32 or 40 chars depending on legacy/full length.
+    final re = RegExp(r'^[0-9a-fA-F]{32,40}$');
+    return re.hasMatch(input);
+  }
+
+  Future<ThermostatFetchSuccess> _fetchFromGistApi(String gistId) async {
     try {
       final response = await _dio.get<String>(
-        url,
+        'https://api.github.com/gists/$gistId',
         options: Options(
           responseType: ResponseType.plain,
-          headers: const {HttpHeaders.acceptHeader: 'text/plain'},
+          headers: const {
+            HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            HttpHeaders.userAgentHeader: 'farmctl/0.1',
+          },
         ),
       );
 
@@ -61,20 +98,69 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         throw ThermostatFetchException(
           status: ThermostatReadingStatus.httpError,
           statusCode: statusCode,
-          message: 'Request failed with status $statusCode.',
+          message: 'Gist API failed with status $statusCode.',
         );
       }
 
-      final body = response.data ?? '';
-      final value = parseCelsiusTemperature(body);
+      final raw = response.data ?? '';
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final files = (decoded['files'] as Map<String, dynamic>?) ?? {};
+      if (files.isEmpty) {
+        throw ThermostatFetchException(
+          status: ThermostatReadingStatus.parseError,
+          message: 'Gist contains no files.',
+        );
+      }
+
+      // Choose a file: prefer names containing 'thermostat' or '.txt', else first.
+      MapEntry<String, dynamic> chosen = files.entries.first;
+      for (final entry in files.entries) {
+        final name = entry.key.toLowerCase();
+        if (name.contains('thermostat') || name.endsWith('.txt')) {
+          chosen = entry;
+          break;
+        }
+      }
+
+      final fileObj = chosen.value as Map<String, dynamic>;
+      final bool truncated = (fileObj['truncated'] as bool?) ?? false;
+      String? content = fileObj['content'] as String?;
+      if (content == null || truncated) {
+        final rawUrl = fileObj['raw_url'] as String?;
+        if (rawUrl == null || rawUrl.isEmpty) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.parseError,
+            message: 'Gist file content unavailable.',
+          );
+        }
+        // Fallback: fetch the raw content.
+        final rawResp = await _dio.get<String>(
+          rawUrl,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: const {HttpHeaders.acceptHeader: 'text/plain'},
+          ),
+        );
+        if ((rawResp.statusCode ?? 0) != 200) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.httpError,
+            statusCode: rawResp.statusCode ?? 0,
+            message: 'Raw fetch failed with status ${rawResp.statusCode}.',
+          );
+        }
+        content = rawResp.data ?? '';
+      }
+
+      final value = parseCelsiusTemperature(content);
       if (value == null) {
         throw ThermostatFetchException(
           status: ThermostatReadingStatus.parseError,
-          message: 'Response did not include a Celsius temperature.',
+          message: 'Gist content did not include a Celsius temperature.',
         );
       }
 
       final fetchedAt = DateTime.now().toUtc();
+      // ETag may be present on raw fetch; GitHub API ETag is not stable for parsing here.
       final etag = response.headers.value(HttpHeaders.etagHeader);
       return ThermostatFetchSuccess(
         valueC: value,
@@ -89,30 +175,26 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         throw ThermostatFetchException(
           status: ThermostatReadingStatus.httpError,
           statusCode: statusCode,
-          message: 'Request failed with status $statusCode.',
+          message: 'Gist API failed with status $statusCode.',
           cause: error,
         );
       }
-      final isTimeout =
-          error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.sendTimeout ||
-          error.type == DioExceptionType.receiveTimeout;
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.networkError,
-        message: isTimeout
-            ? 'Request timed out. Check the URL and try again.'
-            : 'Failed to reach the thermostat source.',
+        message: 'Failed to reach GitHub Gist API.',
         cause: error,
       );
     } catch (error) {
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.networkError,
-        message: 'Failed to fetch thermostat data.',
+        message: 'Failed to fetch from Gist API.',
         cause: error,
       );
     }
   }
 }
+
+// Removed URL normalization: we accept only Gist IDs now.
 
 class ThermostatFetchSuccess {
   const ThermostatFetchSuccess({

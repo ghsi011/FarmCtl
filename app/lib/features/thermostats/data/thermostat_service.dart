@@ -27,6 +27,7 @@ class ThermostatService {
       valueC: result.valueC,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
+      message: 'Fetched ${result.valueC.toStringAsFixed(1)}°C',
     );
     return saved;
   }
@@ -48,6 +49,7 @@ class ThermostatService {
       valueC: result.valueC,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
+      message: 'Fetched ${result.valueC.toStringAsFixed(1)}°C',
     );
     return updated;
   }

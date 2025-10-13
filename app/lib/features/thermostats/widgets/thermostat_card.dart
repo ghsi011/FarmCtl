@@ -118,24 +118,42 @@ class _LastSeenStatus extends StatelessWidget {
     final fetchedAt = state!.lastFetchedAt!;
     final value = state!.lastValueC;
     final status = state!.status;
+    final message = state!.statusMessage;
     final now = DateTime.now().toUtc();
     final difference = now.difference(fetchedAt);
     final relative = _formatRelativeDuration(difference);
 
-    final statusText = switch (status) {
-      ThermostatReadingStatus.ok =>
-        value != null
+    String statusText;
+    var isError = false;
+    switch (status) {
+      case ThermostatReadingStatus.ok:
+        final base = value != null
             ? '${value.toStringAsFixed(1)}°C • Updated $relative'
-            : 'Updated $relative',
-      ThermostatReadingStatus.networkError =>
-        'Last attempt failed: network error',
-      ThermostatReadingStatus.httpError => 'Last attempt failed: server error',
-      ThermostatReadingStatus.parseError =>
-        'Last attempt failed: invalid payload',
-      ThermostatReadingStatus.unknown => 'Last seen $relative',
-    };
-
-    final isError = status != ThermostatReadingStatus.ok;
+            : 'Updated $relative';
+        statusText = message != null ? '$message • Updated $relative' : base;
+        break;
+      case ThermostatReadingStatus.networkError:
+        final base = message ?? 'Last attempt failed: network error';
+        statusText = '$base • Checked $relative';
+        isError = true;
+        break;
+      case ThermostatReadingStatus.httpError:
+        final base = message ?? 'Last attempt failed: server error';
+        statusText = '$base • Checked $relative';
+        isError = true;
+        break;
+      case ThermostatReadingStatus.parseError:
+        final base = message ?? 'Last attempt failed: invalid payload';
+        statusText = '$base • Checked $relative';
+        isError = true;
+        break;
+      case ThermostatReadingStatus.unknown:
+        statusText = message != null
+            ? '$message • Checked $relative'
+            : 'Last seen $relative';
+        isError = true;
+        break;
+    }
 
     return Text(
       statusText,

@@ -5,14 +5,14 @@ This ExecPlan is a living document spanning design through implementation. It co
 ---
 
 ## 🎯 Purpose / Big Picture
-Deliver a production-ready Android app that monitors multiple thermostats via public GitHub Gist raw URLs, evaluates per‑thermostat operating ranges, and raises reliable audible alarms (Android alarm-like behavior) when out of range. Users can add/edit/remove thermostats, view current readings and historical graphs, configure watchdog cadence and alarm sound, and rely on background checks that continue across reboots. The milestone sequence validates a Flutter‑first approach with a decision gate (Gate A) to determine whether a minimal native shim is needed for reliability under Doze/lockscreen/OEM constraints.
+Deliver a production-ready Android app that monitors multiple thermostats via GitHub Gist API, evaluates per‑thermostat operating ranges, and raises reliable audible alarms (Android alarm-like behavior) when out of range. Users can add/edit/remove thermostats, view current readings and historical graphs, configure watchdog cadence and alarm sound, and rely on background checks that continue across reboots. The milestone sequence validates a Flutter‑first approach with a decision gate (Gate A) to determine whether a minimal native shim is needed for reliability under Doze/lockscreen/OEM constraints.
 
 ---
 
 ## 🧱 Initial Requirements & Scope
 - In-scope (Android only):
-  - Thermostat CRUD with validation (HTTPS URL; tolerant parsing; °C only).
-  - Current reading via Gist raw URL; history via Gist revisions; local caching.
+  - Thermostat CRUD with validation (GitHub Gist ID; tolerant parsing; °C only).
+  - Current reading via GitHub Gist API (by Gist ID); history via Gist revisions; local caching.
   - Background watchdog with Foreground Service checks; out‑of‑range alarms with snooze/silence; optional exact alarms with permission.
   - Settings: poll interval, hysteresis toggle, global pause, sound picker with persisted URI permissions.
   - Accessibility and internationalization scaffolding; deterministic tests (unit, widget, integration), CI pipeline.
@@ -75,6 +75,10 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ✅ `[2025-10-12 18:10Z]` Set Android targets minSdk 26, targetSdk 34; enable core library desugaring.
 - ✅ `[2025-10-12 19:00Z]` Update documentation to reflect Flutter‑first approach and Gate A.
 - ✅ `[2025-10-13 14:00Z]` Implement Drift schema (thermostats, alert_config) and repositories; wire validation; CRUD UI integrated.
+- ✅ `[2025-10-13 20:00Z]` Implement background monitoring worker scaffold and unit tests; wire initial app entry.
+- ✅ `[2025-10-13 20:10Z]` Normalize thermostat state timestamps to UTC for consistency across layers.
+- ✅ `[2025-10-13 20:30Z]` Register plugins in WorkManager background isolate using DartPluginRegistrant; avoid native code.
+- ✅ `[2025-10-13 20:40Z]` Switch data source to GitHub Gist API with Gist ID only; update validation/UI/tests.
 - ☐ `[2025-10-14 16:00Z]` Implement HTTP client (timeouts/retries/headers) and Test & Save on add/edit.
 - ☐ `[2025-10-15 16:00Z]` Background periodic checks with Foreground execution; diagnostics log.
 - ☐ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
@@ -87,6 +91,10 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - Adopted Flutter‑first plan with Milestone Gate A; delayed any native work until after reliability validation.
 - Standardized to Celsius; removed Fahrenheit references across parsing/tests/UI.
 - Added Drift persistence for thermostats and alert config; integrated CRUD with validation and wired initial widget tests.
+- Added background monitoring scaffold using WorkManager with entrypoint wiring and initial tests.
+- Normalized thermostat timestamps to UTC to avoid device/timezone skew and simplify comparisons.
+- Registered plugins in the background isolate (no native code) to enable notifications and path provider.
+- Switched to GitHub Gist API with Gist ID–only configuration; simplified client and tests.
 
 ---
 
@@ -103,6 +111,9 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - `[2025-10-12]` Build toolchain — Enable core library desugaring to satisfy dependencies; impact: unblocked builds.
 - `[2025-10-13]` Persistence technology — Adopt Drift for typed schema and stream queries; impact: simpler migrations and reactive UI wiring.
 - `[2025-10-13]` IDs — Use UUIDs for thermostats; impact: future‑proofing for potential sync and uniqueness guarantees.
+- `[2025-10-13]` Time semantics — Normalize all stored/processed thermostat timestamps to UTC; impact: consistent comparisons, predictable testing, easier cross‑device behavior.
+- `[2025-10-13]` Background isolate plugins — Use DartPluginRegistrant.ensureInitialized() to register plugins in WorkManager isolate; impact: avoids MissingPluginException without native code.
+- `[2025-10-13]` Data source input — Prefer GitHub Gist ID only and fetch via Gist API, deprecating raw URL input; impact: simpler UX and more robust fetching.
 
 ---
 

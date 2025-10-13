@@ -11,6 +11,7 @@ class ThermostatState {
     this.lastValueC,
     this.lastFetchedAt,
     this.etag,
+    this.statusMessage,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -20,6 +21,7 @@ class ThermostatState {
   final double? lastValueC;
   final DateTime? lastFetchedAt;
   final String? etag;
+  final String? statusMessage;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -28,10 +30,11 @@ class ThermostatState {
       thermostatId: entry.thermostatId,
       status: ThermostatReadingStatusX.fromName(entry.lastStatus),
       lastValueC: entry.lastValueC,
-      lastFetchedAt: entry.lastFetchedAt,
+      lastFetchedAt: entry.lastFetchedAt?.toUtc(),
       etag: entry.etag,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
+      statusMessage: entry.statusMessage,
+      createdAt: entry.createdAt.toUtc(),
+      updatedAt: entry.updatedAt.toUtc(),
     );
   }
 
@@ -40,6 +43,7 @@ class ThermostatState {
     double? lastValueC,
     DateTime? lastFetchedAt,
     String? etag,
+    String? statusMessage,
     DateTime? updatedAt,
   }) {
     return ThermostatState(
@@ -48,6 +52,7 @@ class ThermostatState {
       lastValueC: lastValueC ?? this.lastValueC,
       lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
       etag: etag ?? this.etag,
+      statusMessage: statusMessage ?? this.statusMessage,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

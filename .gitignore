@@ -1,3 +1,4 @@
 .tooling/
 **/.dart_tool/
 **/build/
+**/generated_plugin_**

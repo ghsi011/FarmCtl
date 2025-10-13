@@ -18,7 +18,7 @@ class Thermostat {
 
   final String id;
   final String name;
-  final String rawUrl;
+  final String rawUrl; // Holds the Gist ID (API-backed)
   final double minC;
   final double maxC;
   final bool hysteresisEnabled;
@@ -67,7 +67,7 @@ class Thermostat {
 class ThermostatDraft {
   ThermostatDraft({
     required this.name,
-    required this.rawUrl,
+    required this.rawUrl, // Gist ID only
     required this.minC,
     required this.maxC,
   });
@@ -135,18 +135,14 @@ class ThermostatValidator {
       );
     }
 
-    final url = draft.rawUrl.trim();
-    final parsed = Uri.tryParse(url);
-    final hasValidScheme = parsed?.scheme == 'https';
-    if (url.isEmpty ||
-        parsed == null ||
-        !parsed.isAbsolute ||
-        parsed.host.isEmpty ||
-        !hasValidScheme) {
+    final input = draft.rawUrl.trim();
+    final gistIdPattern = RegExp(r'^[0-9a-fA-F]{32,40}$');
+    final looksLikeGistId = gistIdPattern.hasMatch(input);
+    if (input.isEmpty || !looksLikeGistId) {
       errors.add(
         ThermostatValidationError(
           field: ThermostatValidationField.rawUrl,
-          message: 'Provide a valid HTTPS raw URL.',
+          message: 'Enter a valid GitHub Gist ID.',
         ),
       );
     }

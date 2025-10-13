@@ -54,7 +54,7 @@ void main() {
     final created = await service.createAndTest(
       ThermostatDraft(
         name: 'Barn',
-        rawUrl: 'https://example.com/barn',
+        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         minC: 0,
         maxC: 20,
       ),
@@ -67,13 +67,14 @@ void main() {
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 14.2);
+    expect(state.statusMessage, 'Fetched 14.2°C');
   });
 
   test('updateAndTest updates thermostat and state', () async {
     final initial = await service.createAndTest(
       ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com/greenhouse',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         minC: 4,
         maxC: 12,
       ),
@@ -89,7 +90,7 @@ void main() {
       initial,
       ThermostatDraft(
         name: 'Greenhouse West',
-        rawUrl: 'https://example.com/greenhouse-west',
+        rawUrl: 'cccccccccccccccccccccccccccccccc',
         minC: 3,
         maxC: 11,
       ),
@@ -99,6 +100,7 @@ void main() {
     final state = await repository.loadState(updated.id);
     expect(state, isNotNull);
     expect(state!.lastValueC, 9.0);
+    expect(state.statusMessage, 'Fetched 9.0°C');
   });
 
   test('createAndTest rethrows fetch errors', () async {
@@ -111,7 +113,7 @@ void main() {
       () => service.createAndTest(
         ThermostatDraft(
           name: 'Faulty',
-          rawUrl: 'https://example.com/faulty',
+          rawUrl: 'dddddddddddddddddddddddddddddddd',
           minC: 0,
           maxC: 10,
         ),

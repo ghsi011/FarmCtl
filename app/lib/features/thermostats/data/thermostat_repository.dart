@@ -113,6 +113,7 @@ class ThermostatRepository {
     double? valueC,
     DateTime? fetchedAt,
     String? etag,
+    String? message,
   }) async {
     final now = DateTime.now().toUtc();
     await _database.upsertThermostatState(
@@ -126,6 +127,9 @@ class ThermostatRepository {
             ? drift.Value(fetchedAt)
             : const drift.Value.absent(),
         etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
+        statusMessage: message != null
+            ? drift.Value(message)
+            : const drift.Value.absent(),
         createdAt: const drift.Value.absent(),
         updatedAt: drift.Value(now),
       ),

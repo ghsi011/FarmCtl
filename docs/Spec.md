@@ -10,8 +10,8 @@
 
 **In-scope**
 
-* Manage multiple remote thermostats whose **current temperature** is read from **GitHub Gist raw URLs**.
-* Add/remove thermostats at runtime; each has its own **name**, **source URL**, and **operating range** (min/max in °C).
+* Manage multiple remote thermostats whose **current temperature** is read from **GitHub Gists via the GitHub Gist API** using a **Gist ID**.
+* Add/remove thermostats at runtime; each has its own **name**, **Gist ID**, and **operating range** (min/max in °C).
 * Background **watchdog** that continuously monitors sensors and triggers **audible alarms** (Android alarm-app-like behavior) when values go out of range.
 * Historical graphs over: **1h, 24h, 7d, 30d, 365d, all-time**, using **Gist revision history**.
 * Configurable alarm sound using **system sound picker** (alarms/tones/music).
@@ -29,9 +29,9 @@
 
 ## 2) Definitions & Assumptions
 
-* **Thermostat Source**: A public GitHub Gist *raw* URL that, when fetched, returns a **single-line** payload in English:
+* **Thermostat Source**: A public GitHub Gist addressed by **Gist ID**. The app fetches the Gist via the **GitHub Gist API** and reads a file whose content is a **single-line** payload in English:
   `Temperature: <float> C` (example: `Temperature: 8.13 C`).
-  Optional whitespace is allowed. Case-insensitive keys “Temperature” and “C” must be accepted.
+  Optional whitespace is allowed. Case-insensitive keys “Temperature” and “C” must be accepted. If the chosen file is reported as `truncated` by the API, the app fetches its `raw_url` to obtain the full text prior to parsing.
 * **History Source**: The Gist’s **revisions** list; each revision’s raw content is parsed as above; the revision’s **commit timestamp** is the sample time.
 * **Units**: Celsius only (UI can show °C symbol; no °F conversion).
 * **Sampling cadence**: Configurable polling (default: **every 5 minutes**) with jitter (±30 sec) to avoid thundering herd and rate limits.
@@ -46,15 +46,15 @@
 
 * **Add thermostat**
 
-  * Inputs: `name` (1–40 chars), `rawUrl` (https URL), `minC` (float), `maxC` (float).
+  * Inputs: `name` (1–40 chars), `gistId` (hex, 32–40 chars), `minC` (float), `maxC` (float).
   * Validation:
 
-    * `rawUrl` must be HTTPS and match GitHub Gist raw pattern or be a valid HTTPS URL that returns a temperature line (allow general HTTPS to avoid over-fitting).
-    * On save, app **tests** the URL once: HTTP 200 within 10s, parse temperature; if parse fails → show blocking error and **do not** persist.
+    * `gistId` must be a valid GitHub Gist identifier (hex, 32–40 chars) referencing a public Gist.
+    * On save, app **tests** the Gist via the API once: HTTP 200 within 10s, parse temperature from selected file (preferring names containing “thermostat” or `.txt`); if parse fails → show blocking error and **do not** persist.
     * `minC < maxC` and both within **[-80.0, 200.0]**.
 * **Edit thermostat**
 
-  * All fields editable; URL re-validated on change.
+  * All fields editable; Gist ID re-validated on change.
 * **Remove thermostat**
 
   * Immediate, with confirmation. Removes local cached history for that thermostat.
@@ -67,7 +67,7 @@
 
 ### 3.3 Read Current Temperature
 
-* **Fetch** using HTTP GET to the configured raw URL.
+* **Fetch** using HTTP GET to the **GitHub Gist API** for the configured Gist ID; if the selected file is `truncated`, fetch its `raw_url`.
 * **Parse** tolerant regex (case-insensitive, spaces optional):
   `^.*?Temperature\s*:\s*([-+]?\d+(?:\.\d+)?)\s*C.*$`
 * **Timestamp**: server time is not trusted; use **device receive time** for current reading, **revision timestamp** for history.
@@ -107,7 +107,7 @@
 
 ### 3.6 Global & Per-Thermostat Controls
 
-* **Per-thermostat**: enable/disable monitoring; edit name/URL/range; open details (current value, history, last error).
+* **Per-thermostat**: enable/disable monitoring; edit name/Gist ID/range; open details (current value, history, last error).
 * **Global**: pause all monitoring for a duration (e.g., 1h, 8h, until next day).
 
 ### 3.7 Error Handling & Health
@@ -146,7 +146,7 @@
 Use a relational store (e.g., SQLite) with the following conceptual schema:
 
 * `Thermostat`
-  `id (UUID)`, `name (TEXT)`, `rawUrl (TEXT)`,
+  `id (UUID)`, `name (TEXT)`, `gistId (TEXT)`,
   `minC (REAL)`, `maxC (REAL)`, `hysteresisEnabled (BOOL)`,
   `monitoringEnabled (BOOL)`, `createdAt (TS)`, `updatedAt (TS)`
 
@@ -175,12 +175,14 @@ Use a relational store (e.g., SQLite) with the following conceptual schema:
 
 ### 6.1 Current Reading Contract
 
-* **Input**: `rawUrl` (HTTPS).
-* **Request headers**: `Accept: text/plain`, `If-None-Match` (use ETag when available).
+* **Input**: `gistId` (hex, 32–40).
+* **API request**: `GET https://api.github.com/gists/{gistId}`
+* **Request headers**: `Accept: application/vnd.github+json`, `User-Agent: farmctl/<version>`.
+* If the selected file in the response has `truncated: true` or `content` is absent, fetch its `raw_url` with `Accept: text/plain`.
 * **Timeout**: connect 5s, read 10s.
 * **Retries**: up to 2 with backoff.
 
-**Expected Response (examples)**
+**Expected File Content (examples)**
 
 ```
 Temperature: 8.13 C
@@ -192,9 +194,9 @@ temperature: 12.0 c
 
 ### 6.2 History Contract
 
-* **List revisions** for the Gist containing the target file; for each revision:
+* **List revisions** for the Gist via the API; for each revision:
 
-  * Construct raw URL for that revision.
+  * Obtain the `raw_url` of the target file at that revision.
   * Fetch and parse as above.
   * Use **revision commit timestamp** as `observedAt`.
 * **Pagination**: iterate until reaching the requested time range or page limit.
@@ -225,7 +227,7 @@ temperature: 12.0 c
 
 **B) Add/Edit Thermostat**
 
-* Fields: Name (text), URL (text), Min °C (numeric), Max °C (numeric), Hysteresis (switch), Monitoring (switch).
+* Fields: Name (text), Gist ID (text), Min °C (numeric), Max °C (numeric), Hysteresis (switch), Monitoring (switch).
 * “Test & Save” button (does a real fetch, shows parsed temp).
 * Validation errors inline under fields.
 
@@ -287,7 +289,7 @@ temperature: 12.0 c
 
 ## 10) Error Messages (Canonical)
 
-* URL invalid: “That doesn’t look like a valid HTTPS URL.”
+* Gist ID invalid: “That doesn’t look like a valid GitHub Gist ID.”
 * Fetch timeout: “Couldn’t reach the thermostat (timeout).”
 * HTTP error: “The server responded with <code>.”
 * Parse error: “Content didn’t include a ‘Temperature: … C’ line.”
@@ -309,7 +311,7 @@ All error strings must be centralized for localization.
 
 ### 11.2 Integration/Instrumentation Tests
 
-* **Add/Edit flow**: enter URL, test & save, verify card shows value.
+* **Add/Edit flow**: enter Gist ID, test & save, verify card shows value.
 * **History graph**: mock revisions list with 10k points; verify downsampling & tooltips.
 * **Alarm surface**: simulate out-of-range; verify full-screen UI, actions (snooze/silence), sound playback via mockable audio layer.
 * **Reboot persistence**: enable monitoring, simulate reboot, verify reschedule.
@@ -399,7 +401,7 @@ Display clear rationale dialogs where needed.
 
 ## 18) Acceptance Criteria
 
-1. Can add a thermostat with the provided example URL; app shows a parsed temperature within 10s.
+1. Can add a thermostat with the provided example Gist ID; app shows a parsed temperature within 10s.
 2. Can configure min/max; when the value crosses the threshold, an audible full-screen alarm appears, with snooze/silence actions that work.
 3. History graph populates for “All” by walking revisions and displays tooltips with correct timestamps.
 4. After device reboot, monitoring continues without user opening the app.

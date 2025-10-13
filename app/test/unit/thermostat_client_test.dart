@@ -25,34 +25,56 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 void main() {
-  test('fetchCurrent returns parsed temperature', () async {
+  test('fetchCurrent returns parsed temperature (Gist API)', () async {
     final dio = Dio()
       ..httpClientAdapter = _FakeAdapter((options) async {
-        expect(options.headers[HttpHeaders.acceptHeader], 'text/plain');
-        return ResponseBody.fromString('Temperature: 12.5 C', 200);
+        if (options.path.contains('/gists/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) {
+          expect(
+            options.headers[HttpHeaders.acceptHeader],
+            'application/vnd.github+json',
+          );
+          return ResponseBody.fromString(
+            '{"files": {"thermostat.txt": {"filename": "thermostat.txt", "truncated": false, "content": "Temperature: 12.5 C"}}}',
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
       });
 
     final client = ThermostatHttpClient(dio: dio);
 
-    final result = await client.fetchCurrent('https://example.com/raw');
+    final result = await client.fetchCurrent(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
 
     expect(result.valueC, closeTo(12.5, 0.0001));
-    expect(result.etag, isNull);
     expect(
       DateTime.now().difference(result.fetchedAt).inSeconds.abs(),
       lessThan(5),
     );
   });
 
-  test('fetchCurrent throws on parse error', () async {
+  test('fetchCurrent throws on parse error (Gist API)', () async {
     final dio = Dio()
-      ..httpClientAdapter = _FakeAdapter(
-        (options) async => ResponseBody.fromString('invalid payload', 200),
-      );
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        if (options.path.contains('/gists/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')) {
+          return ResponseBody.fromString(
+            '{"files": {"thermostat.txt": {"filename": "thermostat.txt", "truncated": false, "content": "invalid payload"}}}',
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
     final client = ThermostatHttpClient(dio: dio);
 
     expect(
-      () => client.fetchCurrent('https://example.com/raw'),
+      () => client.fetchCurrent('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
       throwsA(
         isA<ThermostatFetchException>().having(
           (error) => error.status,
@@ -63,15 +85,18 @@ void main() {
     );
   });
 
-  test('fetchCurrent throws on http error', () async {
+  test('fetchCurrent throws on http error (Gist API)', () async {
     final dio = Dio()
-      ..httpClientAdapter = _FakeAdapter(
-        (options) async => ResponseBody.fromString('not found', 404),
-      );
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        if (options.path.contains('/gists/cccccccccccccccccccccccccccccccc')) {
+          return ResponseBody.fromString('not found', 404);
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
     final client = ThermostatHttpClient(dio: dio);
 
     expect(
-      () => client.fetchCurrent('https://example.com/raw'),
+      () => client.fetchCurrent('cccccccccccccccccccccccccccccccc'),
       throwsA(
         isA<ThermostatFetchException>().having(
           (error) => error.status,
@@ -82,7 +107,7 @@ void main() {
     );
   });
 
-  test('fetchCurrent throws on network error', () async {
+  test('fetchCurrent throws on network error (Gist API)', () async {
     final dio = Dio()
       ..httpClientAdapter = _FakeAdapter((options) async {
         throw DioException(
@@ -94,7 +119,7 @@ void main() {
     final client = ThermostatHttpClient(dio: dio);
 
     expect(
-      () => client.fetchCurrent('https://example.com/raw'),
+      () => client.fetchCurrent('dddddddddddddddddddddddddddddddd'),
       throwsA(
         isA<ThermostatFetchException>().having(
           (error) => error.status,
