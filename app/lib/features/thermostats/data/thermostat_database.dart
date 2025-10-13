@@ -43,6 +43,8 @@ class ThermostatStateEntries extends Table {
 
   TextColumn get etag => text().nullable()();
 
+  TextColumn get statusMessage => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -90,7 +92,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -100,6 +102,12 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
         await m.createTable(thermostatStateEntries);
+      }
+      if (from < 3) {
+        await m.addColumn(
+          thermostatStateEntries,
+          thermostatStateEntries.statusMessage,
+        );
       }
     },
   );

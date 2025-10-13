@@ -67,6 +67,7 @@ void main() {
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 14.2);
+    expect(state.statusMessage, 'Fetched 14.2°C');
   });
 
   test('updateAndTest updates thermostat and state', () async {
@@ -99,6 +100,7 @@ void main() {
     final state = await repository.loadState(updated.id);
     expect(state, isNotNull);
     expect(state!.lastValueC, 9.0);
+    expect(state.statusMessage, 'Fetched 9.0°C');
   });
 
   test('createAndTest rethrows fetch errors', () async {

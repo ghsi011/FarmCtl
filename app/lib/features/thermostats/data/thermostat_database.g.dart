@@ -1109,6 +1109,16 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _statusMessageMeta =
+      const VerificationMeta('statusMessage');
+  @override
+  late final GeneratedColumn<String> statusMessage = GeneratedColumn<String>(
+    'status_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1140,6 +1150,7 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
     lastStatus,
     lastFetchedAt,
     etag,
+    statusMessage,
     createdAt,
     updatedAt,
   ];
@@ -1196,6 +1207,15 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
         etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
       );
     }
+    if (data.containsKey('status_message')) {
+      context.handle(
+        _statusMessageMeta,
+        statusMessage.isAcceptableOrUnknown(
+          data['status_message']!,
+          _statusMessageMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1237,6 +1257,10 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
         DriftSqlType.string,
         data['${effectivePrefix}etag'],
       ),
+      statusMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status_message'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1261,6 +1285,7 @@ class ThermostatStateEntry extends DataClass
   final String? lastStatus;
   final DateTime? lastFetchedAt;
   final String? etag;
+  final String? statusMessage;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ThermostatStateEntry({
@@ -1269,6 +1294,7 @@ class ThermostatStateEntry extends DataClass
     this.lastStatus,
     this.lastFetchedAt,
     this.etag,
+    this.statusMessage,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1288,6 +1314,9 @@ class ThermostatStateEntry extends DataClass
     if (!nullToAbsent || etag != null) {
       map['etag'] = Variable<String>(etag);
     }
+    if (!nullToAbsent || statusMessage != null) {
+      map['status_message'] = Variable<String>(statusMessage);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1306,6 +1335,9 @@ class ThermostatStateEntry extends DataClass
           ? const Value.absent()
           : Value(lastFetchedAt),
       etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
+      statusMessage: statusMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statusMessage),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -1322,6 +1354,7 @@ class ThermostatStateEntry extends DataClass
       lastStatus: serializer.fromJson<String?>(json['lastStatus']),
       lastFetchedAt: serializer.fromJson<DateTime?>(json['lastFetchedAt']),
       etag: serializer.fromJson<String?>(json['etag']),
+      statusMessage: serializer.fromJson<String?>(json['statusMessage']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -1335,6 +1368,7 @@ class ThermostatStateEntry extends DataClass
       'lastStatus': serializer.toJson<String?>(lastStatus),
       'lastFetchedAt': serializer.toJson<DateTime?>(lastFetchedAt),
       'etag': serializer.toJson<String?>(etag),
+      'statusMessage': serializer.toJson<String?>(statusMessage),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -1346,6 +1380,7 @@ class ThermostatStateEntry extends DataClass
     Value<String?> lastStatus = const Value.absent(),
     Value<DateTime?> lastFetchedAt = const Value.absent(),
     Value<String?> etag = const Value.absent(),
+    Value<String?> statusMessage = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ThermostatStateEntry(
@@ -1356,6 +1391,8 @@ class ThermostatStateEntry extends DataClass
         ? lastFetchedAt.value
         : this.lastFetchedAt,
     etag: etag.present ? etag.value : this.etag,
+    statusMessage:
+        statusMessage.present ? statusMessage.value : this.statusMessage,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -1374,6 +1411,9 @@ class ThermostatStateEntry extends DataClass
           ? data.lastFetchedAt.value
           : this.lastFetchedAt,
       etag: data.etag.present ? data.etag.value : this.etag,
+      statusMessage: data.statusMessage.present
+          ? data.statusMessage.value
+          : this.statusMessage,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1387,6 +1427,7 @@ class ThermostatStateEntry extends DataClass
           ..write('lastStatus: $lastStatus, ')
           ..write('lastFetchedAt: $lastFetchedAt, ')
           ..write('etag: $etag, ')
+          ..write('statusMessage: $statusMessage, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1400,6 +1441,7 @@ class ThermostatStateEntry extends DataClass
     lastStatus,
     lastFetchedAt,
     etag,
+    statusMessage,
     createdAt,
     updatedAt,
   );
@@ -1412,6 +1454,7 @@ class ThermostatStateEntry extends DataClass
           other.lastStatus == this.lastStatus &&
           other.lastFetchedAt == this.lastFetchedAt &&
           other.etag == this.etag &&
+          other.statusMessage == this.statusMessage &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1423,6 +1466,7 @@ class ThermostatStateEntriesCompanion
   final Value<String?> lastStatus;
   final Value<DateTime?> lastFetchedAt;
   final Value<String?> etag;
+  final Value<String?> statusMessage;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -1432,6 +1476,7 @@ class ThermostatStateEntriesCompanion
     this.lastStatus = const Value.absent(),
     this.lastFetchedAt = const Value.absent(),
     this.etag = const Value.absent(),
+    this.statusMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1442,6 +1487,7 @@ class ThermostatStateEntriesCompanion
     this.lastStatus = const Value.absent(),
     this.lastFetchedAt = const Value.absent(),
     this.etag = const Value.absent(),
+    this.statusMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1452,6 +1498,7 @@ class ThermostatStateEntriesCompanion
     Expression<String>? lastStatus,
     Expression<DateTime>? lastFetchedAt,
     Expression<String>? etag,
+    Expression<String>? statusMessage,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -1462,6 +1509,7 @@ class ThermostatStateEntriesCompanion
       if (lastStatus != null) 'last_status': lastStatus,
       if (lastFetchedAt != null) 'last_fetched_at': lastFetchedAt,
       if (etag != null) 'etag': etag,
+      if (statusMessage != null) 'status_message': statusMessage,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1474,6 +1522,7 @@ class ThermostatStateEntriesCompanion
     Value<String?>? lastStatus,
     Value<DateTime?>? lastFetchedAt,
     Value<String?>? etag,
+    Value<String?>? statusMessage,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -1484,6 +1533,7 @@ class ThermostatStateEntriesCompanion
       lastStatus: lastStatus ?? this.lastStatus,
       lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
       etag: etag ?? this.etag,
+      statusMessage: statusMessage ?? this.statusMessage,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1508,6 +1558,9 @@ class ThermostatStateEntriesCompanion
     if (etag.present) {
       map['etag'] = Variable<String>(etag.value);
     }
+    if (statusMessage.present) {
+      map['status_message'] = Variable<String>(statusMessage.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1528,6 +1581,7 @@ class ThermostatStateEntriesCompanion
           ..write('lastStatus: $lastStatus, ')
           ..write('lastFetchedAt: $lastFetchedAt, ')
           ..write('etag: $etag, ')
+          ..write('statusMessage: $statusMessage, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')

@@ -77,6 +77,7 @@ void main() {
       valueC: 12.3,
       fetchedAt: DateTime.utc(2025, 1, 1, 12),
       etag: 'etag',
+      message: 'Fetched 12.3°C',
     );
 
     await repository.delete(thermostat.id);
@@ -117,12 +118,14 @@ void main() {
       valueC: 9.5,
       fetchedAt: DateTime.utc(2025, 1, 2, 8),
       etag: 'tag',
+      message: 'Fetched 9.5°C',
     );
 
     var state = await repository.loadState(thermostat.id);
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 9.5);
+    expect(state.statusMessage, 'Fetched 9.5°C');
 
     await repository.saveState(
       thermostatId: thermostat.id,
@@ -130,11 +133,13 @@ void main() {
       valueC: null,
       fetchedAt: DateTime.utc(2025, 1, 2, 9),
       etag: null,
+      message: 'Failed with status 500',
     );
 
     state = await repository.loadState(thermostat.id);
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.httpError);
     expect(state.lastValueC, 9.5);
+    expect(state.statusMessage, 'Failed with status 500');
   });
 }
