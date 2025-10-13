@@ -12,6 +12,9 @@ class ThermostatState {
     this.lastFetchedAt,
     this.etag,
     this.statusMessage,
+    this.lastAlarmAt,
+    this.snoozedUntil,
+    this.silenceUntilOk = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -22,6 +25,9 @@ class ThermostatState {
   final DateTime? lastFetchedAt;
   final String? etag;
   final String? statusMessage;
+  final DateTime? lastAlarmAt;
+  final DateTime? snoozedUntil;
+  final bool silenceUntilOk;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -33,6 +39,9 @@ class ThermostatState {
       lastFetchedAt: entry.lastFetchedAt?.toUtc(),
       etag: entry.etag,
       statusMessage: entry.statusMessage,
+      lastAlarmAt: entry.lastAlarmAt?.toUtc(),
+      snoozedUntil: entry.snoozedUntil?.toUtc(),
+      silenceUntilOk: entry.silenceUntilOk,
       createdAt: entry.createdAt.toUtc(),
       updatedAt: entry.updatedAt.toUtc(),
     );
@@ -44,6 +53,9 @@ class ThermostatState {
     DateTime? lastFetchedAt,
     String? etag,
     String? statusMessage,
+    DateTime? lastAlarmAt,
+    DateTime? snoozedUntil,
+    bool? silenceUntilOk,
     DateTime? updatedAt,
   }) {
     return ThermostatState(
@@ -53,6 +65,9 @@ class ThermostatState {
       lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
       etag: etag ?? this.etag,
       statusMessage: statusMessage ?? this.statusMessage,
+      lastAlarmAt: lastAlarmAt ?? this.lastAlarmAt,
+      snoozedUntil: snoozedUntil ?? this.snoozedUntil,
+      silenceUntilOk: silenceUntilOk ?? this.silenceUntilOk,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -69,6 +84,7 @@ class ThermostatSummary {
 
 enum ThermostatReadingStatus {
   ok,
+  outOfRange,
   networkError,
   httpError,
   parseError,

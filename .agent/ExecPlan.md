@@ -81,7 +81,7 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ✅ `[2025-10-13 20:40Z]` Switch data source to GitHub Gist API with Gist ID only; update validation/UI/tests.
 - ☐ `[2025-10-14 16:00Z]` Implement HTTP client (timeouts/retries/headers) and Test & Save on add/edit.
 - ☐ `[2025-10-15 16:00Z]` Background periodic checks with Foreground execution; diagnostics log.
-- ☐ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
+- ✅ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
 - ☐ `[2025-10-17 16:00Z]` Gate A reliability validation and decision.
 
 ### Executive Summary (current)

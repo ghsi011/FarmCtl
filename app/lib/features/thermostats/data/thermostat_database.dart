@@ -45,6 +45,13 @@ class ThermostatStateEntries extends Table {
 
   TextColumn get statusMessage => text().nullable()();
 
+  DateTimeColumn get lastAlarmAt => dateTime().nullable()();
+
+  DateTimeColumn get snoozedUntil => dateTime().nullable()();
+
+  BoolColumn get silenceUntilOk =>
+      boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -92,7 +99,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -107,6 +114,20 @@ class ThermostatDatabase extends _$ThermostatDatabase {
         await m.addColumn(
           thermostatStateEntries,
           thermostatStateEntries.statusMessage,
+        );
+      }
+      if (from < 4) {
+        await m.addColumn(
+          thermostatStateEntries,
+          thermostatStateEntries.lastAlarmAt,
+        );
+        await m.addColumn(
+          thermostatStateEntries,
+          thermostatStateEntries.snoozedUntil,
+        );
+        await m.addColumn(
+          thermostatStateEntries,
+          thermostatStateEntries.silenceUntilOk,
         );
       }
     },
@@ -168,6 +189,24 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     return (select(
       thermostatStateEntries,
     )..where((tbl) => tbl.thermostatId.equals(id))).getSingleOrNull();
+  }
+
+  Stream<ThermostatWithStateRow?> watchThermostatWithState(String id) {
+    final query = select(thermostatEntries).join([
+      leftOuterJoin(
+        thermostatStateEntries,
+        thermostatStateEntries.thermostatId.equalsExp(thermostatEntries.id),
+      ),
+    ])..where(thermostatEntries.id.equals(id));
+
+    return query.watchSingleOrNull().map(
+      (row) => row == null
+          ? null
+          : (
+              thermostat: row.readTable(thermostatEntries),
+              state: row.readTableOrNull(thermostatStateEntries),
+            ),
+    );
   }
 
   Future<void> upsertThermostat(ThermostatEntriesCompanion data) async {

@@ -137,6 +137,13 @@ class _LastSeenStatus extends StatelessWidget {
         statusText = '$base • Checked $relative';
         isError = true;
         break;
+      case ThermostatReadingStatus.outOfRange:
+        final base = message ?? 'Temperature outside configured range';
+        statusText = value != null
+            ? '$base (${value.toStringAsFixed(1)}°C) • Updated $relative'
+            : '$base • Updated $relative';
+        isError = true;
+        break;
       case ThermostatReadingStatus.httpError:
         final base = message ?? 'Last attempt failed: server error';
         statusText = '$base • Checked $relative';

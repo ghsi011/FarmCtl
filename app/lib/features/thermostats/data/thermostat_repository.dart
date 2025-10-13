@@ -41,6 +41,18 @@ class ThermostatRepository {
         .toList();
   }
 
+  Stream<ThermostatSummary?> watchThermostat(String id) {
+    return _database.watchThermostatWithState(id).map((row) {
+      if (row == null) {
+        return null;
+      }
+      return ThermostatSummary(
+        thermostat: Thermostat.fromEntry(row.thermostat),
+        state: row.state != null ? ThermostatState.fromEntry(row.state!) : null,
+      );
+    });
+  }
+
   Future<Thermostat> create(ThermostatDraft draft) async {
     final validation = ThermostatValidator.validate(draft);
     if (!validation.isValid) {
@@ -114,6 +126,12 @@ class ThermostatRepository {
     DateTime? fetchedAt,
     String? etag,
     String? message,
+    DateTime? lastAlarmAt,
+    bool setLastAlarmAt = false,
+    DateTime? snoozedUntil,
+    bool setSnoozedUntil = false,
+    bool? silenceUntilOk,
+    bool setSilenceUntilOk = false,
   }) async {
     final now = DateTime.now().toUtc();
     await _database.upsertThermostatState(
@@ -130,7 +148,44 @@ class ThermostatRepository {
         statusMessage: message != null
             ? drift.Value(message)
             : const drift.Value.absent(),
+        lastAlarmAt: setLastAlarmAt
+            ? (lastAlarmAt != null
+                  ? drift.Value(lastAlarmAt)
+                  : const drift.Value(null))
+            : const drift.Value.absent(),
+        snoozedUntil: setSnoozedUntil
+            ? (snoozedUntil != null
+                  ? drift.Value(snoozedUntil)
+                  : const drift.Value(null))
+            : const drift.Value.absent(),
+        silenceUntilOk: setSilenceUntilOk && silenceUntilOk != null
+            ? drift.Value(silenceUntilOk)
+            : const drift.Value.absent(),
         createdAt: const drift.Value.absent(),
+        updatedAt: drift.Value(now),
+      ),
+    );
+  }
+
+  Future<void> updateSnoozedUntil(String thermostatId, DateTime? until) async {
+    final now = DateTime.now().toUtc();
+    await _database.upsertThermostatState(
+      ThermostatStateEntriesCompanion(
+        thermostatId: drift.Value(thermostatId),
+        snoozedUntil: until != null
+            ? drift.Value(until)
+            : const drift.Value(null),
+        updatedAt: drift.Value(now),
+      ),
+    );
+  }
+
+  Future<void> updateSilenceUntilOk(String thermostatId, bool value) async {
+    final now = DateTime.now().toUtc();
+    await _database.upsertThermostatState(
+      ThermostatStateEntriesCompanion(
+        thermostatId: drift.Value(thermostatId),
+        silenceUntilOk: drift.Value(value),
         updatedAt: drift.Value(now),
       ),
     );
