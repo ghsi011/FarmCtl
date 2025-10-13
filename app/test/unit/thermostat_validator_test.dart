@@ -7,7 +7,7 @@ void main() {
     test('accepts valid draft', () {
       final draft = ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com/raw.txt',
+        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         minC: 2,
         maxC: 10,
       );
@@ -38,10 +38,10 @@ void main() {
       );
     });
 
-    test('rejects invalid url', () {
+    test('rejects invalid gist id', () {
       final draft = ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'http://example.com',
+        rawUrl: 'not-a-gist-id',
         minC: 2,
         maxC: 10,
       );
@@ -49,20 +49,18 @@ void main() {
       final result = ThermostatValidator.validate(draft);
 
       expect(result.isValid, isFalse);
-      expect(
-        result.errors
-            .firstWhere(
-              (error) => error.field == ThermostatValidationField.rawUrl,
-            )
-            .message,
-        contains('HTTPS'),
-      );
+      final msg = result.errors
+          .firstWhere(
+            (error) => error.field == ThermostatValidationField.rawUrl,
+          )
+          .message;
+      expect(msg, contains('Gist ID'));
     });
 
     test('rejects out-of-bounds temperatures', () {
       final draft = ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         minC: -100,
         maxC: 500,
       );
@@ -83,7 +81,7 @@ void main() {
     test('rejects inverted range', () {
       final draft = ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com',
+        rawUrl: 'cccccccccccccccccccccccccccccccc',
         minC: 12,
         maxC: 10,
       );

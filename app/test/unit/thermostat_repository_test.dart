@@ -22,7 +22,7 @@ void main() {
   test('create stores and returns thermostat', () async {
     final draft = ThermostatDraft(
       name: 'Barn',
-      rawUrl: 'https://example.com/barn',
+      rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       minC: 0,
       maxC: 20,
     );
@@ -39,7 +39,7 @@ void main() {
     final original = await repository.create(
       ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com/greenhouse',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         minC: 4,
         maxC: 12,
       ),
@@ -49,14 +49,14 @@ void main() {
       original,
       ThermostatDraft(
         name: 'Greenhouse West',
-        rawUrl: 'https://example.com/greenhouse-west',
+        rawUrl: 'cccccccccccccccccccccccccccccccc',
         minC: 3,
         maxC: 11,
       ),
     );
 
     expect(updated.name, 'Greenhouse West');
-    expect(updated.rawUrl, 'https://example.com/greenhouse-west');
+    expect(updated.rawUrl, 'cccccccccccccccccccccccccccccccc');
     expect(updated.minC, 3);
     expect(updated.maxC, 11);
   });
@@ -65,7 +65,7 @@ void main() {
     final thermostat = await repository.create(
       ThermostatDraft(
         name: 'Propagation',
-        rawUrl: 'https://example.com/propagation',
+        rawUrl: 'ffffffffffffffffffffffffffffffff',
         minC: 6,
         maxC: 18,
       ),
@@ -91,7 +91,7 @@ void main() {
   test('create throws on invalid data', () async {
     final draft = ThermostatDraft(
       name: '',
-      rawUrl: 'not a url',
+      rawUrl: 'not-a-gist-id',
       minC: 0,
       maxC: -1,
     );
@@ -106,7 +106,7 @@ void main() {
     final thermostat = await repository.create(
       ThermostatDraft(
         name: 'Nursery',
-        rawUrl: 'https://example.com/nursery',
+        rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
         minC: 5,
         maxC: 18,
       ),

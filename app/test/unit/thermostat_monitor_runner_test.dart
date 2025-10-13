@@ -52,7 +52,7 @@ void main() {
     final thermostat = await repository.create(
       ThermostatDraft(
         name: 'Barn',
-        rawUrl: 'https://example.com/barn',
+        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         minC: 0,
         maxC: 20,
       ),
@@ -78,7 +78,7 @@ void main() {
     final thermostat = await repository.create(
       ThermostatDraft(
         name: 'Greenhouse',
-        rawUrl: 'https://example.com/greenhouse',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         minC: 2,
         maxC: 12,
       ),
