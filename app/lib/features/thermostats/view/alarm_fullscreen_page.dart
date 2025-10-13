@@ -95,7 +95,7 @@ class _AlarmContent extends ConsumerWidget {
               Text(
                 thermostatName,
                 style: textTheme.headlineMedium?.copyWith(
-                  color: colorScheme.onBackground,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
@@ -104,7 +104,7 @@ class _AlarmContent extends ConsumerWidget {
               Text(
                 valueText,
                 style: textTheme.displayMedium?.copyWith(
-                  color: colorScheme.onBackground,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -112,7 +112,7 @@ class _AlarmContent extends ConsumerWidget {
               Text(
                 'Target range ${minC.toStringAsFixed(1)}°C – ${maxC.toStringAsFixed(1)}°C',
                 style: textTheme.titleMedium?.copyWith(
-                  color: colorScheme.onBackground.withOpacity(0.8),
+                  color: colorScheme.onSurface.withValues(alpha: 0.8),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -170,7 +170,7 @@ class _AlarmContent extends ConsumerWidget {
               child: Text(
                 line,
                 style: textTheme.titleMedium?.copyWith(
-                  color: colorScheme.onBackground.withOpacity(0.9),
+                  color: colorScheme.onSurface.withValues(alpha: 0.9),
                 ),
                 textAlign: TextAlign.center,
               ),
