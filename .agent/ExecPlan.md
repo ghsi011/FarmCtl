@@ -5,7 +5,7 @@ This ExecPlan is a living document spanning design through implementation. It co
 ---
 
 ## 🎯 Purpose / Big Picture
-Deliver a production-ready Android app that monitors multiple thermostats via public GitHub Gist raw URLs, evaluates per‑thermostat operating ranges, and raises reliable audible alarms (Android alarm-like behavior) when out of range. Users can add/edit/remove thermostats, view current readings and historical graphs, configure watchdog cadence and alarm sound, and rely on background checks that continue across reboots. The milestone sequence validates a Flutter‑first approach with a decision gate (Gate A) to determine whether a minimal native shim is needed for reliability under Doze/lockscreen/OEM constraints.
+Deliver a production-ready Android app that monitors multiple thermostats via GitHub Gist API, evaluates per‑thermostat operating ranges, and raises reliable audible alarms (Android alarm-like behavior) when out of range. Users can add/edit/remove thermostats, view current readings and historical graphs, configure watchdog cadence and alarm sound, and rely on background checks that continue across reboots. The milestone sequence validates a Flutter‑first approach with a decision gate (Gate A) to determine whether a minimal native shim is needed for reliability under Doze/lockscreen/OEM constraints.
 
 ---
 
