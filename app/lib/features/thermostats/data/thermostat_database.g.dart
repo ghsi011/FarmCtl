@@ -1120,6 +1120,43 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastAlarmAtMeta = const VerificationMeta(
+    'lastAlarmAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastAlarmAt = GeneratedColumn<DateTime>(
+    'last_alarm_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _snoozedUntilMeta = const VerificationMeta(
+    'snoozedUntil',
+  );
+  @override
+  late final GeneratedColumn<DateTime> snoozedUntil = GeneratedColumn<DateTime>(
+    'snoozed_until',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _silenceUntilOkMeta = const VerificationMeta(
+    'silenceUntilOk',
+  );
+  @override
+  late final GeneratedColumn<bool> silenceUntilOk = GeneratedColumn<bool>(
+    'silence_until_ok',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("silence_until_ok" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1152,6 +1189,9 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
     lastFetchedAt,
     etag,
     statusMessage,
+    lastAlarmAt,
+    snoozedUntil,
+    silenceUntilOk,
     createdAt,
     updatedAt,
   ];
@@ -1217,6 +1257,33 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
         ),
       );
     }
+    if (data.containsKey('last_alarm_at')) {
+      context.handle(
+        _lastAlarmAtMeta,
+        lastAlarmAt.isAcceptableOrUnknown(
+          data['last_alarm_at']!,
+          _lastAlarmAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('snoozed_until')) {
+      context.handle(
+        _snoozedUntilMeta,
+        snoozedUntil.isAcceptableOrUnknown(
+          data['snoozed_until']!,
+          _snoozedUntilMeta,
+        ),
+      );
+    }
+    if (data.containsKey('silence_until_ok')) {
+      context.handle(
+        _silenceUntilOkMeta,
+        silenceUntilOk.isAcceptableOrUnknown(
+          data['silence_until_ok']!,
+          _silenceUntilOkMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1262,6 +1329,18 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
         DriftSqlType.string,
         data['${effectivePrefix}status_message'],
       ),
+      lastAlarmAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_alarm_at'],
+      ),
+      snoozedUntil: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}snoozed_until'],
+      ),
+      silenceUntilOk: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}silence_until_ok'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1287,6 +1366,9 @@ class ThermostatStateEntry extends DataClass
   final DateTime? lastFetchedAt;
   final String? etag;
   final String? statusMessage;
+  final DateTime? lastAlarmAt;
+  final DateTime? snoozedUntil;
+  final bool silenceUntilOk;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ThermostatStateEntry({
@@ -1296,6 +1378,9 @@ class ThermostatStateEntry extends DataClass
     this.lastFetchedAt,
     this.etag,
     this.statusMessage,
+    this.lastAlarmAt,
+    this.snoozedUntil,
+    required this.silenceUntilOk,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1318,6 +1403,13 @@ class ThermostatStateEntry extends DataClass
     if (!nullToAbsent || statusMessage != null) {
       map['status_message'] = Variable<String>(statusMessage);
     }
+    if (!nullToAbsent || lastAlarmAt != null) {
+      map['last_alarm_at'] = Variable<DateTime>(lastAlarmAt);
+    }
+    if (!nullToAbsent || snoozedUntil != null) {
+      map['snoozed_until'] = Variable<DateTime>(snoozedUntil);
+    }
+    map['silence_until_ok'] = Variable<bool>(silenceUntilOk);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1339,6 +1431,13 @@ class ThermostatStateEntry extends DataClass
       statusMessage: statusMessage == null && nullToAbsent
           ? const Value.absent()
           : Value(statusMessage),
+      lastAlarmAt: lastAlarmAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAlarmAt),
+      snoozedUntil: snoozedUntil == null && nullToAbsent
+          ? const Value.absent()
+          : Value(snoozedUntil),
+      silenceUntilOk: Value(silenceUntilOk),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -1356,6 +1455,9 @@ class ThermostatStateEntry extends DataClass
       lastFetchedAt: serializer.fromJson<DateTime?>(json['lastFetchedAt']),
       etag: serializer.fromJson<String?>(json['etag']),
       statusMessage: serializer.fromJson<String?>(json['statusMessage']),
+      lastAlarmAt: serializer.fromJson<DateTime?>(json['lastAlarmAt']),
+      snoozedUntil: serializer.fromJson<DateTime?>(json['snoozedUntil']),
+      silenceUntilOk: serializer.fromJson<bool>(json['silenceUntilOk']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -1370,6 +1472,9 @@ class ThermostatStateEntry extends DataClass
       'lastFetchedAt': serializer.toJson<DateTime?>(lastFetchedAt),
       'etag': serializer.toJson<String?>(etag),
       'statusMessage': serializer.toJson<String?>(statusMessage),
+      'lastAlarmAt': serializer.toJson<DateTime?>(lastAlarmAt),
+      'snoozedUntil': serializer.toJson<DateTime?>(snoozedUntil),
+      'silenceUntilOk': serializer.toJson<bool>(silenceUntilOk),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -1382,6 +1487,9 @@ class ThermostatStateEntry extends DataClass
     Value<DateTime?> lastFetchedAt = const Value.absent(),
     Value<String?> etag = const Value.absent(),
     Value<String?> statusMessage = const Value.absent(),
+    Value<DateTime?> lastAlarmAt = const Value.absent(),
+    Value<DateTime?> snoozedUntil = const Value.absent(),
+    bool? silenceUntilOk,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ThermostatStateEntry(
@@ -1395,6 +1503,9 @@ class ThermostatStateEntry extends DataClass
     statusMessage: statusMessage.present
         ? statusMessage.value
         : this.statusMessage,
+    lastAlarmAt: lastAlarmAt.present ? lastAlarmAt.value : this.lastAlarmAt,
+    snoozedUntil: snoozedUntil.present ? snoozedUntil.value : this.snoozedUntil,
+    silenceUntilOk: silenceUntilOk ?? this.silenceUntilOk,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -1416,6 +1527,15 @@ class ThermostatStateEntry extends DataClass
       statusMessage: data.statusMessage.present
           ? data.statusMessage.value
           : this.statusMessage,
+      lastAlarmAt: data.lastAlarmAt.present
+          ? data.lastAlarmAt.value
+          : this.lastAlarmAt,
+      snoozedUntil: data.snoozedUntil.present
+          ? data.snoozedUntil.value
+          : this.snoozedUntil,
+      silenceUntilOk: data.silenceUntilOk.present
+          ? data.silenceUntilOk.value
+          : this.silenceUntilOk,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1430,6 +1550,9 @@ class ThermostatStateEntry extends DataClass
           ..write('lastFetchedAt: $lastFetchedAt, ')
           ..write('etag: $etag, ')
           ..write('statusMessage: $statusMessage, ')
+          ..write('lastAlarmAt: $lastAlarmAt, ')
+          ..write('snoozedUntil: $snoozedUntil, ')
+          ..write('silenceUntilOk: $silenceUntilOk, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1444,6 +1567,9 @@ class ThermostatStateEntry extends DataClass
     lastFetchedAt,
     etag,
     statusMessage,
+    lastAlarmAt,
+    snoozedUntil,
+    silenceUntilOk,
     createdAt,
     updatedAt,
   );
@@ -1457,6 +1583,9 @@ class ThermostatStateEntry extends DataClass
           other.lastFetchedAt == this.lastFetchedAt &&
           other.etag == this.etag &&
           other.statusMessage == this.statusMessage &&
+          other.lastAlarmAt == this.lastAlarmAt &&
+          other.snoozedUntil == this.snoozedUntil &&
+          other.silenceUntilOk == this.silenceUntilOk &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1469,6 +1598,9 @@ class ThermostatStateEntriesCompanion
   final Value<DateTime?> lastFetchedAt;
   final Value<String?> etag;
   final Value<String?> statusMessage;
+  final Value<DateTime?> lastAlarmAt;
+  final Value<DateTime?> snoozedUntil;
+  final Value<bool> silenceUntilOk;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -1479,6 +1611,9 @@ class ThermostatStateEntriesCompanion
     this.lastFetchedAt = const Value.absent(),
     this.etag = const Value.absent(),
     this.statusMessage = const Value.absent(),
+    this.lastAlarmAt = const Value.absent(),
+    this.snoozedUntil = const Value.absent(),
+    this.silenceUntilOk = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1490,6 +1625,9 @@ class ThermostatStateEntriesCompanion
     this.lastFetchedAt = const Value.absent(),
     this.etag = const Value.absent(),
     this.statusMessage = const Value.absent(),
+    this.lastAlarmAt = const Value.absent(),
+    this.snoozedUntil = const Value.absent(),
+    this.silenceUntilOk = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1501,6 +1639,9 @@ class ThermostatStateEntriesCompanion
     Expression<DateTime>? lastFetchedAt,
     Expression<String>? etag,
     Expression<String>? statusMessage,
+    Expression<DateTime>? lastAlarmAt,
+    Expression<DateTime>? snoozedUntil,
+    Expression<bool>? silenceUntilOk,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -1512,6 +1653,9 @@ class ThermostatStateEntriesCompanion
       if (lastFetchedAt != null) 'last_fetched_at': lastFetchedAt,
       if (etag != null) 'etag': etag,
       if (statusMessage != null) 'status_message': statusMessage,
+      if (lastAlarmAt != null) 'last_alarm_at': lastAlarmAt,
+      if (snoozedUntil != null) 'snoozed_until': snoozedUntil,
+      if (silenceUntilOk != null) 'silence_until_ok': silenceUntilOk,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1525,6 +1669,9 @@ class ThermostatStateEntriesCompanion
     Value<DateTime?>? lastFetchedAt,
     Value<String?>? etag,
     Value<String?>? statusMessage,
+    Value<DateTime?>? lastAlarmAt,
+    Value<DateTime?>? snoozedUntil,
+    Value<bool>? silenceUntilOk,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -1536,6 +1683,9 @@ class ThermostatStateEntriesCompanion
       lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
       etag: etag ?? this.etag,
       statusMessage: statusMessage ?? this.statusMessage,
+      lastAlarmAt: lastAlarmAt ?? this.lastAlarmAt,
+      snoozedUntil: snoozedUntil ?? this.snoozedUntil,
+      silenceUntilOk: silenceUntilOk ?? this.silenceUntilOk,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1563,6 +1713,15 @@ class ThermostatStateEntriesCompanion
     if (statusMessage.present) {
       map['status_message'] = Variable<String>(statusMessage.value);
     }
+    if (lastAlarmAt.present) {
+      map['last_alarm_at'] = Variable<DateTime>(lastAlarmAt.value);
+    }
+    if (snoozedUntil.present) {
+      map['snoozed_until'] = Variable<DateTime>(snoozedUntil.value);
+    }
+    if (silenceUntilOk.present) {
+      map['silence_until_ok'] = Variable<bool>(silenceUntilOk.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1584,6 +1743,9 @@ class ThermostatStateEntriesCompanion
           ..write('lastFetchedAt: $lastFetchedAt, ')
           ..write('etag: $etag, ')
           ..write('statusMessage: $statusMessage, ')
+          ..write('lastAlarmAt: $lastAlarmAt, ')
+          ..write('snoozedUntil: $snoozedUntil, ')
+          ..write('silenceUntilOk: $silenceUntilOk, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -2165,6 +2327,10 @@ typedef $$ThermostatStateEntriesTableCreateCompanionBuilder =
       Value<String?> lastStatus,
       Value<DateTime?> lastFetchedAt,
       Value<String?> etag,
+      Value<String?> statusMessage,
+      Value<DateTime?> lastAlarmAt,
+      Value<DateTime?> snoozedUntil,
+      Value<bool> silenceUntilOk,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -2176,6 +2342,10 @@ typedef $$ThermostatStateEntriesTableUpdateCompanionBuilder =
       Value<String?> lastStatus,
       Value<DateTime?> lastFetchedAt,
       Value<String?> etag,
+      Value<String?> statusMessage,
+      Value<DateTime?> lastAlarmAt,
+      Value<DateTime?> snoozedUntil,
+      Value<bool> silenceUntilOk,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -2212,6 +2382,26 @@ class $$ThermostatStateEntriesTableFilterComposer
 
   ColumnFilters<String> get etag => $composableBuilder(
     column: $table.etag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastAlarmAt => $composableBuilder(
+    column: $table.lastAlarmAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get snoozedUntil => $composableBuilder(
+    column: $table.snoozedUntil,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get silenceUntilOk => $composableBuilder(
+    column: $table.silenceUntilOk,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2260,6 +2450,26 @@ class $$ThermostatStateEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastAlarmAt => $composableBuilder(
+    column: $table.lastAlarmAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get snoozedUntil => $composableBuilder(
+    column: $table.snoozedUntil,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get silenceUntilOk => $composableBuilder(
+    column: $table.silenceUntilOk,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -2302,6 +2512,26 @@ class $$ThermostatStateEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get etag =>
       $composableBuilder(column: $table.etag, builder: (column) => column);
+
+  GeneratedColumn<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastAlarmAt => $composableBuilder(
+    column: $table.lastAlarmAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get snoozedUntil => $composableBuilder(
+    column: $table.snoozedUntil,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get silenceUntilOk => $composableBuilder(
+    column: $table.silenceUntilOk,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -2361,6 +2591,10 @@ class $$ThermostatStateEntriesTableTableManager
                 Value<String?> lastStatus = const Value.absent(),
                 Value<DateTime?> lastFetchedAt = const Value.absent(),
                 Value<String?> etag = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<DateTime?> lastAlarmAt = const Value.absent(),
+                Value<DateTime?> snoozedUntil = const Value.absent(),
+                Value<bool> silenceUntilOk = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2370,6 +2604,10 @@ class $$ThermostatStateEntriesTableTableManager
                 lastStatus: lastStatus,
                 lastFetchedAt: lastFetchedAt,
                 etag: etag,
+                statusMessage: statusMessage,
+                lastAlarmAt: lastAlarmAt,
+                snoozedUntil: snoozedUntil,
+                silenceUntilOk: silenceUntilOk,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -2381,6 +2619,10 @@ class $$ThermostatStateEntriesTableTableManager
                 Value<String?> lastStatus = const Value.absent(),
                 Value<DateTime?> lastFetchedAt = const Value.absent(),
                 Value<String?> etag = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<DateTime?> lastAlarmAt = const Value.absent(),
+                Value<DateTime?> snoozedUntil = const Value.absent(),
+                Value<bool> silenceUntilOk = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2390,6 +2632,10 @@ class $$ThermostatStateEntriesTableTableManager
                 lastStatus: lastStatus,
                 lastFetchedAt: lastFetchedAt,
                 etag: etag,
+                statusMessage: statusMessage,
+                lastAlarmAt: lastAlarmAt,
+                snoozedUntil: snoozedUntil,
+                silenceUntilOk: silenceUntilOk,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

@@ -3,15 +3,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/settings/view/settings_page.dart';
+import '../../features/thermostats/view/alarm_fullscreen_page.dart';
 import '../../features/thermostats/view/thermostats_page.dart';
-
-final _rootNavigatorKey = GlobalKey<NavigatorState>();
+import 'router_keys.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: ThermostatsRoute.path,
     routes: [
+      GoRoute(
+        path: AlarmRoute.path,
+        name: AlarmRoute.name,
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final thermostatId = state.pathParameters['id'];
+          if (thermostatId == null) {
+            return const NoTransitionPage(child: SizedBox.shrink());
+          }
+          return MaterialPage(
+            key: state.pageKey,
+            fullscreenDialog: true,
+            child: AlarmFullScreenPage(thermostatId: thermostatId),
+          );
+        },
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return AppScaffold(navigationShell: navigationShell);
@@ -82,4 +98,11 @@ class ThermostatsRoute {
 class SettingsRoute {
   static const name = 'settings';
   static const path = '/settings';
+}
+
+class AlarmRoute {
+  static const name = 'alarm';
+  static const path = '/alarm/:id';
+
+  static String pathFor(String thermostatId) => '/alarm/$thermostatId';
 }

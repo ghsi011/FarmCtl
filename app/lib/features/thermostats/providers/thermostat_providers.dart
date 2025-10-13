@@ -31,3 +31,9 @@ final thermostatsProvider = StreamProvider<List<ThermostatSummary>>((ref) {
   final repository = ref.watch(thermostatRepositoryProvider);
   return repository.watchThermostats();
 });
+
+final thermostatSummaryProvider =
+    StreamProvider.family<ThermostatSummary?, String>((ref, thermostatId) {
+      final repository = ref.watch(thermostatRepositoryProvider);
+      return repository.watchThermostat(thermostatId);
+    });

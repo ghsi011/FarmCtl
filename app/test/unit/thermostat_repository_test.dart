@@ -126,6 +126,8 @@ void main() {
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 9.5);
     expect(state.statusMessage, 'Fetched 9.5°C');
+    expect(state.snoozedUntil, isNull);
+    expect(state.silenceUntilOk, isFalse);
 
     await repository.saveState(
       thermostatId: thermostat.id,
@@ -142,4 +144,45 @@ void main() {
     expect(state.lastValueC, 9.5);
     expect(state.statusMessage, 'Failed with status 500');
   });
+
+  test(
+    'updateSnoozedUntil and updateSilenceUntilOk persist controls',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Lab',
+          rawUrl: '99999999999999999999999999999999',
+          minC: 4,
+          maxC: 18,
+        ),
+      );
+
+      final now = DateTime.utc(2025, 1, 2, 10);
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.outOfRange,
+        valueC: 2.0,
+        fetchedAt: now,
+        etag: null,
+        message: 'Too cold',
+        setSnoozedUntil: true,
+        snoozedUntil: now.add(const Duration(minutes: 15)),
+      );
+
+      var state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.snoozedUntil, now.add(const Duration(minutes: 15)));
+      expect(state.silenceUntilOk, isFalse);
+
+      await repository.updateSilenceUntilOk(thermostat.id, true);
+      state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.silenceUntilOk, isTrue);
+
+      await repository.updateSnoozedUntil(thermostat.id, null);
+      state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.snoozedUntil, isNull);
+    },
+  );
 }
