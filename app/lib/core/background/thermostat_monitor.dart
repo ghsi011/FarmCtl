@@ -228,9 +228,8 @@ class ThermostatMonitorRunner {
       return currentValue < bufferMin || currentValue > bufferMax;
     }
 
-    // Range is narrower than hysteresis buffer; require the midpoint.
-    final midpoint = (min + max) / 2;
-    return currentValue < midpoint || currentValue > midpoint;
+    // Range is narrower than hysteresis buffer; fall back to inclusive bounds.
+    return currentValue < min || currentValue > max;
   }
 
   bool _shouldTriggerAlarm(ThermostatState? previousState, DateTime now) {
