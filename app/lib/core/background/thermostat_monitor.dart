@@ -317,9 +317,13 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
   }
 }
 
-Future<void> cancelAlarmNotification(String thermostatId) {
-  final plugin = FlutterLocalNotificationsPlugin();
-  return plugin.cancel(_alarmNotificationId(thermostatId));
+Future<void> cancelAlarmNotification(String thermostatId) async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    await plugin.cancel(_alarmNotificationId(thermostatId));
+  } catch (_) {
+    // Ignore errors when notifications are not initialized (e.g., in tests).
+  }
 }
 
 int _alarmNotificationId(String thermostatId) {
