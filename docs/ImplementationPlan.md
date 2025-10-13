@@ -11,9 +11,9 @@ This plan translates the executable specification into a concrete Flutter applic
    - Entities (Thermostat, Reading, AlertConfig, ThermostatState) and use-cases (AddThermostat, EditThermostat, RemoveThermostat, FetchCurrent, BuildHistory, EvaluateRange, ScheduleNext, RaiseAlarm, AcknowledgeAlarm).
    - Validation rules, hysteresis logic, rate limiting, and scheduler math. Depends only on abstractions: Clock, Net, Audio, Scheduler, Store.
 3. Data
-   - Repositories and data sources:
-     - dio HTTP client with retries/backoff/jitter and ETag handling.
-     - GitHub Gist API wrapper for revisions/history. Central parser using the spec regex.
+- Repositories and data sources:
+  - dio HTTP client with retries/backoff/jitter and ETag handling.
+  - GitHub Gist API wrapper for current readings and revisions/history (by Gist ID). Central parser using the spec regex.
      - drift (SQLite) for persistence with indexes and migrations.
    - DTOs/mappers to domain entities; ETag cache per thermostat.
 4. System Integration (Flutter-first)
@@ -41,7 +41,7 @@ Dependency direction: Presentation -> Domain -> Data. System interacts with Doma
 Aligns with Spec Section 5. Field names are explicit and indexed where needed.
 
 - thermostats
-  - id (TEXT UUID PK), name (TEXT), rawUrl (TEXT),
+  - id (TEXT UUID PK), name (TEXT), gistId (TEXT),
   - minC (REAL), maxC (REAL), hysteresisEnabled (BOOL),
   - monitoringEnabled (BOOL), createdAt (INTEGER TS), updatedAt (INTEGER TS)
 
@@ -82,22 +82,22 @@ Indexes: readings(thermostatId, observedAt DESC), thermostats(name), event_log(t
 ## 5. Networking & Caching Approach
 
 - HTTP via dio with policies:
-  - Headers: Accept: text/plain for raw; If-None-Match when ETag available.
+  - Current: `GET https://api.github.com/gists/{gistId}` with `Accept: application/vnd.github+json` and `User-Agent`; if `truncated` or `content` missing, fetch `raw_url` with `Accept: text/plain`.
   - Timeouts: connect 5s, read 10s. Retries: up to 2 with jittered exponential backoff.
-  - ETag cache per thermostat; handle 304 to avoid quota usage.
+  - ETag cache per thermostat; handle 304 where applicable.
 - Parsing: Single tolerant regex from spec; first match only; device receive time for current; revision commit timestamp for history.
 - History:
-  - GET /gists/{gist_id}/commits to list revisions, then fetch raw per sha.
+  - `GET /gists/{gistId}/commits` to list revisions; per revision, fetch target file `raw_url` and parse.
   - Pagination until requested range is filled; progressive rendering as data arrives.
 - Offline:
   - Cache last values in DB; surface "Updated X min ago".
-  - Status-specific error handling (network, parse, auth). Banner guidance for rate limiting.
+  - Status-specific error handling (network, parse, auth, rate-limit). Banner guidance for rate limiting.
 
 ## 6. UI & Navigation
 
 - Bottom navigation with two tabs: Thermostats and Settings.
 - Thermostats list: cards show name, colored status (green OK, red Out of Range, yellow Error), last value with relative time, range pill, monitor toggle, overflow (Edit, View history, Remove); FAB to add.
-- Add/Edit thermostat: fields per spec; Test & Save performs live fetch/parse with inline errors; invalid save is blocked.
+- Add/Edit thermostat: fields per spec; Test & Save performs live fetch/parse via Gist ID with inline errors; invalid save is blocked.
 - Details: current panel (big value, range, last updated, Snooze/Silence); graph panel (1h/1d/1w/1m/1y/All) with pan/zoom/tooltips; diagnostics (last status + last 10 log lines).
 - Settings: poll interval slider, exact alarms toggle with rationale, pause-all durations; choose sound (system picker), vibrate, test alarm; rebuild history, export CSV; About.
 
