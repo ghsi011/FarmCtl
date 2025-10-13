@@ -1109,8 +1109,9 @@ class $ThermostatStateEntriesTable extends ThermostatStateEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _statusMessageMeta =
-      const VerificationMeta('statusMessage');
+  static const VerificationMeta _statusMessageMeta = const VerificationMeta(
+    'statusMessage',
+  );
   @override
   late final GeneratedColumn<String> statusMessage = GeneratedColumn<String>(
     'status_message',
@@ -1391,8 +1392,9 @@ class ThermostatStateEntry extends DataClass
         ? lastFetchedAt.value
         : this.lastFetchedAt,
     etag: etag.present ? etag.value : this.etag,
-    statusMessage:
-        statusMessage.present ? statusMessage.value : this.statusMessage,
+    statusMessage: statusMessage.present
+        ? statusMessage.value
+        : this.statusMessage,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );

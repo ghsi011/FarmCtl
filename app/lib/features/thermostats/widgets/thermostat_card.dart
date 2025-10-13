@@ -130,8 +130,7 @@ class _LastSeenStatus extends StatelessWidget {
         final base = value != null
             ? '${value.toStringAsFixed(1)}°C • Updated $relative'
             : 'Updated $relative';
-        statusText =
-            message != null ? '$message • Updated $relative' : base;
+        statusText = message != null ? '$message • Updated $relative' : base;
         break;
       case ThermostatReadingStatus.networkError:
         final base = message ?? 'Last attempt failed: network error';

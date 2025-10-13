@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -11,12 +10,14 @@ import '../../features/thermostats/models/thermostat_state.dart';
 const String thermostatMonitorTask = 'thermostat_monitor_task';
 const String thermostatMonitorUniqueName = 'thermostat_monitor_periodic';
 
-const AndroidNotificationChannel _monitoringChannel = AndroidNotificationChannel(
-  'farmctl_monitoring',
-  'Thermostat monitoring',
-  description: 'Shows when FarmCtl is checking thermostats in the background.',
-  importance: Importance.low,
-);
+const AndroidNotificationChannel _monitoringChannel =
+    AndroidNotificationChannel(
+      'farmctl_monitoring',
+      'Thermostat monitoring',
+      description:
+          'Shows when FarmCtl is checking thermostats in the background.',
+      importance: Importance.low,
+    );
 
 const int _monitoringNotificationId = 1001;
 const Duration _minimumFrequency = Duration(minutes: 15);
@@ -38,7 +39,7 @@ Future<void> initializeBackgroundMonitoring({
     thermostatMonitorTask,
     frequency: effectiveFrequency,
     existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
-    constraints: const Constraints(networkType: NetworkType.connected),
+    constraints: Constraints(networkType: NetworkType.connected),
   );
 }
 
@@ -78,13 +79,15 @@ class ThermostatMonitorRunner {
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
     DateTime Function()? clock,
-  })  : _repository = repository,
-        _network = network,
-        _clock = clock ?? () => DateTime.now().toUtc();
+  }) : _repository = repository,
+       _network = network,
+       _clock = clock ?? _defaultClock;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
   final DateTime Function() _clock;
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
 
   Future<void> run() async {
     final thermostats = await _repository.fetchThermostats();
@@ -137,7 +140,8 @@ Future<void> _initializeNotifications(
   await plugin.initialize(initializationSettings);
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   await androidPlugin?.createNotificationChannel(_monitoringChannel);
 }
 

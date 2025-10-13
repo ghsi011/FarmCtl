@@ -127,8 +127,9 @@ class ThermostatRepository {
             ? drift.Value(fetchedAt)
             : const drift.Value.absent(),
         etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
-        statusMessage:
-            message != null ? drift.Value(message) : const drift.Value.absent(),
+        statusMessage: message != null
+            ? drift.Value(message)
+            : const drift.Value.absent(),
         createdAt: const drift.Value.absent(),
         updatedAt: drift.Value(now),
       ),

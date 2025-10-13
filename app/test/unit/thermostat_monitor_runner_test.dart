@@ -11,7 +11,7 @@ import 'package:farmctl/features/thermostats/models/thermostat_state.dart';
 class _FakeNetwork implements ThermostatNetworkDataSource {
   _FakeNetwork(this._result);
 
-  ThermostatFetchSuccess? _result;
+  final ThermostatFetchSuccess? _result;
   ThermostatFetchException? _exception;
 
   @override
