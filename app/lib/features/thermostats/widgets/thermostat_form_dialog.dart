@@ -179,15 +179,15 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
               TextFormField(
                 controller: _urlController,
                 decoration: InputDecoration(
-                  labelText: 'Raw URL',
-                  helperText: 'Use the HTTPS raw link to your Gist.',
+                  labelText: 'Gist ID',
+                  helperText: 'Enter the GitHub Gist ID (hex).',
                   errorText: _fieldErrors[ThermostatValidationField.rawUrl],
                 ),
-                keyboardType: TextInputType.url,
+                keyboardType: TextInputType.text,
                 enabled: !_isSubmitting,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Enter a raw URL.';
+                    return 'Enter a Gist ID.';
                   }
                   return null;
                 },
