@@ -16,6 +16,8 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   ThermostatHttpClient({Dio? dio}) : _dio = dio ?? _createDio();
 
   final Dio _dio;
+  static const int _maxHistoryCommits =
+      60; // cap history requests to reduce API load
 
   static Dio _createDio() {
     final dio = Dio(
@@ -23,6 +25,18 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         connectTimeout: const Duration(seconds: 5),
         receiveTimeout: const Duration(seconds: 10),
         sendTimeout: const Duration(seconds: 10),
+        headers: () {
+          final headers = <String, dynamic>{
+            HttpHeaders.userAgentHeader: 'farmctl/0.1',
+          };
+          final token =
+              Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+              Platform.environment['GITHUB_TOKEN'];
+          if (token != null && token.isNotEmpty) {
+            headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+          }
+          return headers;
+        }(),
       ),
     );
     dio.interceptors.add(
@@ -99,9 +113,12 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           responseType: ResponseType.plain,
           headers: const {
             HttpHeaders.acceptHeader: 'application/vnd.github+json',
-            HttpHeaders.userAgentHeader: 'farmctl/0.1',
           },
         ),
+        queryParameters: {
+          // Limit the number of commits we fetch to avoid excessive API calls
+          'per_page': _maxHistoryCommits,
+        },
       );
 
       final statusCode = response.statusCode ?? 0;
@@ -117,7 +134,11 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       final decoded = jsonDecode(raw) as List<dynamic>;
       final samples = <ThermostatHistorySample>[];
 
+      var processed = 0;
       for (final entry in decoded) {
+        if (processed >= _maxHistoryCommits) {
+          break;
+        }
         if (entry is! Map<String, dynamic>) {
           continue;
         }
@@ -145,6 +166,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
             observedAt: observedAt,
           ),
         );
+        processed += 1;
       }
 
       samples.sort((a, b) => a.observedAt.compareTo(b.observedAt));
