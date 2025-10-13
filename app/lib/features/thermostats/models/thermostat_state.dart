@@ -30,11 +30,11 @@ class ThermostatState {
       thermostatId: entry.thermostatId,
       status: ThermostatReadingStatusX.fromName(entry.lastStatus),
       lastValueC: entry.lastValueC,
-      lastFetchedAt: entry.lastFetchedAt,
+      lastFetchedAt: entry.lastFetchedAt?.toUtc(),
       etag: entry.etag,
       statusMessage: entry.statusMessage,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
+      createdAt: entry.createdAt.toUtc(),
+      updatedAt: entry.updatedAt.toUtc(),
     );
   }
 
