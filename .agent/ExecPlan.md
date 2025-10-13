@@ -75,6 +75,8 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ✅ `[2025-10-12 18:10Z]` Set Android targets minSdk 26, targetSdk 34; enable core library desugaring.
 - ✅ `[2025-10-12 19:00Z]` Update documentation to reflect Flutter‑first approach and Gate A.
 - ✅ `[2025-10-13 14:00Z]` Implement Drift schema (thermostats, alert_config) and repositories; wire validation; CRUD UI integrated.
+- ✅ `[2025-10-13 20:00Z]` Implement background monitoring worker scaffold and unit tests; wire initial app entry.
+- ✅ `[2025-10-13 20:10Z]` Normalize thermostat state timestamps to UTC for consistency across layers.
 - ☐ `[2025-10-14 16:00Z]` Implement HTTP client (timeouts/retries/headers) and Test & Save on add/edit.
 - ☐ `[2025-10-15 16:00Z]` Background periodic checks with Foreground execution; diagnostics log.
 - ☐ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
@@ -87,6 +89,8 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - Adopted Flutter‑first plan with Milestone Gate A; delayed any native work until after reliability validation.
 - Standardized to Celsius; removed Fahrenheit references across parsing/tests/UI.
 - Added Drift persistence for thermostats and alert config; integrated CRUD with validation and wired initial widget tests.
+- Added background monitoring scaffold using WorkManager with entrypoint wiring and initial tests.
+- Normalized thermostat timestamps to UTC to avoid device/timezone skew and simplify comparisons.
 
 ---
 
@@ -103,6 +107,7 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - `[2025-10-12]` Build toolchain — Enable core library desugaring to satisfy dependencies; impact: unblocked builds.
 - `[2025-10-13]` Persistence technology — Adopt Drift for typed schema and stream queries; impact: simpler migrations and reactive UI wiring.
 - `[2025-10-13]` IDs — Use UUIDs for thermostats; impact: future‑proofing for potential sync and uniqueness guarantees.
+- `[2025-10-13]` Time semantics — Normalize all stored/processed thermostat timestamps to UTC; impact: consistent comparisons, predictable testing, easier cross‑device behavior.
 
 ---
 
