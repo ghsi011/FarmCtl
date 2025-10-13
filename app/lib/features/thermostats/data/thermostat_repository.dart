@@ -245,10 +245,50 @@ class ThermostatRepository {
         .toList();
 
     await _database.transaction(() async {
-      await _database.deleteTemperatureReadingsByThermostat(thermostatId);
       if (rows.isNotEmpty) {
         await _database.insertTemperatureReadings(rows);
       }
     });
+  }
+
+  Future<void> upsertHistory({
+    required String thermostatId,
+    required Iterable<TemperatureSample> samples,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final rows = samples
+        .map(
+          (sample) => TemperatureReadingsCompanion(
+            id: drift.Value(sample.id),
+            thermostatId: drift.Value(sample.thermostatId),
+            source: drift.Value(sample.source),
+            valueC: drift.Value(sample.valueC),
+            observedAt: drift.Value(sample.observedAt),
+            sourceId: sample.sourceId != null
+                ? drift.Value(sample.sourceId)
+                : const drift.Value.absent(),
+            createdAt: drift.Value(now),
+            updatedAt: drift.Value(now),
+          ),
+        )
+        .toList();
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    await _database.insertTemperatureReadings(rows);
+  }
+
+  Future<DateTime?> getNewestReadingTime(String thermostatId) {
+    return _database.getNewestReadingTime(thermostatId);
+  }
+
+  Future<DateTime?> getOldestReadingTime(String thermostatId) {
+    return _database.getOldestReadingTime(thermostatId);
+  }
+
+  Future<Set<String>> listKnownRevisionIds(String thermostatId) {
+    return _database.listKnownRevisionIds(thermostatId);
   }
 }

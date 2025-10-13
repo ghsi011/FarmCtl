@@ -280,6 +280,43 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     });
   }
 
+  Future<DateTime?> getNewestReadingTime(String thermostatId) async {
+    final row =
+        await (select(temperatureReadings)
+              ..where((tbl) => tbl.thermostatId.equals(thermostatId))
+              ..orderBy([(tbl) => OrderingTerm.desc(tbl.observedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return row?.observedAt;
+  }
+
+  Future<DateTime?> getOldestReadingTime(String thermostatId) async {
+    final row =
+        await (select(temperatureReadings)
+              ..where((tbl) => tbl.thermostatId.equals(thermostatId))
+              ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return row?.observedAt;
+  }
+
+  Future<Set<String>> listKnownRevisionIds(String thermostatId) async {
+    final rows =
+        await (select(temperatureReadings)
+              ..where((tbl) => tbl.thermostatId.equals(thermostatId))
+              ..where((tbl) => tbl.source.equals('revision'))
+              ..orderBy([(tbl) => OrderingTerm.desc(tbl.observedAt)]))
+            .get();
+    final result = <String>{};
+    for (final row in rows) {
+      final id = row.sourceId;
+      if (id != null && id.isNotEmpty) {
+        result.add(id);
+      }
+    }
+    return result;
+  }
+
   Stream<List<TemperatureReading>> watchTemperatureReadings(
     String thermostatId, {
     DateTime? since,

@@ -16,6 +16,8 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
   Object? _otherError;
   List<ThermostatHistorySample> history = const [];
   ThermostatFetchException? historyException;
+  List<GistCommit> commits = const [];
+  Map<String, double> revisionValues = const {};
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
@@ -39,6 +41,20 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
       throw historyException!;
     }
     return history;
+  }
+
+  @override
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  }) async {
+    return commits;
+  }
+
+  @override
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
+    return revisionValues[revisionId];
   }
 }
 
@@ -280,18 +296,11 @@ void main() {
       ),
     );
 
-    network.history = [
-      ThermostatHistorySample(
-        revisionId: 'rev1',
-        valueC: 11.5,
-        observedAt: DateTime.utc(2025, 1, 1, 12),
-      ),
-      ThermostatHistorySample(
-        revisionId: 'rev2',
-        valueC: 12.0,
-        observedAt: DateTime.utc(2025, 1, 1, 13),
-      ),
+    network.commits = [
+      GistCommit(revisionId: 'rev1', observedAt: DateTime.utc(2025, 1, 1, 12)),
+      GistCommit(revisionId: 'rev2', observedAt: DateTime.utc(2025, 1, 1, 13)),
     ];
+    network.revisionValues = const {'rev1': 11.5, 'rev2': 12.0};
 
     await service.refreshHistory(thermostat.id);
 

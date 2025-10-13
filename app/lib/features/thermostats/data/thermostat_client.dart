@@ -10,6 +10,12 @@ import '../models/thermostat_state.dart';
 abstract class ThermostatNetworkDataSource {
   Future<ThermostatFetchSuccess> fetchCurrent(String gistId);
   Future<List<ThermostatHistorySample>> fetchHistory(String gistId);
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  });
+  Future<double?> fetchRevisionValue(String gistId, String revisionId);
 }
 
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
@@ -188,6 +194,80 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     }
   }
 
+  @override
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  }) async {
+    try {
+      final input = gistId.trim();
+      if (!_looksLikeGistId(input)) {
+        throw ThermostatFetchException(
+          status: ThermostatReadingStatus.parseError,
+          message: 'Invalid Gist ID.',
+        );
+      }
+
+      final response = await _dio.get<String>(
+        'https://api.github.com/gists/$input/commits',
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: const {
+            HttpHeaders.acceptHeader: 'application/vnd.github+json',
+          },
+        ),
+        queryParameters: {'page': page, 'per_page': perPage},
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode != 200) {
+        throw ThermostatFetchException(
+          status: ThermostatReadingStatus.httpError,
+          statusCode: statusCode,
+          message: 'Gist commits API failed with status $statusCode.',
+        );
+      }
+
+      final raw = response.data ?? '[]';
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final commits = <GistCommit>[];
+      for (final entry in decoded) {
+        if (entry is! Map<String, dynamic>) continue;
+        final revisionId = entry['version'] as String?;
+        final committedAtRaw = entry['committed_at'] as String?;
+        if (revisionId == null || committedAtRaw == null) continue;
+        DateTime observedAt;
+        try {
+          observedAt = DateTime.parse(committedAtRaw).toUtc();
+        } catch (_) {
+          continue;
+        }
+        commits.add(GistCommit(revisionId: revisionId, observedAt: observedAt));
+      }
+      return commits;
+    } on ThermostatFetchException {
+      rethrow;
+    } on DioException catch (error) {
+      throw ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'Failed to fetch Gist commit list.',
+        cause: error,
+      );
+    } catch (error) {
+      throw ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'Failed to load commit list from Gist.',
+        cause: error,
+      );
+    }
+  }
+
+  @override
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) {
+    return _fetchRevisionValue(gistId, revisionId);
+  }
+
   bool _looksLikeGistId(String input) {
     final re = RegExp(r'^[0-9a-fA-F]{32,40}$');
     return re.hasMatch(input);
@@ -359,4 +439,11 @@ class _SnapshotResult {
 
   final double value;
   final String? etag;
+}
+
+class GistCommit {
+  const GistCommit({required this.revisionId, required this.observedAt});
+
+  final String revisionId;
+  final DateTime observedAt;
 }

@@ -14,6 +14,7 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
 
   ThermostatFetchSuccess? _result;
   ThermostatFetchException? _exception;
+  List<GistCommit> commits = const [];
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
@@ -30,6 +31,20 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
   @override
   Future<List<ThermostatHistorySample>> fetchHistory(String gistId) async {
     return const [];
+  }
+
+  @override
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  }) async {
+    return commits;
+  }
+
+  @override
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
+    return null;
   }
 }
 

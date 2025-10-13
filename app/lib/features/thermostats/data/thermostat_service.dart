@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
@@ -148,19 +149,100 @@ class ThermostatService {
       throw StateError('Thermostat not found for id $thermostatId');
     }
 
-    final revisions = await _network.fetchHistory(thermostat.rawUrl.trim());
-    final samples = revisions
-        .map(
-          (revision) => TemperatureSample.revision(
-            thermostatId: thermostatId,
-            revisionId: revision.revisionId,
-            valueC: revision.valueC,
-            observedAt: revision.observedAt,
-          ),
-        )
-        .toList();
+    final gistId = thermostat.rawUrl.trim();
+    final now = DateTime.now().toUtc();
+    final sevenDaysAgo = now.subtract(const Duration(days: 7));
+    final oneYearAgo = now.subtract(const Duration(days: 365));
 
-    await _repository.replaceHistory(
+    final newestLocal = await _repository.getNewestReadingTime(thermostatId);
+    final oldestLocal = await _repository.getOldestReadingTime(thermostatId);
+    final knownRevisionIds = await _repository.listKnownRevisionIds(
+      thermostatId,
+    );
+
+    final hasToken =
+        (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+            Platform.environment['GITHUB_TOKEN']) !=
+        null;
+    final perRunBudget = hasToken ? 200 : 15;
+    final interRequestDelay = hasToken
+        ? Duration.zero
+        : const Duration(milliseconds: 350);
+
+    // Page through commits, newest first
+    var page = 1;
+    const perPage = 100;
+    final selected = <GistCommit>[];
+    while (selected.length < perRunBudget) {
+      final commits = await _network.listCommits(
+        gistId,
+        page: page,
+        perPage: perPage,
+      );
+      if (commits.isEmpty) {
+        break;
+      }
+
+      for (final commit in commits) {
+        if (selected.length >= perRunBudget) break;
+        final rev = commit.revisionId;
+        final t = commit.observedAt;
+        if (knownRevisionIds.contains(rev)) {
+          // Already cached
+          continue;
+        }
+
+        // Sampling based on age
+        final int stride;
+        if (t.isAfter(sevenDaysAgo)) {
+          stride = 10; // ~1 in 10 within last 7 days
+        } else if (t.isAfter(oneYearAgo)) {
+          stride = 60; // ~1 in 60 up to a year
+        } else {
+          stride = 600; // older than a year
+        }
+
+        // Use a simple hash gate for sampling without state
+        final hashGate = (rev.hashCode & 0x7fffffff) % stride == 0;
+
+        // Always include commits newer than the newest local reading
+        final isNewerThanLocal = newestLocal == null || t.isAfter(newestLocal);
+        // Backfill older than oldest local reading with sampling
+        final isOlderThanLocal = oldestLocal == null || t.isBefore(oldestLocal);
+
+        if (isNewerThanLocal || (isOlderThanLocal && hashGate)) {
+          selected.add(commit);
+        }
+      }
+
+      if (commits.length < perPage) {
+        break; // no more pages
+      }
+      page += 1;
+    }
+
+    final samples = <TemperatureSample>[];
+    for (final commit in selected) {
+      if (!hasToken && interRequestDelay > Duration.zero) {
+        await Future<void>.delayed(interRequestDelay);
+      }
+      final value = await _network.fetchRevisionValue(
+        gistId,
+        commit.revisionId,
+      );
+      if (value == null) continue;
+      samples.add(
+        TemperatureSample.revision(
+          thermostatId: thermostatId,
+          revisionId: commit.revisionId,
+          valueC: value,
+          observedAt: commit.observedAt,
+        ),
+      );
+      if (samples.length >= perRunBudget) break;
+    }
+
+    await _repository.upsertHistory(
       thermostatId: thermostatId,
       samples: samples,
     );
