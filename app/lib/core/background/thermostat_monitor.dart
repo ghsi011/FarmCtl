@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -47,6 +48,7 @@ Future<void> initializeBackgroundMonitoring({
 void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     WidgetsFlutterBinding.ensureInitialized();
+    ui.DartPluginRegistrant.ensureInitialized();
 
     final notifications = FlutterLocalNotificationsPlugin();
     await _initializeNotifications(notifications);
