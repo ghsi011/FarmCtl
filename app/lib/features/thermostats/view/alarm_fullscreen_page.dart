@@ -15,19 +15,22 @@ class AlarmFullScreenPage extends ConsumerWidget {
     final summaryAsync = ref.watch(thermostatSummaryProvider(thermostatId));
 
     final colorScheme = Theme.of(context).colorScheme;
+    final backgroundColor = colorScheme.surfaceContainerHighest;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: backgroundColor,
       body: SafeArea(
-        child: Container(
-          width: double.infinity,
+        child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                colorScheme.surface,
-                colorScheme.surface.withValues(alpha: 0.9),
+                backgroundColor,
+                Color.alphaBlend(
+                  colorScheme.primary.withValues(alpha: 0.05),
+                  backgroundColor,
+                ),
               ],
             ),
           ),
@@ -36,22 +39,24 @@ class AlarmFullScreenPage extends ConsumerWidget {
               if (summary == null) {
                 return const _MissingThermostat();
               }
-            final thermostat = summary.thermostat;
-            final state = summary.state;
-            return _AlarmContent(
-              thermostatId: thermostat.id,
-              thermostatName: thermostat.name,
-              currentValue: state?.lastValueC,
-              minC: thermostat.minC,
-              maxC: thermostat.maxC,
-              status: state?.status,
-              statusMessage: state?.statusMessage,
-              snoozedUntil: state?.snoozedUntil,
-              silenceUntilOk: state?.silenceUntilOk ?? false,
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) => _AlarmError(error: error),
+
+              final thermostat = summary.thermostat;
+              final state = summary.state;
+              return _AlarmContent(
+                thermostatId: thermostat.id,
+                thermostatName: thermostat.name,
+                currentValue: state?.lastValueC,
+                minC: thermostat.minC,
+                maxC: thermostat.maxC,
+                status: state?.status,
+                statusMessage: state?.statusMessage,
+                snoozedUntil: state?.snoozedUntil,
+                silenceUntilOk: state?.silenceUntilOk ?? false,
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stackTrace) => _AlarmError(error: error),
+          ),
         ),
       ),
     );
@@ -288,9 +293,7 @@ class _MissingThermostat extends StatelessWidget {
     return Center(
       child: Text(
         'Thermostat not found.',
-        style: textTheme.titleMedium?.copyWith(
-          color: colorScheme.onSurface,
-        ),
+        style: textTheme.titleMedium?.copyWith(color: colorScheme.onSurface),
         textAlign: TextAlign.center,
       ),
     );
@@ -312,9 +315,7 @@ class _AlarmError extends StatelessWidget {
         child: Text(
           'Failed to load alarm details: $error',
           textAlign: TextAlign.center,
-          style: textTheme.titleMedium?.copyWith(
-            color: colorScheme.onSurface,
-          ),
+          style: textTheme.titleMedium?.copyWith(color: colorScheme.onSurface),
         ),
       ),
     );
