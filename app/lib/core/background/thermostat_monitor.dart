@@ -8,6 +8,7 @@ import 'package:workmanager/workmanager.dart';
 
 import '../../features/thermostats/data/thermostat_client.dart';
 import '../../features/thermostats/data/thermostat_database.dart';
+import '../../features/thermostats/data/thermostat_reading_utils.dart';
 import '../../features/thermostats/data/thermostat_repository.dart';
 import '../../features/thermostats/models/thermostat.dart';
 import '../../features/thermostats/models/thermostat_state.dart';
@@ -131,14 +132,17 @@ class ThermostatMonitorRunner {
         final result = await _network.fetchCurrent(thermostat.rawUrl);
         final value = result.valueC;
         final fetchedAt = result.fetchedAt;
-        final outOfRange = _isOutOfRange(
+        final outOfRange = isThermostatReadingOutOfRange(
           thermostat: thermostat,
           currentValue: value,
           previousState: previousState,
         );
         if (outOfRange) {
           final now = _clock();
-          final baseMessage = _formatOutOfRangeMessage(thermostat, value);
+          final baseMessage = formatOutOfRangeThermostatMessage(
+            thermostat,
+            value,
+          );
           final shouldAlarm = _shouldTriggerAlarm(previousState, now);
           final clearSnooze =
               shouldAlarm && (previousState?.snoozedUntil != null);
@@ -205,33 +209,6 @@ class ThermostatMonitorRunner {
     }
   }
 
-  bool _isOutOfRange({
-    required Thermostat thermostat,
-    required double currentValue,
-    ThermostatState? previousState,
-  }) {
-    final min = thermostat.minC;
-    final max = thermostat.maxC;
-    if (!thermostat.hysteresisEnabled) {
-      return currentValue < min || currentValue > max;
-    }
-
-    final previouslyOut =
-        previousState?.status == ThermostatReadingStatus.outOfRange;
-    if (!previouslyOut) {
-      return currentValue < min || currentValue > max;
-    }
-
-    final bufferMin = min + 1.0;
-    final bufferMax = max - 1.0;
-    if (bufferMin <= bufferMax) {
-      return currentValue < bufferMin || currentValue > bufferMax;
-    }
-
-    // Range is narrower than hysteresis buffer; fall back to inclusive bounds.
-    return currentValue < min || currentValue > max;
-  }
-
   bool _shouldTriggerAlarm(ThermostatState? previousState, DateTime now) {
     if (previousState == null) {
       return true;
@@ -256,11 +233,6 @@ class ThermostatMonitorRunner {
     }
 
     return true;
-  }
-
-  String _formatOutOfRangeMessage(Thermostat thermostat, double valueC) {
-    return 'Out of range: ${valueC.toStringAsFixed(1)}°C '
-        '(${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C)';
   }
 }
 

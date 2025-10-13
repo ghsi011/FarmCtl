@@ -56,6 +56,42 @@ class ThermostatsPage extends ConsumerWidget {
     ).showSnackBar(const SnackBar(content: Text('Thermostat updated.')));
   }
 
+  Future<void> _refreshThermostat(
+    BuildContext context,
+    WidgetRef ref,
+    ThermostatSummary summary,
+  ) async {
+    final service = ref.read(thermostatServiceProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await service.refresh(summary.thermostat);
+      if (!context.mounted) {
+        return;
+      }
+      final thermostatName = summary.thermostat.name;
+      final message = '$thermostatName: ${result.message}';
+      final isError = switch (result.status) {
+        ThermostatReadingStatus.ok => false,
+        _ => true,
+      };
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to refresh ${summary.thermostat.name}: $error'),
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteThermostat(
     BuildContext context,
     WidgetRef ref,
@@ -129,6 +165,7 @@ class ThermostatsPage extends ConsumerWidget {
                 summary: summary,
                 onEdit: () => _editThermostat(context, ref, summary),
                 onDelete: () => _deleteThermostat(context, ref, summary),
+                onRefresh: () => _refreshThermostat(context, ref, summary),
               );
             },
             separatorBuilder: (context, index) => const SizedBox(height: 12),

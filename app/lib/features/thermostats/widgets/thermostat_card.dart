@@ -7,12 +7,14 @@ class ThermostatCard extends StatelessWidget {
     required this.summary,
     this.onEdit,
     this.onDelete,
+    this.onRefresh,
     super.key,
   });
 
   final ThermostatSummary summary;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +49,12 @@ class ThermostatCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onRefresh != null)
+                  IconButton(
+                    onPressed: onRefresh,
+                    tooltip: 'Refresh',
+                    icon: const Icon(Icons.refresh),
+                  ),
                 if (onEdit != null || onDelete != null)
                   PopupMenuButton<_ThermostatMenuAction>(
                     onSelected: (value) {
