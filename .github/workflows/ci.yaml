@@ -25,6 +25,10 @@ jobs:
         run: flutter pub get
         working-directory: app
 
+      - name: Generate code (build_runner)
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+        working-directory: app
+
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
         working-directory: app

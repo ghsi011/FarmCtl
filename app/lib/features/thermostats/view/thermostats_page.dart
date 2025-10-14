@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_form_dialog.dart';
+import '../../../core/router/app_router.dart';
 
 class ThermostatsPage extends ConsumerWidget {
   const ThermostatsPage({super.key});
@@ -166,6 +168,10 @@ class ThermostatsPage extends ConsumerWidget {
                 onEdit: () => _editThermostat(context, ref, summary),
                 onDelete: () => _deleteThermostat(context, ref, summary),
                 onRefresh: () => _refreshThermostat(context, ref, summary),
+                onTap: () => context.pushNamed(
+                  ThermostatDetailRoute.name,
+                  pathParameters: {'id': summary.thermostat.id},
+                ),
               );
             },
             separatorBuilder: (context, index) => const SizedBox(height: 12),

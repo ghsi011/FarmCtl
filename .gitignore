@@ -2,3 +2,34 @@
 **/.dart_tool/
 **/build/
 **/generated_plugin_**
+
+# Flutter/Dart
+.dart_tool/
+.packages
+pubspec.lock
+**/flutter_export_environment.sh
+**/generated_plugin_registrant.*
+**/generated_plugins.cmake
+
+# Flutter build outputs
+build/
+**/flutter_assets/
+**/native_assets/
+
+# Platform builds (auto-generated)
+android/.gradle/
+android/build/
+ios/Flutter/Flutter.podspec
+ios/Pods/
+ios/Podfile.lock
+macos/Pods/
+macos/Podfile.lock
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# IDE/Workspace
+.idea/
+.vscode/
+
+# Drift generated (if any outside committed g.darts)
+**/*.g.dart

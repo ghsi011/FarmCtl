@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_repository.dart';
+import 'package:farmctl/features/thermostats/models/temperature_sample.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
 import 'package:farmctl/features/thermostats/models/thermostat_state.dart';
 
@@ -71,13 +72,25 @@ void main() {
       ),
     );
 
+    await repository.replaceHistory(
+      thermostatId: thermostat.id,
+      samples: [
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'rev',
+          valueC: 10,
+          observedAt: DateTime.utc(2025, 1, 1),
+        ),
+      ],
+    );
+
     await repository.saveState(
       thermostatId: thermostat.id,
       status: ThermostatReadingStatus.ok,
       valueC: 12.3,
       fetchedAt: DateTime.utc(2025, 1, 1, 12),
       etag: 'etag',
-      message: 'Fetched 12.3°C',
+      message: 'Fetched 12.30°C',
     );
 
     await repository.delete(thermostat.id);
@@ -86,6 +99,8 @@ void main() {
     expect(stored, isEmpty);
     final state = await repository.loadState(thermostat.id);
     expect(state, isNull);
+    final history = await repository.watchHistory(thermostat.id).first;
+    expect(history, isEmpty);
   });
 
   test('create throws on invalid data', () async {
@@ -118,14 +133,14 @@ void main() {
       valueC: 9.5,
       fetchedAt: DateTime.utc(2025, 1, 2, 8),
       etag: 'tag',
-      message: 'Fetched 9.5°C',
+      message: 'Fetched 9.50°C',
     );
 
     var state = await repository.loadState(thermostat.id);
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 9.5);
-    expect(state.statusMessage, 'Fetched 9.5°C');
+    expect(state.statusMessage, 'Fetched 9.50°C');
     expect(state.snoozedUntil, isNull);
     expect(state.silenceUntilOk, isFalse);
 
@@ -185,4 +200,38 @@ void main() {
       expect(state!.snoozedUntil, isNull);
     },
   );
+
+  test('replaceHistory stores samples and sorts ascending', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'History',
+        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        minC: 1,
+        maxC: 10,
+      ),
+    );
+
+    await repository.replaceHistory(
+      thermostatId: thermostat.id,
+      samples: [
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'two',
+          valueC: 9.0,
+          observedAt: DateTime.utc(2025, 1, 1, 11),
+        ),
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'one',
+          valueC: 8.5,
+          observedAt: DateTime.utc(2025, 1, 1, 10),
+        ),
+      ],
+    );
+
+    final samples = await repository.watchHistory(thermostat.id).first;
+    expect(samples, hasLength(2));
+    expect(samples.first.valueC, 8.5);
+    expect(samples.last.sourceId, 'two');
+  });
 }

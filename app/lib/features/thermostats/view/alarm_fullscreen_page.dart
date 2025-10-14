@@ -91,7 +91,7 @@ class _AlarmContent extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final valueText = currentValue != null
-        ? '${currentValue!.toStringAsFixed(1)}°C'
+        ? '${currentValue!.toStringAsFixed(2)}°C'
         : 'Unavailable';
 
     final statusDetails = _buildStatusDetails(context, textTheme, colorScheme);
@@ -129,7 +129,7 @@ class _AlarmContent extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Target range ${minC.toStringAsFixed(1)}°C – ${maxC.toStringAsFixed(1)}°C',
+                'Target range ${minC.toStringAsFixed(2)}°C – ${maxC.toStringAsFixed(2)}°C',
                 style: textTheme.titleMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),

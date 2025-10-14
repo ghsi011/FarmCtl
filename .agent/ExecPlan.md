@@ -83,6 +83,7 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ☐ `[2025-10-15 16:00Z]` Background periodic checks with Foreground execution; diagnostics log.
 - ✅ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
 - ☐ `[2025-10-17 16:00Z]` Gate A reliability validation and decision.
+- ✅ `[2025-10-18 16:00Z]` Normalize revision history storage, add detail chart with downsampling for long ranges.
 
 ### Executive Summary (current)
 - Created supported Flutter app under `app/` with Material 3 + Riverpod and bottom navigation.

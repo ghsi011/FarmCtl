@@ -14,6 +14,7 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
 
   ThermostatFetchSuccess? _result;
   ThermostatFetchException? _exception;
+  List<GistCommit> commits = const [];
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
@@ -25,6 +26,25 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
       throw StateError('No result configured');
     }
     return result;
+  }
+
+  @override
+  Future<List<ThermostatHistorySample>> fetchHistory(String gistId) async {
+    return const [];
+  }
+
+  @override
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  }) async {
+    return commits;
+  }
+
+  @override
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
+    return null;
   }
 }
 
@@ -87,7 +107,7 @@ void main() {
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 21.5);
-    expect(state.statusMessage, 'Fetched 21.5°C');
+    expect(state.statusMessage, 'Fetched 21.50°C');
     expect(state.etag, 'etag');
     expect(alarms.triggered, isEmpty);
   });
@@ -120,7 +140,7 @@ void main() {
     final state = await repository.loadState(thermostat.id);
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.outOfRange);
-    expect(state.statusMessage, 'Out of range: 25.2°C (0.0°C – 20.0°C)');
+    expect(state.statusMessage, 'Out of range: 25.20°C (0.00°C – 20.00°C)');
     expect(state.lastAlarmAt, DateTime.utc(2025, 1, 1, 12, 16));
     expect(alarms.triggered, contains('${thermostat.id}::25.2'));
   });
@@ -211,7 +231,7 @@ void main() {
       expect(state, isNotNull);
       expect(state!.status, ThermostatReadingStatus.ok);
       expect(state.lastValueC, 19.6);
-      expect(state.statusMessage, 'Fetched 19.6°C');
+      expect(state.statusMessage, 'Fetched 19.60°C');
       expect(alarms.triggered, isEmpty);
     },
   );

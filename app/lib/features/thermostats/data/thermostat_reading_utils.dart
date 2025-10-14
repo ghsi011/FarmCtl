@@ -29,7 +29,7 @@ bool isThermostatReadingOutOfRange({
 }
 
 String formatOutOfRangeThermostatMessage(Thermostat thermostat, double valueC) {
-  return 'Out of range: ${valueC.toStringAsFixed(1)}°C '
-      '(${thermostat.minC.toStringAsFixed(1)}°C – '
-      '${thermostat.maxC.toStringAsFixed(1)}°C)';
+  return 'Out of range: ${valueC.toStringAsFixed(2)}°C '
+      '(${thermostat.minC.toStringAsFixed(2)}°C – '
+      '${thermostat.maxC.toStringAsFixed(2)}°C)';
 }

@@ -34,6 +34,7 @@ Dependency direction: Presentation -> Domain -> Data. System interacts with Doma
 - History Aggregator Module: Streams revision history with progressive loading and down-sampling for long ranges.
 - Alarm & Notification Module: Range evaluation, audible alarms, snooze/silence, exact-alarm permissions.
 - Settings & Preferences Module: Poll interval, hysteresis, pause-all, sound selection; developer log export.
+- API Access Module: Optional GitHub token management to raise rate limits (masked display, validate format, clear/remove).
 - Diagnostics Module: Central EventLog and status reporting (network/parse/auth/rate-limit).
 
 ## 3. Data Model Snapshot (Drift)
@@ -85,10 +86,11 @@ Indexes: readings(thermostatId, observedAt DESC), thermostats(name), event_log(t
   - Current: `GET https://api.github.com/gists/{gistId}` with `Accept: application/vnd.github+json` and `User-Agent`; if `truncated` or `content` missing, fetch `raw_url` with `Accept: text/plain`.
   - Timeouts: connect 5s, read 10s. Retries: up to 2 with jittered exponential backoff.
   - ETag cache per thermostat; handle 304 where applicable.
+  - Auth: If a GitHub token is configured in Settings, send `Authorization: Bearer <token>`; otherwise fall back to `FARMCTL_GITHUB_TOKEN`/`GITHUB_TOKEN` env vars when present.
 - Parsing: Single tolerant regex from spec; first match only; device receive time for current; revision commit timestamp for history.
 - History:
   - `GET /gists/{gistId}/commits` to list revisions; per revision, fetch target file `raw_url` and parse.
-  - Pagination until requested range is filled; progressive rendering as data arrives.
+  - Cap requests to a fixed number of recent commits (e.g., 60) to avoid excessive API calls; progressive rendering as data arrives.
 - Offline:
   - Cache last values in DB; surface "Updated X min ago".
   - Status-specific error handling (network, parse, auth, rate-limit). Banner guidance for rate limiting.
@@ -100,6 +102,7 @@ Indexes: readings(thermostatId, observedAt DESC), thermostats(name), event_log(t
 - Add/Edit thermostat: fields per spec; Test & Save performs live fetch/parse via Gist ID with inline errors; invalid save is blocked.
 - Details: current panel (big value, range, last updated, Snooze/Silence); graph panel (1h/1d/1w/1m/1y/All) with pan/zoom/tooltips; diagnostics (last status + last 10 log lines).
 - Settings: poll interval slider, exact alarms toggle with rationale, pause-all durations; choose sound (system picker), vibrate, test alarm; rebuild history, export CSV; About.
+  - GitHub API token (optional): masked input with paste support; validate token shape; save securely (Keychain/Keystore); show last 4 chars only; allow clear/remove; button to test rate-limit status.
 
 ## 7. Performance & Retention
 

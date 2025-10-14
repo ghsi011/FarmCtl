@@ -14,6 +14,10 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
   ThermostatFetchSuccess? _result;
   ThermostatFetchException? _exception;
   Object? _otherError;
+  List<ThermostatHistorySample> history = const [];
+  ThermostatFetchException? historyException;
+  List<GistCommit> commits = const [];
+  Map<String, double> revisionValues = const {};
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
@@ -29,6 +33,28 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
       throw StateError('No result configured');
     }
     return result;
+  }
+
+  @override
+  Future<List<ThermostatHistorySample>> fetchHistory(String gistId) async {
+    if (historyException != null) {
+      throw historyException!;
+    }
+    return history;
+  }
+
+  @override
+  Future<List<GistCommit>> listCommits(
+    String gistId, {
+    int page = 1,
+    int perPage = 100,
+  }) async {
+    return commits;
+  }
+
+  @override
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
+    return revisionValues[revisionId];
   }
 }
 
@@ -72,7 +98,7 @@ void main() {
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 14.2);
-    expect(state.statusMessage, 'Fetched 14.2°C');
+    expect(state.statusMessage, 'Fetched 14.20°C');
   });
 
   test('updateAndTest updates thermostat and state', () async {
@@ -105,7 +131,7 @@ void main() {
     final state = await repository.loadState(updated.id);
     expect(state, isNotNull);
     expect(state!.lastValueC, 9.0);
-    expect(state.statusMessage, 'Fetched 9.0°C');
+    expect(state.statusMessage, 'Fetched 9.00°C');
   });
 
   test('createAndTest rethrows fetch errors', () async {
@@ -167,7 +193,7 @@ void main() {
       final result = await service.refresh(thermostat);
 
       expect(result.status, ThermostatReadingStatus.ok);
-      expect(result.message, 'Fetched 18.4°C');
+      expect(result.message, 'Fetched 18.40°C');
       expect(result.valueC, 18.4);
 
       final state = await repository.loadState(thermostat.id);
@@ -175,7 +201,7 @@ void main() {
       expect(state!.status, ThermostatReadingStatus.ok);
       expect(state.lastValueC, 18.4);
       expect(state.lastFetchedAt, result.fetchedAt);
-      expect(state.statusMessage, 'Fetched 18.4°C');
+      expect(state.statusMessage, 'Fetched 18.40°C');
       expect(state.snoozedUntil, isNull);
       expect(state.silenceUntilOk, isFalse);
     });
@@ -192,14 +218,17 @@ void main() {
         final result = await service.refresh(thermostat);
 
         expect(result.status, ThermostatReadingStatus.outOfRange);
-        expect(result.message, 'Out of range: 25.2°C (10.0°C – 20.0°C)');
+        expect(result.message, 'Out of range: 25.20°C (10.00°C – 20.00°C)');
         expect(result.valueC, 25.2);
 
         final state = await repository.loadState(thermostat.id);
         expect(state, isNotNull);
         expect(state!.status, ThermostatReadingStatus.outOfRange);
         expect(state.lastValueC, 25.2);
-        expect(state.statusMessage, 'Out of range: 25.2°C (10.0°C – 20.0°C)');
+        expect(
+          state.statusMessage,
+          'Out of range: 25.20°C (10.00°C – 20.00°C)',
+        );
       },
     );
 
@@ -210,7 +239,7 @@ void main() {
         valueC: 15.0,
         fetchedAt: DateTime.utc(2025, 1, 3, 7),
         etag: 'etag',
-        message: 'Fetched 15.0°C',
+        message: 'Fetched 15.00°C',
       );
 
       network._exception = const ThermostatFetchException(
@@ -258,5 +287,29 @@ void main() {
         lessThan(1000),
       );
     });
+  });
+
+  test('refreshHistory persists revision samples', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'History Sensor',
+        rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        minC: 0,
+        maxC: 20,
+      ),
+    );
+
+    network.commits = [
+      GistCommit(revisionId: 'rev1', observedAt: DateTime.utc(2025, 1, 1, 12)),
+      GistCommit(revisionId: 'rev2', observedAt: DateTime.utc(2025, 1, 1, 13)),
+    ];
+    network.revisionValues = const {'rev1': 11.5, 'rev2': 12.0};
+
+    await service.refreshHistory(thermostat.id);
+
+    final samples = await repository.watchHistory(thermostat.id).first;
+    expect(samples, hasLength(2));
+    expect(samples.last.valueC, 12.0);
+    expect(samples.first.source, 'revision');
   });
 }
