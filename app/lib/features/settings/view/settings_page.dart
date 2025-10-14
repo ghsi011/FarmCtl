@@ -1,7 +1,11 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/background/thermostat_monitor.dart';
 import '../models/alert_config.dart';
@@ -16,6 +20,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  static const int _workManagerFloorMinutes = 15;
   double? _pollIntervalOverride;
 
   @override
@@ -80,6 +85,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await initializeBackgroundMonitoring(
         pollFrequency: Duration(minutes: minutes),
       );
+      final config = ref.read(alertConfigProvider).asData?.value;
+      if (config != null &&
+          !config.exactAlarmsEnabled &&
+          minutes < _workManagerFloorMinutes &&
+          mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Intervals under 15 minutes may be delayed unless exact alarms are allowed.',
+            ),
+          ),
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,16 +113,118 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _setExactAlarmsEnabled(bool value) async {
+    final repository = ref.read(alertConfigRepositoryProvider);
     try {
-      await ref
-          .read(alertConfigRepositoryProvider)
-          .setExactAlarmsEnabled(value);
+      if (value) {
+        final granted = await _ensureExactAlarmPermission();
+        if (!granted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Exact alarm permission is required to enable precise scheduling.',
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
+      await repository.setExactAlarmsEnabled(value);
+      await initializeBackgroundMonitoring();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Exact alarms enabled. Monitoring will use precise scheduling.'
+                : 'Exact alarms disabled. Monitoring falls back to flexible scheduling.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update exact alarms: $error')),
       );
     }
+  }
+
+  Future<bool> _ensureExactAlarmPermission() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return true;
+    }
+
+    var status = await Permission.scheduleExactAlarm.status;
+    if (status.isGranted) {
+      return true;
+    }
+
+    if (!mounted) {
+      return false;
+    }
+
+    final shouldRequest =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Allow exact alarms'),
+            content: const Text(
+              'FarmCtl needs the exact alarm permission to wake reliably when the device is idle.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Not now'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!shouldRequest) {
+      return false;
+    }
+
+    status = await Permission.scheduleExactAlarm.request();
+    if (status.isGranted) {
+      return true;
+    }
+
+    if (!mounted) {
+      return false;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable exact alarms'),
+        content: const Text(
+          'Open system settings and enable "Allow exact alarms" for FarmCtl to improve scheduling reliability.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          if (status.isPermanentlyDenied || status.isRestricted)
+            TextButton(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                await openAppSettings();
+                navigator.pop();
+              },
+              child: const Text('Open settings'),
+            ),
+        ],
+      ),
+    );
+
+    return false;
   }
 
   Future<void> _setVibrateEnabled(bool value) async {
@@ -132,6 +252,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _pauseFor(Duration duration) async {
     try {
       await ref.read(alertConfigRepositoryProvider).pauseFor(duration);
+      await initializeBackgroundMonitoring();
       if (!mounted) return;
       final formatted = _formatDuration(duration);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -148,6 +269,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _resumeMonitoring() async {
     try {
       await ref.read(alertConfigRepositoryProvider).clearPause();
+      await initializeBackgroundMonitoring();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
