@@ -43,6 +43,7 @@ Run the automated checks before pushing to ensure the CI workflow will pass:
 ```bash
 cd app
 flutter pub get
+flutter pub run build_runner build --delete-conflicting-outputs
 dart format .
 flutter analyze
 flutter test
@@ -52,6 +53,10 @@ flutter build apk --debug
 cd ../packages/farmctl_parsing
 dart test
 ```
+
+> **Note:** Generated Drift and Freezed code is intentionally `.gitignore`d. Run the `build_runner` command above whenever you
+> pull new changes or modify source files that rely on code generation so that `flutter analyze` and the test suite have access
+> to the necessary artifacts.
 
 The repository includes a [`.pre-commit-config.yaml`](.pre-commit-config.yaml) that formats changed Dart files and runs `flutter analyze`. After installing [`pre-commit`](https://pre-commit.com/#install), enable the hooks with `pre-commit install`.
 
