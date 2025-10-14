@@ -25,13 +25,21 @@ class ThermostatCard extends StatelessWidget {
     final textTheme = theme.textTheme;
     final thermostat = summary.thermostat;
     final state = summary.state;
+    final temperature = state?.lastValueC;
+    final hasTemperature = temperature != null;
+    final temperatureLabel = hasTemperature
+        ? '${temperature.toStringAsFixed(1)}°C'
+        : '--°C';
+    final supportingLabel = hasTemperature
+        ? 'Current temperature'
+        : 'Awaiting first reading';
 
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -43,7 +51,7 @@ class ThermostatCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(thermostat.name, style: textTheme.titleLarge),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         Text(
                           thermostat.rawUrl,
                           style: textTheme.bodyMedium?.copyWith(
@@ -86,14 +94,61 @@ class ThermostatCard extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    colors: [
+                      colorScheme.primaryContainer.withValues(alpha: 0.65),
+                      colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.85,
+                      ),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        temperatureLabel,
+                        style: textTheme.displaySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        supportingLabel,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onPrimaryContainer.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Icon(Icons.thermostat, color: colorScheme.primary),
                   const SizedBox(width: 12),
                   Text(
-                    'Range: ${thermostat.minC.toStringAsFixed(2)}°C – ${thermostat.maxC.toStringAsFixed(2)}°C',
-                    style: textTheme.bodyLarge,
+                    '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                    style: textTheme.titleMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Target range',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
