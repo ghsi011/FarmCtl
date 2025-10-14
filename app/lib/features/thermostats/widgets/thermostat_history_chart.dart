@@ -46,6 +46,29 @@ class ThermostatHistoryChart extends StatelessWidget {
         )
         .toList();
 
+    // Break into segments when there are large time gaps to avoid misleading lines
+    final gapThreshold = _gapThresholdSeconds(range);
+    final segmentedSpots = <List<FlSpot>>[];
+    var current = <FlSpot>[];
+    for (var i = 0; i < spots.length; i++) {
+      final spot = spots[i];
+      if (current.isEmpty) {
+        current.add(spot);
+      } else {
+        final prev = current.last;
+        final dx = spot.x - prev.x;
+        if (dx > gapThreshold) {
+          segmentedSpots.add(current);
+          current = <FlSpot>[spot];
+        } else {
+          current.add(spot);
+        }
+      }
+    }
+    if (current.isNotEmpty) {
+      segmentedSpots.add(current);
+    }
+
     final minY = sorted.map((s) => s.valueC).reduce(min);
     final maxY = sorted.map((s) => s.valueC).reduce(max);
     final padding = max(0.5, (maxY - minY).abs() * 0.1);
@@ -62,6 +85,7 @@ class ThermostatHistoryChart extends StatelessWidget {
           maxX: maxX == minX ? maxX + 1 : maxX,
           minY: minY - padding,
           maxY: maxY + padding,
+          clipData: const FlClipData.all(),
           titlesData: FlTitlesData(
             topTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: false),
@@ -121,19 +145,20 @@ class ThermostatHistoryChart extends StatelessWidget {
             ),
           ),
           lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              barWidth: 3,
-              color: Theme.of(context).colorScheme.primary,
-              belowBarData: BarAreaData(
-                show: true,
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.12),
+            for (final seg in segmentedSpots)
+              LineChartBarData(
+                spots: seg,
+                isCurved: false,
+                barWidth: 3,
+                color: Theme.of(context).colorScheme.primary,
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.12),
+                ),
+                dotData: const FlDotData(show: false),
               ),
-              dotData: const FlDotData(show: false),
-            ),
           ],
         ),
       ),
@@ -206,6 +231,23 @@ class ThermostatHistoryChart extends StatelessWidget {
       case ThermostatHistoryRange.year:
       case ThermostatHistoryRange.all:
         return DateFormat('MMM d, yyyy • HH:mm');
+    }
+  }
+
+  double _gapThresholdSeconds(ThermostatHistoryRange range) {
+    switch (range) {
+      case ThermostatHistoryRange.hour:
+        return 600; // 10 minutes
+      case ThermostatHistoryRange.day:
+        return 3600; // 1 hour
+      case ThermostatHistoryRange.week:
+        return 21600; // 6 hours
+      case ThermostatHistoryRange.month:
+        return 86400; // 1 day
+      case ThermostatHistoryRange.year:
+        return 604800; // 7 days
+      case ThermostatHistoryRange.all:
+        return 2592000; // 30 days
     }
   }
 }
