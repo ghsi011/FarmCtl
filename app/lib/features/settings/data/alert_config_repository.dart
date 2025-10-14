@@ -64,4 +64,10 @@ class AlertConfigRepository {
       const AlertConfigEntriesCompanion(pauseAllUntil: Value(null)),
     );
   }
+
+  Future<void> setGithubToken(String? token) async {
+    await _database.updateAlertConfig(
+      AlertConfigEntriesCompanion(githubToken: Value(token)),
+    );
+  }
 }

@@ -8,6 +8,7 @@ import '../providers/thermostat_providers.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_form_dialog.dart';
 import '../../../core/router/app_router.dart';
+import '../../settings/providers/settings_providers.dart';
 
 class ThermostatsPage extends ConsumerWidget {
   const ThermostatsPage({super.key});
@@ -16,9 +17,14 @@ class ThermostatsPage extends ConsumerWidget {
     final saved = await showDialog<Thermostat>(
       context: context,
       builder: (context) => ThermostatFormDialog(
-        onSubmit: (draft) {
+        onSubmit: (draft) async {
           final service = ref.read(thermostatServiceProvider);
-          return service.createAndTest(draft);
+          final alertRepo = ref.read(alertConfigRepositoryProvider);
+          final config = await alertRepo.loadConfig();
+          return service.createAndTest(
+            draft,
+            tokenOverride: config.githubToken,
+          );
         },
       ),
     );
@@ -42,9 +48,15 @@ class ThermostatsPage extends ConsumerWidget {
       context: context,
       builder: (context) => ThermostatFormDialog(
         initial: thermostat,
-        onSubmit: (draft) {
+        onSubmit: (draft) async {
           final service = ref.read(thermostatServiceProvider);
-          return service.updateAndTest(thermostat, draft);
+          final alertRepo = ref.read(alertConfigRepositoryProvider);
+          final config = await alertRepo.loadConfig();
+          return service.updateAndTest(
+            thermostat,
+            draft,
+            tokenOverride: config.githubToken,
+          );
         },
       ),
     );

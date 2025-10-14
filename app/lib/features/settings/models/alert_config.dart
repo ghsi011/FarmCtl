@@ -11,6 +11,7 @@ class AlertConfig {
     required this.vibrate,
     required this.volumeBoost,
     required this.pauseAllUntil,
+    required this.githubToken,
   });
 
   final Duration pollInterval;
@@ -19,6 +20,7 @@ class AlertConfig {
   final bool vibrate;
   final bool volumeBoost;
   final DateTime? pauseAllUntil;
+  final String? githubToken;
 
   factory AlertConfig.fromEntry(AlertConfigEntry entry) {
     return AlertConfig(
@@ -28,6 +30,7 @@ class AlertConfig {
       vibrate: entry.vibrate,
       volumeBoost: entry.volumeBoost,
       pauseAllUntil: entry.pauseAllUntil?.toUtc(),
+      githubToken: entry.githubToken,
     );
   }
 
@@ -53,6 +56,7 @@ class AlertConfig {
     bool? vibrate,
     bool? volumeBoost,
     DateTime? pauseAllUntil,
+    String? githubToken,
   }) {
     return AlertConfig(
       pollInterval: pollInterval ?? this.pollInterval,
@@ -61,6 +65,7 @@ class AlertConfig {
       vibrate: vibrate ?? this.vibrate,
       volumeBoost: volumeBoost ?? this.volumeBoost,
       pauseAllUntil: pauseAllUntil ?? this.pauseAllUntil,
+      githubToken: githubToken ?? this.githubToken,
     );
   }
 }

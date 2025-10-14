@@ -19,13 +19,40 @@ abstract class ThermostatNetworkDataSource {
 }
 
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
-  ThermostatHttpClient({Dio? dio}) : _dio = dio ?? _createDio();
+  ThermostatHttpClient({
+    Dio? dio,
+    String? githubToken,
+    bool allowAnonFallback = true,
+  }) : _resolvedToken =
+           githubToken ??
+           Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+           Platform.environment['GITHUB_TOKEN'],
+       _dio =
+           dio ??
+           _createDio(
+             githubToken ??
+                 Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+                 Platform.environment['GITHUB_TOKEN'],
+           ),
+       _dioNoAuth = _createDio(null),
+       _hasGithubToken = (() {
+         final token =
+             githubToken ??
+             Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+             Platform.environment['GITHUB_TOKEN'];
+         return token != null && token.isNotEmpty;
+       })(),
+       _allowAnonFallback = allowAnonFallback;
 
   final Dio _dio;
+  final Dio _dioNoAuth;
+  final String? _resolvedToken;
+  final bool _hasGithubToken;
+  final bool _allowAnonFallback;
   static const int _maxHistoryCommits =
       60; // cap history requests to reduce API load
 
-  static Dio _createDio() {
+  static Dio _createDio([String? githubToken]) {
     final dio = Dio(
       BaseOptions(
         connectTimeout: const Duration(seconds: 5),
@@ -34,12 +61,15 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         headers: () {
           final headers = <String, dynamic>{
             HttpHeaders.userAgentHeader: 'farmctl/0.1',
+            HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
           };
           final token =
+              githubToken ??
               Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
               Platform.environment['GITHUB_TOKEN'];
           if (token != null && token.isNotEmpty) {
-            headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+            headers[HttpHeaders.authorizationHeader] = 'token $token';
           }
           return headers;
         }(),
@@ -66,6 +96,9 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     );
     return dio;
   }
+
+  bool get hasGithubToken => _hasGithubToken;
+  String? get resolvedToken => _resolvedToken;
 
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String gistId) async {
@@ -117,22 +150,74 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
-          headers: const {
-            HttpHeaders.acceptHeader: 'application/vnd.github+json',
-          },
+          headers: _resolvedToken != null && _resolvedToken.isNotEmpty
+              ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
+              : null,
         ),
         queryParameters: {
           // Limit the number of commits we fetch to avoid excessive API calls
           'per_page': _maxHistoryCommits,
         },
       );
+      if (response.statusCode == 403 && _hasGithubToken && _allowAnonFallback) {
+        final anon = await _dioNoAuth.get<String>(
+          'https://api.github.com/gists/$input/commits',
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: const {
+              HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            },
+          ),
+          queryParameters: {'per_page': _maxHistoryCommits},
+        );
+        // Continue with anon response
+        final raw = anon.data ?? '[]';
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        final samples = <ThermostatHistorySample>[];
+        var processed = 0;
+        for (final entry in decoded) {
+          if (processed >= _maxHistoryCommits) break;
+          if (entry is! Map<String, dynamic>) continue;
+          final revisionId = entry['version'] as String?;
+          final committedAtRaw = entry['committed_at'] as String?;
+          if (revisionId == null || committedAtRaw == null) continue;
+          DateTime observedAt;
+          try {
+            observedAt = DateTime.parse(committedAtRaw).toUtc();
+          } catch (_) {
+            continue;
+          }
+          final value = await _fetchRevisionValue(input, revisionId);
+          if (value == null) continue;
+          samples.add(
+            ThermostatHistorySample(
+              revisionId: revisionId,
+              valueC: value,
+              observedAt: observedAt,
+            ),
+          );
+          processed += 1;
+        }
+        samples.sort((a, b) => a.observedAt.compareTo(b.observedAt));
+        return samples;
+      }
 
       final statusCode = response.statusCode ?? 0;
       if (statusCode != 200) {
+        String? reason;
+        try {
+          final data =
+              jsonDecode(response.data ?? '{}') as Map<String, dynamic>;
+          reason = data['message'] as String?;
+        } catch (_) {
+          reason = null;
+        }
         throw ThermostatFetchException(
           status: ThermostatReadingStatus.httpError,
           statusCode: statusCode,
-          message: 'Gist commits API failed with status $statusCode.',
+          message: reason != null && reason.isNotEmpty
+              ? 'Gist commits API failed: $reason (HTTP $statusCode)'
+              : 'Gist commits API failed with status $statusCode.',
         );
       }
 
@@ -213,39 +298,27 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
-          headers: const {
-            HttpHeaders.acceptHeader: 'application/vnd.github+json',
-          },
+          headers: _resolvedToken != null && _resolvedToken.isNotEmpty
+              ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
+              : null,
         ),
         queryParameters: {'page': page, 'per_page': perPage},
       );
-
-      final statusCode = response.statusCode ?? 0;
-      if (statusCode != 200) {
-        throw ThermostatFetchException(
-          status: ThermostatReadingStatus.httpError,
-          statusCode: statusCode,
-          message: 'Gist commits API failed with status $statusCode.',
+      if (response.statusCode == 403 && _hasGithubToken) {
+        final anon = await _dioNoAuth.get<String>(
+          'https://api.github.com/gists/$input/commits',
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: const {
+              HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            },
+          ),
+          queryParameters: {'page': page, 'per_page': perPage},
         );
+        return _parseCommitsList(anon);
       }
 
-      final raw = response.data ?? '[]';
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      final commits = <GistCommit>[];
-      for (final entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        final revisionId = entry['version'] as String?;
-        final committedAtRaw = entry['committed_at'] as String?;
-        if (revisionId == null || committedAtRaw == null) continue;
-        DateTime observedAt;
-        try {
-          observedAt = DateTime.parse(committedAtRaw).toUtc();
-        } catch (_) {
-          continue;
-        }
-        commits.add(GistCommit(revisionId: revisionId, observedAt: observedAt));
-      }
-      return commits;
+      return _parseCommitsList(response);
     } on ThermostatFetchException {
       rethrow;
     } on DioException catch (error) {
@@ -263,6 +336,43 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     }
   }
 
+  List<GistCommit> _parseCommitsList(Response<String> response) {
+    final statusCode = response.statusCode ?? 0;
+    if (statusCode != 200) {
+      String? reason;
+      try {
+        final data = jsonDecode(response.data ?? '{}') as Map<String, dynamic>;
+        reason = data['message'] as String?;
+      } catch (_) {
+        reason = null;
+      }
+      throw ThermostatFetchException(
+        status: ThermostatReadingStatus.httpError,
+        statusCode: statusCode,
+        message: reason != null && reason.isNotEmpty
+            ? 'Gist commits API failed: $reason (HTTP $statusCode)'
+            : 'Gist commits API failed with status $statusCode.',
+      );
+    }
+    final raw = response.data ?? '[]';
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    final commits = <GistCommit>[];
+    for (final entry in decoded) {
+      if (entry is! Map<String, dynamic>) continue;
+      final revisionId = entry['version'] as String?;
+      final committedAtRaw = entry['committed_at'] as String?;
+      if (revisionId == null || committedAtRaw == null) continue;
+      DateTime observedAt;
+      try {
+        observedAt = DateTime.parse(committedAtRaw).toUtc();
+      } catch (_) {
+        continue;
+      }
+      commits.add(GistCommit(revisionId: revisionId, observedAt: observedAt));
+    }
+    return commits;
+  }
+
   @override
   Future<double?> fetchRevisionValue(String gistId, String revisionId) {
     return _fetchRevisionValue(gistId, revisionId);
@@ -274,27 +384,53 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   }
 
   Future<_SnapshotResult> _fetchSnapshot(String url) async {
+    final authHeaders = <String, dynamic>{
+      HttpHeaders.acceptHeader: 'application/vnd.github+json',
+      HttpHeaders.userAgentHeader: 'farmctl/0.1',
+      if (_resolvedToken != null && _resolvedToken.isNotEmpty)
+        HttpHeaders.authorizationHeader: 'token $_resolvedToken',
+    };
     final response = await _dio.get<String>(
       url,
       options: Options(
         responseType: ResponseType.plain,
-        headers: const {
-          HttpHeaders.acceptHeader: 'application/vnd.github+json',
-          HttpHeaders.userAgentHeader: 'farmctl/0.1',
-        },
         validateStatus: (_) => true,
+        headers: authHeaders,
       ),
     );
+    if (response.statusCode == 403 && _hasGithubToken && _allowAnonFallback) {
+      final anon = await _dioNoAuth.get<String>(
+        url,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: const {
+            HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            HttpHeaders.userAgentHeader: 'farmctl/0.1',
+          },
+          validateStatus: (_) => true,
+        ),
+      );
+      return _parseSnapshot(anon);
+    }
     return _parseSnapshot(response);
   }
 
   Future<_SnapshotResult> _parseSnapshot(Response<String> response) async {
     final statusCode = response.statusCode ?? 0;
     if (statusCode != 200) {
+      String? reason;
+      try {
+        final data = jsonDecode(response.data ?? '{}') as Map<String, dynamic>;
+        reason = data['message'] as String?;
+      } catch (_) {
+        reason = null;
+      }
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.httpError,
         statusCode: statusCode,
-        message: 'Gist API failed with status $statusCode.',
+        message: reason != null && reason.isNotEmpty
+            ? 'Gist API failed: $reason (HTTP $statusCode)'
+            : 'Gist API failed with status $statusCode.',
       );
     }
 
@@ -371,9 +507,26 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         rawUrl,
         options: Options(
           responseType: ResponseType.plain,
-          headers: const {HttpHeaders.acceptHeader: 'text/plain'},
+          headers: {
+            HttpHeaders.acceptHeader: 'text/plain',
+            if (_resolvedToken != null && _resolvedToken.isNotEmpty)
+              HttpHeaders.authorizationHeader: 'token $_resolvedToken',
+          },
         ),
       );
+      if ((rawResp.statusCode ?? 0) == 403 && _hasGithubToken) {
+        final anon = await _dioNoAuth.get<String>(
+          rawUrl,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: const {HttpHeaders.acceptHeader: 'text/plain'},
+          ),
+        );
+        if ((anon.statusCode ?? 0) == 200) {
+          return anon.data ?? '';
+        }
+        return anon.data ?? '';
+      }
       if ((rawResp.statusCode ?? 0) != 200) {
         throw ThermostatFetchException(
           status: ThermostatReadingStatus.httpError,

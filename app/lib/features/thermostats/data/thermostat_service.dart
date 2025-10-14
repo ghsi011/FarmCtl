@@ -10,19 +10,31 @@ class ThermostatService {
   ThermostatService({
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
+    Future<String?> Function()? tokenSupplier,
   }) : _repository = repository,
-       _network = network;
+       _network = network,
+       _tokenSupplier = tokenSupplier;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
+  final Future<String?> Function()? _tokenSupplier;
 
-  Future<Thermostat> createAndTest(ThermostatDraft draft) async {
+  Future<Thermostat> createAndTest(
+    ThermostatDraft draft, {
+    String? tokenOverride,
+  }) async {
     final validation = ThermostatValidator.validate(draft);
     if (!validation.isValid) {
       throw ThermostatValidationException(validation);
     }
 
-    final result = await _network.fetchCurrent(draft.rawUrl.trim());
+    final network = tokenOverride != null && tokenOverride.isNotEmpty
+        ? ThermostatHttpClient(
+            githubToken: tokenOverride,
+            allowAnonFallback: false,
+          )
+        : _network;
+    final result = await network.fetchCurrent(draft.rawUrl.trim());
     final saved = await _repository.create(draft);
     await _repository.saveState(
       thermostatId: saved.id,
@@ -37,14 +49,21 @@ class ThermostatService {
 
   Future<Thermostat> updateAndTest(
     Thermostat existing,
-    ThermostatDraft draft,
-  ) async {
+    ThermostatDraft draft, {
+    String? tokenOverride,
+  }) async {
     final validation = ThermostatValidator.validate(draft);
     if (!validation.isValid) {
       throw ThermostatValidationException(validation);
     }
 
-    final result = await _network.fetchCurrent(draft.rawUrl.trim());
+    final network = tokenOverride != null && tokenOverride.isNotEmpty
+        ? ThermostatHttpClient(
+            githubToken: tokenOverride,
+            allowAnonFallback: false,
+          )
+        : _network;
+    final result = await network.fetchCurrent(draft.rawUrl.trim());
     final updated = await _repository.update(existing, draft);
     await _repository.saveState(
       thermostatId: updated.id,
@@ -60,7 +79,8 @@ class ThermostatService {
   Future<ThermostatRefreshResult> refresh(Thermostat thermostat) async {
     final previousState = await _repository.loadState(thermostat.id);
     try {
-      final result = await _network.fetchCurrent(thermostat.rawUrl.trim());
+      final client = await _resolveNetworkWithToken();
+      final result = await client.fetchCurrent(thermostat.rawUrl.trim());
       final value = result.valueC;
       final fetchedAt = result.fetchedAt;
       final outOfRange = isThermostatReadingOutOfRange(
@@ -160,10 +180,15 @@ class ThermostatService {
       thermostatId,
     );
 
-    final hasToken =
-        (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
-            Platform.environment['GITHUB_TOKEN']) !=
-        null;
+    bool hasToken;
+    if (_network is ThermostatHttpClient) {
+      hasToken = (_network).hasGithubToken;
+    } else {
+      hasToken =
+          (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+              Platform.environment['GITHUB_TOKEN']) !=
+          null;
+    }
     final perRunBudget = hasToken ? 200 : 15;
     final interRequestDelay = hasToken
         ? Duration.zero
@@ -174,7 +199,8 @@ class ThermostatService {
     const perPage = 100;
     final selected = <GistCommit>[];
     while (selected.length < perRunBudget) {
-      final commits = await _network.listCommits(
+      final client = await _resolveNetworkWithToken();
+      final commits = await client.listCommits(
         gistId,
         page: page,
         perPage: perPage,
@@ -226,10 +252,8 @@ class ThermostatService {
       if (!hasToken && interRequestDelay > Duration.zero) {
         await Future<void>.delayed(interRequestDelay);
       }
-      final value = await _network.fetchRevisionValue(
-        gistId,
-        commit.revisionId,
-      );
+      final client = await _resolveNetworkWithToken();
+      final value = await client.fetchRevisionValue(gistId, commit.revisionId);
       if (value == null) continue;
       samples.add(
         TemperatureSample.revision(
@@ -246,6 +270,17 @@ class ThermostatService {
       thermostatId: thermostatId,
       samples: samples,
     );
+  }
+
+  Future<ThermostatNetworkDataSource> _resolveNetworkWithToken() async {
+    if (_network is ThermostatHttpClient && (_network).hasGithubToken) {
+      return _network;
+    }
+    final token = await _tokenSupplier?.call();
+    if (token != null && token.isNotEmpty) {
+      return ThermostatHttpClient(githubToken: token);
+    }
+    return _network;
   }
 }
 

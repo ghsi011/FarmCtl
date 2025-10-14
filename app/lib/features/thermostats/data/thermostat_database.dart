@@ -75,6 +75,8 @@ class AlertConfigEntries extends Table {
   BoolColumn get volumeBoost => boolean().withDefault(const Constant(false))();
 
   DateTimeColumn get pauseAllUntil => dateTime().nullable()();
+
+  TextColumn get githubToken => text().nullable()();
 }
 
 @TableIndex(
@@ -130,7 +132,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -163,6 +165,9 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       }
       if (from < 5) {
         await m.createTable(temperatureReadings);
+      }
+      if (from < 6) {
+        await m.addColumn(alertConfigEntries, alertConfigEntries.githubToken);
       }
     },
   );
@@ -378,6 +383,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       vibrate: true,
       volumeBoost: false,
       pauseAllUntil: null,
+      githubToken: null,
     );
   }
 }

@@ -53,6 +53,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _testAlarm(config);
           },
           onExportLogs: _exportLogs,
+          onGithubTokenChanged: (token) {
+            _setGithubToken(token);
+          },
+          onTestGithubToken: _testGithubToken,
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => _ErrorContent(error: error),
@@ -261,9 +265,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ).showSnackBar(SnackBar(content: Text('Failed to export logs: $error')));
     }
   }
+
+  Future<void> _setGithubToken(String? token) async {
+    try {
+      final trimmed = token?.trim();
+      final finalToken = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+      await ref.read(alertConfigRepositoryProvider).setGithubToken(finalToken);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            finalToken == null ? 'GitHub token cleared' : 'GitHub token saved',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save GitHub token: $error')),
+      );
+    }
+  }
+
+  Future<void> _testGithubToken() async {
+    final tester = ref.read(githubTokenTesterProvider);
+    final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
+    final message = await tester.test(token: config.githubToken);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
-class _SettingsContent extends StatelessWidget {
+class _SettingsContent extends StatefulWidget {
   const _SettingsContent({
     required this.config,
     required this.pollIntervalOverride,
@@ -278,6 +313,8 @@ class _SettingsContent extends StatelessWidget {
     required this.onUseDefaultSound,
     required this.onTestAlarm,
     required this.onExportLogs,
+    required this.onGithubTokenChanged,
+    required this.onTestGithubToken,
   });
 
   final AlertConfig config;
@@ -293,6 +330,36 @@ class _SettingsContent extends StatelessWidget {
   final ValueChanged<AlertConfig> onUseDefaultSound;
   final ValueChanged<AlertConfig> onTestAlarm;
   final VoidCallback onExportLogs;
+  final ValueChanged<String?> onGithubTokenChanged;
+  final VoidCallback onTestGithubToken;
+
+  @override
+  State<_SettingsContent> createState() => _SettingsContentState();
+}
+
+class _SettingsContentState extends State<_SettingsContent> {
+  late TextEditingController _tokenController;
+  bool _tokenObscured = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tokenController = TextEditingController(text: widget.config.githubToken);
+  }
+
+  @override
+  void didUpdateWidget(_SettingsContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.config.githubToken != oldWidget.config.githubToken) {
+      _tokenController.text = widget.config.githubToken ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
+  }
 
   static const _pauseOptions = <_PauseOption>[
     _PauseOption(Duration(minutes: 15), '15 minutes'),
@@ -305,8 +372,9 @@ class _SettingsContent extends StatelessWidget {
     final theme = Theme.of(context);
     final now = DateTime.now().toUtc();
     final sliderValue =
-        pollIntervalOverride ?? config.pollInterval.inMinutes.toDouble();
-    final pauseMessage = _pauseMessage(context, config, now);
+        widget.pollIntervalOverride ??
+        widget.config.pollInterval.inMinutes.toDouble();
+    final pauseMessage = _pauseMessage(context, widget.config, now);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -330,8 +398,8 @@ class _SettingsContent extends StatelessWidget {
                       divisions: 29,
                       value: sliderValue,
                       label: '${sliderValue.round()} min',
-                      onChanged: onPollIntervalChanged,
-                      onChangeEnd: onPollIntervalChangeEnd,
+                      onChanged: widget.onPollIntervalChanged,
+                      onChangeEnd: widget.onPollIntervalChangeEnd,
                     ),
                     Text(
                       '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
@@ -339,8 +407,8 @@ class _SettingsContent extends StatelessWidget {
                     ),
                     const Divider(height: 24),
                     SwitchListTile.adaptive(
-                      value: config.exactAlarmsEnabled,
-                      onChanged: onExactAlarmsChanged,
+                      value: widget.config.exactAlarmsEnabled,
+                      onChanged: widget.onExactAlarmsChanged,
                       title: const Text('Allow exact alarms'),
                       subtitle: const Text(
                         'Improve reliability on Android 12+ by requesting '
@@ -377,7 +445,8 @@ class _SettingsContent extends StatelessWidget {
                       children: _pauseOptions
                           .map(
                             (option) => FilledButton.tonal(
-                              onPressed: () => onPauseFor(option.duration),
+                              onPressed: () =>
+                                  widget.onPauseFor(option.duration),
                               child: Text(option.label),
                             ),
                           )
@@ -387,7 +456,9 @@ class _SettingsContent extends StatelessWidget {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
-                        onPressed: config.isPaused(now) ? onResumeNow : null,
+                        onPressed: widget.config.isPaused(now)
+                            ? widget.onResumeNow
+                            : null,
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Resume now'),
                       ),
@@ -409,7 +480,7 @@ class _SettingsContent extends StatelessWidget {
                   ListTile(
                     title: const Text('Alarm sound'),
                     subtitle: Text(
-                      config.soundUri ?? 'System default alarm sound',
+                      widget.config.soundUri ?? 'System default alarm sound',
                     ),
                   ),
                   Padding(
@@ -419,26 +490,26 @@ class _SettingsContent extends StatelessWidget {
                       runSpacing: 12,
                       children: [
                         FilledButton.tonal(
-                          onPressed: () => onPickSound(config),
+                          onPressed: () => widget.onPickSound(widget.config),
                           child: const Text('Choose sound'),
                         ),
                         TextButton(
-                          onPressed: config.soundUri == null
+                          onPressed: widget.config.soundUri == null
                               ? null
-                              : () => onUseDefaultSound(config),
+                              : () => widget.onUseDefaultSound(widget.config),
                           child: const Text('Use system default'),
                         ),
                       ],
                     ),
                   ),
                   SwitchListTile.adaptive(
-                    value: config.vibrate,
-                    onChanged: onVibrateChanged,
+                    value: widget.config.vibrate,
+                    onChanged: widget.onVibrateChanged,
                     title: const Text('Vibrate on alarm'),
                   ),
                   SwitchListTile.adaptive(
-                    value: config.volumeBoost,
-                    onChanged: onVolumeBoostChanged,
+                    value: widget.config.volumeBoost,
+                    onChanged: widget.onVolumeBoostChanged,
                     title: const Text('Boost volume'),
                     subtitle: const Text(
                       'Keeps alarm volume at maximum while alarming.',
@@ -449,13 +520,97 @@ class _SettingsContent extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: FilledButton.icon(
-                        onPressed: () => onTestAlarm(config),
+                        onPressed: () => widget.onTestAlarm(widget.config),
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Test alarm'),
                       ),
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _Section(
+          title: 'API Configuration',
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'GitHub Personal Access Token',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Optional token to increase GitHub API rate limits (60 → 5,000 requests/hour).',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _tokenController,
+                      obscureText: _tokenObscured,
+                      decoration: InputDecoration(
+                        labelText: 'Personal Access Token',
+                        hintText: 'ghp_...',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                _tokenObscured
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _tokenObscured = !_tokenObscured;
+                                });
+                              },
+                              tooltip: _tokenObscured ? 'Show' : 'Hide',
+                            ),
+                            if (_tokenController.text.isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _tokenController.clear();
+                                  widget.onGithubTokenChanged(null);
+                                },
+                                tooltip: 'Clear',
+                              ),
+                          ],
+                        ),
+                      ),
+                      onSubmitted: widget.onGithubTokenChanged,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 12,
+                        children: [
+                          FilledButton(
+                            onPressed: () {
+                              widget.onGithubTokenChanged(
+                                _tokenController.text,
+                              );
+                            },
+                            child: const Text('Save Token'),
+                          ),
+                          OutlinedButton(
+                            onPressed: widget.onTestGithubToken,
+                            child: const Text('Test Token'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -471,7 +626,7 @@ class _SettingsContent extends StatelessWidget {
                   'Writes a JSON snapshot of thermostats and current state.',
                 ),
                 trailing: FilledButton(
-                  onPressed: onExportLogs,
+                  onPressed: widget.onExportLogs,
                   child: const Text('Export'),
                 ),
               ),
