@@ -342,4 +342,42 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     }
     return query.get();
   }
+
+  Stream<AlertConfigEntry> watchAlertConfig() {
+    return (select(alertConfigEntries)..limit(1)).watchSingleOrNull().map(
+      (entry) => entry ?? _defaultAlertConfig(),
+    );
+  }
+
+  Future<AlertConfigEntry> getAlertConfig() async {
+    final entry = await (select(
+      alertConfigEntries,
+    )..limit(1)).getSingleOrNull();
+    return entry ?? _defaultAlertConfig();
+  }
+
+  Future<void> updateAlertConfig(AlertConfigEntriesCompanion companion) async {
+    final existing = await (select(
+      alertConfigEntries,
+    )..limit(1)).getSingleOrNull();
+    if (existing == null) {
+      await into(alertConfigEntries).insert(companion);
+    } else {
+      await (update(
+        alertConfigEntries,
+      )..where((tbl) => tbl.id.equals(existing.id))).write(companion);
+    }
+  }
+
+  AlertConfigEntry _defaultAlertConfig() {
+    return AlertConfigEntry(
+      id: 1,
+      pollIntervalMin: 5,
+      exactAlarmsEnabled: false,
+      soundUri: null,
+      vibrate: true,
+      volumeBoost: false,
+      pauseAllUntil: null,
+    );
+  }
 }
