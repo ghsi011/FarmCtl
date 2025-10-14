@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../../features/settings/models/alert_config.dart';
 import '../../features/thermostats/data/thermostat_client.dart';
 import '../../features/thermostats/data/thermostat_database.dart';
 import '../../features/thermostats/data/thermostat_reading_utils.dart';
@@ -40,24 +44,112 @@ const int _monitoringNotificationId = 1001;
 const int _alarmNotificationBaseId = 4000;
 const Duration _minimumFrequency = Duration(minutes: 15);
 const Duration _alarmRateLimit = Duration(minutes: 5);
+const int _alarmRequestId = 5001;
+
+bool _alarmManagerInitialized = false;
+
+bool get _supportsAlarmScheduling => !kIsWeb && Platform.isAndroid;
+
+Future<void> _ensureAlarmManagerInitialized() async {
+  if (!_supportsAlarmScheduling) {
+    return;
+  }
+  if (_alarmManagerInitialized) {
+    return;
+  }
+  try {
+    final initialized = await AndroidAlarmManager.initialize();
+    if (initialized) {
+      _alarmManagerInitialized = true;
+    } else {
+      debugPrint('AndroidAlarmManager.initialize returned false');
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Failed to initialize AndroidAlarmManager: $error');
+    debugPrint('$stackTrace');
+  }
+}
+
+DateTime? _computeNextAlarmTime(AlertConfig config, DateTime nowUtc) {
+  final interval = config.pollInterval;
+  if (interval <= Duration.zero) {
+    return null;
+  }
+
+  var target = nowUtc.add(interval);
+  final pauseUntil = config.pauseAllUntil;
+  if (pauseUntil != null && pauseUntil.isAfter(target)) {
+    target = pauseUntil;
+  }
+
+  return target.toLocal();
+}
+
+Future<void> _updateAlarmSchedule(AlertConfig config, {DateTime? now}) async {
+  if (!_supportsAlarmScheduling) {
+    return;
+  }
+
+  await _ensureAlarmManagerInitialized();
+  if (!_alarmManagerInitialized) {
+    return;
+  }
+
+  final nowUtc = (now ?? DateTime.now()).toUtc();
+  final nextRun = _computeNextAlarmTime(config, nowUtc);
+  if (nextRun == null) {
+    await AndroidAlarmManager.cancel(_alarmRequestId);
+    return;
+  }
+
+  final useExact = config.exactAlarmsEnabled;
+  try {
+    await AndroidAlarmManager.oneShotAt(
+      nextRun,
+      _alarmRequestId,
+      thermostatAlarmCallback,
+      allowWhileIdle: true,
+      exact: useExact,
+      wakeup: true,
+      rescheduleOnReboot: true,
+    );
+  } catch (error, stackTrace) {
+    debugPrint(
+      'Failed to schedule ${useExact ? 'exact' : 'flexible'} alarm: $error',
+    );
+    debugPrint('$stackTrace');
+  }
+}
 
 const String _snooze5ActionId = 'alarm_snooze_5';
 const String _snooze10ActionId = 'alarm_snooze_10';
 const String _snooze30ActionId = 'alarm_snooze_30';
 const String _silenceActionId = 'alarm_silence_until_ok';
 
-Future<void> initializeBackgroundMonitoring({
-  Duration pollFrequency = const Duration(minutes: 5),
-}) async {
+Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   final notifications = FlutterLocalNotificationsPlugin();
   await _initializeNotifications(
     notifications,
     onDidReceiveNotificationResponse: _handleNotificationResponse,
   );
 
-  final effectiveFrequency = pollFrequency < _minimumFrequency
+  AlertConfig? config;
+  final database = ThermostatDatabase();
+  try {
+    final entry = await database.getAlertConfig();
+    config = AlertConfig.fromEntry(entry);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to load alert config for scheduling: $error');
+    debugPrint('$stackTrace');
+  } finally {
+    await database.close();
+  }
+
+  final configuredInterval =
+      pollFrequency ?? config?.pollInterval ?? const Duration(minutes: 5);
+  final effectiveFrequency = configuredInterval < _minimumFrequency
       ? _minimumFrequency
-      : pollFrequency;
+      : configuredInterval;
 
   await Workmanager().initialize(thermostatMonitorCallbackDispatcher);
   await Workmanager().registerPeriodicTask(
@@ -67,27 +159,47 @@ Future<void> initializeBackgroundMonitoring({
     existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     constraints: Constraints(networkType: NetworkType.connected),
   );
+
+  if (config != null) {
+    final schedulingConfig = pollFrequency != null
+        ? config.copyWith(pollInterval: pollFrequency)
+        : config;
+    await _updateAlarmSchedule(schedulingConfig);
+  }
 }
 
 @pragma('vm:entry-point')
 void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
-    WidgetsFlutterBinding.ensureInitialized();
-    ui.DartPluginRegistrant.ensureInitialized();
+    await _runMonitorTask();
+    return true;
+  });
+}
 
-    final notifications = FlutterLocalNotificationsPlugin();
-    await _initializeNotifications(notifications);
-    await _showMonitoringNotification(notifications);
+@pragma('vm:entry-point')
+Future<void> thermostatAlarmCallback() async {
+  await _runMonitorTask();
+}
 
-    final database = ThermostatDatabase();
+Future<void> _runMonitorTask() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
+
+  final notifications = FlutterLocalNotificationsPlugin();
+  await _initializeNotifications(notifications);
+  await _showMonitoringNotification(notifications);
+
+  final database = ThermostatDatabase();
+  AlertConfig? config;
+  try {
     final repository = ThermostatRepository(database);
-    // Use stored token, if any, for higher GitHub API limits during backfill
-    final config = await database.getAlertConfig();
+    final entry = await database.getAlertConfig();
+    config = AlertConfig.fromEntry(entry);
     final network = ThermostatHttpClient(githubToken: config.githubToken);
     final service = ThermostatService(
       repository: repository,
       network: network,
-      tokenSupplier: () async => config.githubToken,
+      tokenSupplier: () async => config!.githubToken,
     );
     final runner = ThermostatMonitorRunner(
       repository: repository,
@@ -95,28 +207,34 @@ void thermostatMonitorCallbackDispatcher() {
       alarmDispatcher: NotificationAlarmDispatcher(notifications),
     );
 
-    try {
+    final now = DateTime.now().toUtc();
+    if (config.isPaused(now)) {
+      debugPrint(
+        'Monitoring paused until ${config.pauseAllUntil?.toIso8601String()}',
+      );
+    } else {
       await runner.run();
-      // Opportunistically refresh history so returning to the app has recent data
       try {
         final thermostats = await repository.fetchThermostats();
         for (final summary in thermostats) {
           await service.refreshHistory(summary.thermostat.id);
         }
-      } catch (e, st) {
-        debugPrint('Background history refresh failed: $e');
-        debugPrint('$st');
+      } catch (error, stackTrace) {
+        debugPrint('Background history refresh failed: $error');
+        debugPrint('$stackTrace');
       }
-    } catch (error, stackTrace) {
-      debugPrint('Thermostat monitor failed: $error');
-      debugPrint('$stackTrace');
-    } finally {
-      await notifications.cancel(_monitoringNotificationId);
-      await database.close();
     }
+  } catch (error, stackTrace) {
+    debugPrint('Thermostat monitor failed: $error');
+    debugPrint('$stackTrace');
+  } finally {
+    await notifications.cancel(_monitoringNotificationId);
+    await database.close();
+  }
 
-    return true;
-  });
+  if (config != null) {
+    await _updateAlarmSchedule(config);
+  }
 }
 
 class ThermostatMonitorRunner {
