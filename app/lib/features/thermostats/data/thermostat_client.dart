@@ -16,6 +16,7 @@ abstract class ThermostatNetworkDataSource {
     int perPage = 100,
   });
   Future<double?> fetchRevisionValue(String gistId, String revisionId);
+  Future<String> testToken();
 }
 
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
@@ -371,6 +372,40 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       commits.add(GistCommit(revisionId: revisionId, observedAt: observedAt));
     }
     return commits;
+  }
+
+  @override
+  Future<String> testToken() async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        'https://api.github.com/rate_limit',
+        options: Options(
+          responseType: ResponseType.json,
+          headers: {
+            if (_resolvedToken != null && _resolvedToken.isNotEmpty)
+              HttpHeaders.authorizationHeader: 'token $_resolvedToken',
+          },
+        ),
+      );
+      if ((response.statusCode ?? 0) == 200) {
+        final resources = response.data?['resources'] as Map<String, dynamic>?;
+        final core = resources != null
+            ? resources['core'] as Map<String, dynamic>?
+            : null;
+        final remaining = core != null ? core['remaining'] as int? : null;
+        final limit = core != null ? core['limit'] as int? : null;
+        return 'GitHub auth OK: remaining ${remaining ?? '?'} / ${limit ?? '?'}';
+      }
+      return 'GitHub auth failed: HTTP ${response.statusCode ?? 0}';
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final msg = e.response?.data is Map<String, dynamic>
+          ? (e.response?.data as Map<String, dynamic>)['message']
+          : e.message;
+      return 'GitHub auth error${status != null ? ' ($status)' : ''}: ${msg ?? 'Unknown error'}';
+    } catch (e) {
+      return 'GitHub auth error: $e';
+    }
   }
 
   @override

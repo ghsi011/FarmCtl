@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/background/thermostat_monitor.dart';
 import '../models/alert_config.dart';
 import '../providers/settings_providers.dart';
+import '../../thermostats/data/thermostat_client.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -288,9 +289,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _testGithubToken() async {
-    final tester = ref.read(githubTokenTesterProvider);
     final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
-    final message = await tester.test(token: config.githubToken);
+    final client = ThermostatHttpClient(githubToken: config.githubToken);
+    final message = await client.testToken();
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
