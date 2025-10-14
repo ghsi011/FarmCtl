@@ -163,7 +163,10 @@ class ThermostatService {
     }
   }
 
-  Future<void> refreshHistory(String thermostatId) async {
+  Future<void> refreshHistory(
+    String thermostatId, {
+    bool prioritizeLastHour = false,
+  }) async {
     final thermostat = await _repository.findById(thermostatId);
     if (thermostat == null) {
       throw StateError('Thermostat not found for id $thermostatId');
@@ -197,6 +200,7 @@ class ThermostatService {
         : const Duration(milliseconds: 300);
 
     // Stage selection buckets
+    final focusInterval = const Duration(minutes: 5); // last 1h: 1 per 5m
     final stage1Interval = const Duration(minutes: 60); // last 24h: 1 per 60m
     final stage2Interval = const Duration(minutes: 300); // last 7d: 1 per 300m
 
@@ -232,15 +236,30 @@ class ThermostatService {
 
         bool accept = false;
         if (isNewerThanLocal) {
-          // For latest window, keep density by time buckets
-          final bucketKey = _timeBucketKey(t, stage1Interval);
+          // For latest window, keep density by time buckets. If requested,
+          // prioritize 5-minute resolution in the last hour.
+          final interval =
+              (prioritizeLastHour &&
+                  t.isAfter(now.subtract(const Duration(hours: 1))))
+              ? focusInterval
+              : stage1Interval;
+          final bucketKey = _timeBucketKey(t, interval);
           if (!pickedByBucket.containsKey(bucketKey)) {
             pickedByBucket[bucketKey] = true;
             accept = true;
           }
         } else if (isOlderThanLocal) {
+          // Stage 0: ensure ~1/5m in last hour when prioritized
+          if (prioritizeLastHour &&
+              t.isAfter(now.subtract(const Duration(hours: 1)))) {
+            final bucketKey = _timeBucketKey(t, focusInterval);
+            if (!pickedByBucket.containsKey(bucketKey)) {
+              pickedByBucket[bucketKey] = true;
+              accept = true;
+            }
+          }
           // Stage 1: ensure ~1/60m in last 24h
-          if (t.isAfter(twentyFourHoursAgo)) {
+          else if (t.isAfter(twentyFourHoursAgo)) {
             final bucketKey = _timeBucketKey(t, stage1Interval);
             if (!pickedByBucket.containsKey(bucketKey)) {
               pickedByBucket[bucketKey] = true;

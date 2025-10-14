@@ -10,6 +10,7 @@ import '../../features/thermostats/data/thermostat_client.dart';
 import '../../features/thermostats/data/thermostat_database.dart';
 import '../../features/thermostats/data/thermostat_reading_utils.dart';
 import '../../features/thermostats/data/thermostat_repository.dart';
+import '../../features/thermostats/data/thermostat_service.dart';
 import '../../features/thermostats/models/thermostat.dart';
 import '../../features/thermostats/models/thermostat_state.dart';
 import '../router/app_router.dart';
@@ -80,7 +81,14 @@ void thermostatMonitorCallbackDispatcher() {
 
     final database = ThermostatDatabase();
     final repository = ThermostatRepository(database);
-    final network = ThermostatHttpClient();
+    // Use stored token, if any, for higher GitHub API limits during backfill
+    final config = await database.getAlertConfig();
+    final network = ThermostatHttpClient(githubToken: config.githubToken);
+    final service = ThermostatService(
+      repository: repository,
+      network: network,
+      tokenSupplier: () async => config.githubToken,
+    );
     final runner = ThermostatMonitorRunner(
       repository: repository,
       network: network,
@@ -89,6 +97,16 @@ void thermostatMonitorCallbackDispatcher() {
 
     try {
       await runner.run();
+      // Opportunistically refresh history so returning to the app has recent data
+      try {
+        final thermostats = await repository.fetchThermostats();
+        for (final summary in thermostats) {
+          await service.refreshHistory(summary.thermostat.id);
+        }
+      } catch (e, st) {
+        debugPrint('Background history refresh failed: $e');
+        debugPrint('$st');
+      }
     } catch (error, stackTrace) {
       debugPrint('Thermostat monitor failed: $error');
       debugPrint('$stackTrace');
