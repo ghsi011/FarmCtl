@@ -171,6 +171,7 @@ class ThermostatService {
 
     final gistId = thermostat.rawUrl.trim();
     final now = DateTime.now().toUtc();
+    final twentyFourHoursAgo = now.subtract(const Duration(hours: 24));
     final sevenDaysAgo = now.subtract(const Duration(days: 7));
     final oneYearAgo = now.subtract(const Duration(days: 365));
 
@@ -189,15 +190,21 @@ class ThermostatService {
               Platform.environment['GITHUB_TOKEN']) !=
           null;
     }
-    final perRunBudget = hasToken ? 200 : 15;
+    // Increase budget when token present; be more aggressive for the last 24h
+    final perRunBudget = hasToken ? 400 : 20;
     final interRequestDelay = hasToken
         ? Duration.zero
-        : const Duration(milliseconds: 350);
+        : const Duration(milliseconds: 300);
+
+    // Stage selection buckets
+    final stage1Interval = const Duration(minutes: 60); // last 24h: 1 per 60m
+    final stage2Interval = const Duration(minutes: 300); // last 7d: 1 per 300m
 
     // Page through commits, newest first
     var page = 1;
     const perPage = 100;
     final selected = <GistCommit>[];
+    final pickedByBucket = <String, bool>{};
     while (selected.length < perRunBudget) {
       final client = await _resolveNetworkWithToken();
       final commits = await client.listCommits(
@@ -218,25 +225,47 @@ class ThermostatService {
           continue;
         }
 
-        // Sampling based on age
-        final int stride;
-        if (t.isAfter(sevenDaysAgo)) {
-          stride = 10; // ~1 in 10 within last 7 days
-        } else if (t.isAfter(oneYearAgo)) {
-          stride = 60; // ~1 in 60 up to a year
-        } else {
-          stride = 600; // older than a year
-        }
-
-        // Use a simple hash gate for sampling without state
-        final hashGate = (rev.hashCode & 0x7fffffff) % stride == 0;
-
-        // Always include commits newer than the newest local reading
+        // Always include commits newer than newest local reading
         final isNewerThanLocal = newestLocal == null || t.isAfter(newestLocal);
-        // Backfill older than oldest local reading with sampling
+        // Backfill older than oldest local reading
         final isOlderThanLocal = oldestLocal == null || t.isBefore(oldestLocal);
 
-        if (isNewerThanLocal || (isOlderThanLocal && hashGate)) {
+        bool accept = false;
+        if (isNewerThanLocal) {
+          // For latest window, keep density by time buckets
+          final bucketKey = _timeBucketKey(t, stage1Interval);
+          if (!pickedByBucket.containsKey(bucketKey)) {
+            pickedByBucket[bucketKey] = true;
+            accept = true;
+          }
+        } else if (isOlderThanLocal) {
+          // Stage 1: ensure ~1/60m in last 24h
+          if (t.isAfter(twentyFourHoursAgo)) {
+            final bucketKey = _timeBucketKey(t, stage1Interval);
+            if (!pickedByBucket.containsKey(bucketKey)) {
+              pickedByBucket[bucketKey] = true;
+              accept = true;
+            }
+          }
+          // Stage 2: ensure ~1/300m up to 7d
+          else if (t.isAfter(sevenDaysAgo)) {
+            final bucketKey = _timeBucketKey(t, stage2Interval);
+            if (!pickedByBucket.containsKey(bucketKey)) {
+              pickedByBucket[bucketKey] = true;
+              accept = true;
+            }
+          }
+          // Stage 3+: beyond 7d, sample lightly to build long tail
+          else if (t.isAfter(oneYearAgo)) {
+            final stride = 60; // ~1 in 60
+            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+          } else {
+            final stride = 600; // very sparse for >1y
+            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+          }
+        }
+
+        if (accept) {
           selected.add(commit);
         }
       }
@@ -270,6 +299,12 @@ class ThermostatService {
       thermostatId: thermostatId,
       samples: samples,
     );
+  }
+
+  String _timeBucketKey(DateTime t, Duration interval) {
+    final seconds = t.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final bucket = seconds ~/ interval.inSeconds;
+    return '${interval.inSeconds}_$bucket';
   }
 
   Future<ThermostatNetworkDataSource> _resolveNetworkWithToken() async {

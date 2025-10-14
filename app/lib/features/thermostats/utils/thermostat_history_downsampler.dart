@@ -1,4 +1,4 @@
-import 'dart:math';
+// no imports needed
 
 import '../models/history_range.dart';
 import '../models/temperature_sample.dart';
@@ -17,15 +17,9 @@ class ThermostatHistoryDownsampler {
     final sorted = [...samples]
       ..sort((a, b) => a.observedAt.compareTo(b.observedAt));
 
-    final target = _targetForRange(range);
-    if (sorted.length <= target) {
-      return sorted;
-    }
+    final bucketSeconds = _bucketSecondsForRange(range);
 
     final first = sorted.first.observedAt;
-    final last = sorted.last.observedAt;
-    final totalSeconds = max(1, last.difference(first).inSeconds);
-    final bucketSeconds = max(1, (totalSeconds / target).ceil());
 
     final buckets = <int, _SampleBucket>{};
     for (final sample in sorted) {
@@ -53,20 +47,20 @@ class ThermostatHistoryDownsampler {
         .toList(growable: false);
   }
 
-  static int _targetForRange(ThermostatHistoryRange range) {
+  static int _bucketSecondsForRange(ThermostatHistoryRange range) {
     switch (range) {
       case ThermostatHistoryRange.hour:
-        return 240; // ~30 second resolution
+        return 5 * 60; // 5 minutes
       case ThermostatHistoryRange.day:
-        return 288; // 5 minute resolution
+        return 10 * 60; // 10 minutes
       case ThermostatHistoryRange.week:
-        return 336; // ~30 minute resolution
+        return 60 * 60; // 60 minutes
       case ThermostatHistoryRange.month:
-        return 372; // ~2 hour resolution
+        return 120 * 60; // 120 minutes
       case ThermostatHistoryRange.year:
-        return 366; // daily resolution
+        return 120 * 60; // 120 minutes
       case ThermostatHistoryRange.all:
-        return 400; // adaptive for longest spans
+        return 120 * 60; // 120 minutes
     }
   }
 }

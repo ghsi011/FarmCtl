@@ -92,24 +92,29 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const Spacer(),
-                            SegmentedButton<ThermostatHistoryRange>(
-                              segments: ThermostatHistoryRange.values
-                                  .map(
-                                    (range) => ButtonSegment(
-                                      value: range,
-                                      label: Text(range.label),
-                                    ),
-                                  )
-                                  .toList(),
-                              selected: {_range},
-                              onSelectionChanged: (selection) {
-                                if (selection.isEmpty) {
-                                  return;
-                                }
-                                setState(() {
-                                  _range = selection.first;
-                                });
-                              },
+                            Flexible(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SegmentedButton<ThermostatHistoryRange>(
+                                  segments: ThermostatHistoryRange.values
+                                      .map(
+                                        (range) => ButtonSegment(
+                                          value: range,
+                                          label: Text(range.label),
+                                        ),
+                                      )
+                                      .toList(),
+                                  selected: {_range},
+                                  onSelectionChanged: (selection) {
+                                    if (selection.isEmpty) {
+                                      return;
+                                    }
+                                    setState(() {
+                                      _range = selection.first;
+                                    });
+                                  },
+                                ),
+                              ),
                             ),
                           ],
                         ),

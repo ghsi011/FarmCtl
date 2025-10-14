@@ -330,7 +330,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       ..where((tbl) => tbl.thermostatId.equals(thermostatId))
       ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
     if (since != null) {
-      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+      query.where((tbl) => tbl.observedAt.isBiggerOrEqualValue(since));
     }
     return query.watch();
   }
@@ -343,7 +343,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       ..where((tbl) => tbl.thermostatId.equals(thermostatId))
       ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
     if (since != null) {
-      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+      query.where((tbl) => tbl.observedAt.isBiggerOrEqualValue(since));
     }
     return query.get();
   }
