@@ -46,6 +46,11 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
   Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
     return null;
   }
+
+  @override
+  Future<String> testToken() async {
+    return 'OK';
+  }
 }
 
 class _RecordingAlarmDispatcher implements ThermostatAlarmDispatcher {

@@ -10,19 +10,31 @@ class ThermostatService {
   ThermostatService({
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
+    Future<String?> Function()? tokenSupplier,
   }) : _repository = repository,
-       _network = network;
+       _network = network,
+       _tokenSupplier = tokenSupplier;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
+  final Future<String?> Function()? _tokenSupplier;
 
-  Future<Thermostat> createAndTest(ThermostatDraft draft) async {
+  Future<Thermostat> createAndTest(
+    ThermostatDraft draft, {
+    String? tokenOverride,
+  }) async {
     final validation = ThermostatValidator.validate(draft);
     if (!validation.isValid) {
       throw ThermostatValidationException(validation);
     }
 
-    final result = await _network.fetchCurrent(draft.rawUrl.trim());
+    final network = tokenOverride != null && tokenOverride.isNotEmpty
+        ? ThermostatHttpClient(
+            githubToken: tokenOverride,
+            allowAnonFallback: false,
+          )
+        : _network;
+    final result = await network.fetchCurrent(draft.rawUrl.trim());
     final saved = await _repository.create(draft);
     await _repository.saveState(
       thermostatId: saved.id,
@@ -37,14 +49,21 @@ class ThermostatService {
 
   Future<Thermostat> updateAndTest(
     Thermostat existing,
-    ThermostatDraft draft,
-  ) async {
+    ThermostatDraft draft, {
+    String? tokenOverride,
+  }) async {
     final validation = ThermostatValidator.validate(draft);
     if (!validation.isValid) {
       throw ThermostatValidationException(validation);
     }
 
-    final result = await _network.fetchCurrent(draft.rawUrl.trim());
+    final network = tokenOverride != null && tokenOverride.isNotEmpty
+        ? ThermostatHttpClient(
+            githubToken: tokenOverride,
+            allowAnonFallback: false,
+          )
+        : _network;
+    final result = await network.fetchCurrent(draft.rawUrl.trim());
     final updated = await _repository.update(existing, draft);
     await _repository.saveState(
       thermostatId: updated.id,
@@ -60,7 +79,8 @@ class ThermostatService {
   Future<ThermostatRefreshResult> refresh(Thermostat thermostat) async {
     final previousState = await _repository.loadState(thermostat.id);
     try {
-      final result = await _network.fetchCurrent(thermostat.rawUrl.trim());
+      final client = await _resolveNetworkWithToken();
+      final result = await client.fetchCurrent(thermostat.rawUrl.trim());
       final value = result.valueC;
       final fetchedAt = result.fetchedAt;
       final outOfRange = isThermostatReadingOutOfRange(
@@ -151,6 +171,7 @@ class ThermostatService {
 
     final gistId = thermostat.rawUrl.trim();
     final now = DateTime.now().toUtc();
+    final twentyFourHoursAgo = now.subtract(const Duration(hours: 24));
     final sevenDaysAgo = now.subtract(const Duration(days: 7));
     final oneYearAgo = now.subtract(const Duration(days: 365));
 
@@ -160,21 +181,33 @@ class ThermostatService {
       thermostatId,
     );
 
-    final hasToken =
-        (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
-            Platform.environment['GITHUB_TOKEN']) !=
-        null;
-    final perRunBudget = hasToken ? 200 : 15;
+    bool hasToken;
+    if (_network is ThermostatHttpClient) {
+      hasToken = (_network).hasGithubToken;
+    } else {
+      hasToken =
+          (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
+              Platform.environment['GITHUB_TOKEN']) !=
+          null;
+    }
+    // Increase budget when token present; be more aggressive for the last 24h
+    final perRunBudget = hasToken ? 400 : 20;
     final interRequestDelay = hasToken
         ? Duration.zero
-        : const Duration(milliseconds: 350);
+        : const Duration(milliseconds: 300);
+
+    // Stage selection buckets
+    final stage1Interval = const Duration(minutes: 60); // last 24h: 1 per 60m
+    final stage2Interval = const Duration(minutes: 300); // last 7d: 1 per 300m
 
     // Page through commits, newest first
     var page = 1;
     const perPage = 100;
     final selected = <GistCommit>[];
+    final pickedByBucket = <String, bool>{};
     while (selected.length < perRunBudget) {
-      final commits = await _network.listCommits(
+      final client = await _resolveNetworkWithToken();
+      final commits = await client.listCommits(
         gistId,
         page: page,
         perPage: perPage,
@@ -192,25 +225,47 @@ class ThermostatService {
           continue;
         }
 
-        // Sampling based on age
-        final int stride;
-        if (t.isAfter(sevenDaysAgo)) {
-          stride = 10; // ~1 in 10 within last 7 days
-        } else if (t.isAfter(oneYearAgo)) {
-          stride = 60; // ~1 in 60 up to a year
-        } else {
-          stride = 600; // older than a year
-        }
-
-        // Use a simple hash gate for sampling without state
-        final hashGate = (rev.hashCode & 0x7fffffff) % stride == 0;
-
-        // Always include commits newer than the newest local reading
+        // Always include commits newer than newest local reading
         final isNewerThanLocal = newestLocal == null || t.isAfter(newestLocal);
-        // Backfill older than oldest local reading with sampling
+        // Backfill older than oldest local reading
         final isOlderThanLocal = oldestLocal == null || t.isBefore(oldestLocal);
 
-        if (isNewerThanLocal || (isOlderThanLocal && hashGate)) {
+        bool accept = false;
+        if (isNewerThanLocal) {
+          // For latest window, keep density by time buckets
+          final bucketKey = _timeBucketKey(t, stage1Interval);
+          if (!pickedByBucket.containsKey(bucketKey)) {
+            pickedByBucket[bucketKey] = true;
+            accept = true;
+          }
+        } else if (isOlderThanLocal) {
+          // Stage 1: ensure ~1/60m in last 24h
+          if (t.isAfter(twentyFourHoursAgo)) {
+            final bucketKey = _timeBucketKey(t, stage1Interval);
+            if (!pickedByBucket.containsKey(bucketKey)) {
+              pickedByBucket[bucketKey] = true;
+              accept = true;
+            }
+          }
+          // Stage 2: ensure ~1/300m up to 7d
+          else if (t.isAfter(sevenDaysAgo)) {
+            final bucketKey = _timeBucketKey(t, stage2Interval);
+            if (!pickedByBucket.containsKey(bucketKey)) {
+              pickedByBucket[bucketKey] = true;
+              accept = true;
+            }
+          }
+          // Stage 3+: beyond 7d, sample lightly to build long tail
+          else if (t.isAfter(oneYearAgo)) {
+            final stride = 60; // ~1 in 60
+            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+          } else {
+            final stride = 600; // very sparse for >1y
+            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+          }
+        }
+
+        if (accept) {
           selected.add(commit);
         }
       }
@@ -226,10 +281,8 @@ class ThermostatService {
       if (!hasToken && interRequestDelay > Duration.zero) {
         await Future<void>.delayed(interRequestDelay);
       }
-      final value = await _network.fetchRevisionValue(
-        gistId,
-        commit.revisionId,
-      );
+      final client = await _resolveNetworkWithToken();
+      final value = await client.fetchRevisionValue(gistId, commit.revisionId);
       if (value == null) continue;
       samples.add(
         TemperatureSample.revision(
@@ -246,6 +299,23 @@ class ThermostatService {
       thermostatId: thermostatId,
       samples: samples,
     );
+  }
+
+  String _timeBucketKey(DateTime t, Duration interval) {
+    final seconds = t.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final bucket = seconds ~/ interval.inSeconds;
+    return '${interval.inSeconds}_$bucket';
+  }
+
+  Future<ThermostatNetworkDataSource> _resolveNetworkWithToken() async {
+    if (_network is ThermostatHttpClient && (_network).hasGithubToken) {
+      return _network;
+    }
+    final token = await _tokenSupplier?.call();
+    if (token != null && token.isNotEmpty) {
+      return ThermostatHttpClient(githubToken: token);
+    }
+    return _network;
   }
 }
 

@@ -8,6 +8,7 @@ import '../models/history_range.dart';
 import '../models/temperature_sample.dart';
 import '../models/thermostat_state.dart';
 import '../utils/thermostat_history_downsampler.dart';
+import '../../settings/providers/settings_providers.dart';
 
 final thermostatDatabaseProvider = Provider<ThermostatDatabase>((ref) {
   final database = ThermostatDatabase();
@@ -20,14 +21,33 @@ final thermostatRepositoryProvider = Provider<ThermostatRepository>((ref) {
   return ThermostatRepository(database);
 });
 
+final _githubTokenProvider = StreamProvider<String?>((ref) {
+  final database = ref.watch(thermostatDatabaseProvider);
+  return database.watchAlertConfig().map((config) => config.githubToken);
+});
+
 final thermostatNetworkProvider = Provider<ThermostatNetworkDataSource>((ref) {
-  return ThermostatHttpClient();
+  final githubTokenAsync = ref.watch(_githubTokenProvider);
+  final githubToken = githubTokenAsync.when(
+    data: (token) => token,
+    loading: () => null,
+    error: (error, stack) => null,
+  );
+  return ThermostatHttpClient(githubToken: githubToken);
 });
 
 final thermostatServiceProvider = Provider<ThermostatService>((ref) {
   final repository = ref.watch(thermostatRepositoryProvider);
   final network = ref.watch(thermostatNetworkProvider);
-  return ThermostatService(repository: repository, network: network);
+  final alertRepo = ref.watch(alertConfigRepositoryProvider);
+  return ThermostatService(
+    repository: repository,
+    network: network,
+    tokenSupplier: () async {
+      final config = await alertRepo.loadConfig();
+      return config.githubToken;
+    },
+  );
 });
 
 final thermostatsProvider = StreamProvider<List<ThermostatSummary>>((ref) {

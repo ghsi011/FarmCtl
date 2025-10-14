@@ -84,6 +84,7 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ✅ `[2025-10-16 16:00Z]` Range evaluation, alarm surface with snooze/silence; rate limiting.
 - ☐ `[2025-10-17 16:00Z]` Gate A reliability validation and decision.
 - ✅ `[2025-10-18 16:00Z]` Normalize revision history storage, add detail chart with downsampling for long ranges.
+- ✅ `[2025-10-19 14:00Z]` Completed iteration 8 settings deliverables: system sound picker with persisted permissions and developer log export refinements.
 
 ### Executive Summary (current)
 - Created supported Flutter app under `app/` with Material 3 + Riverpod and bottom navigation.

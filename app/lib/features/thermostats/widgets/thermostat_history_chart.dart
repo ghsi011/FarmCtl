@@ -46,28 +46,8 @@ class ThermostatHistoryChart extends StatelessWidget {
         )
         .toList();
 
-    // Break into segments when there are large time gaps to avoid misleading lines
-    final gapThreshold = _gapThresholdSeconds(range);
-    final segmentedSpots = <List<FlSpot>>[];
-    var current = <FlSpot>[];
-    for (var i = 0; i < spots.length; i++) {
-      final spot = spots[i];
-      if (current.isEmpty) {
-        current.add(spot);
-      } else {
-        final prev = current.last;
-        final dx = spot.x - prev.x;
-        if (dx > gapThreshold) {
-          segmentedSpots.add(current);
-          current = <FlSpot>[spot];
-        } else {
-          current.add(spot);
-        }
-      }
-    }
-    if (current.isNotEmpty) {
-      segmentedSpots.add(current);
-    }
+    // Render continuous line; do not break segments (avoid visual gaps)
+    final segmentedSpots = <List<FlSpot>>[spots];
 
     final minY = sorted.map((s) => s.valueC).reduce(min);
     final maxY = sorted.map((s) => s.valueC).reduce(max);
@@ -234,20 +214,5 @@ class ThermostatHistoryChart extends StatelessWidget {
     }
   }
 
-  double _gapThresholdSeconds(ThermostatHistoryRange range) {
-    switch (range) {
-      case ThermostatHistoryRange.hour:
-        return 600; // 10 minutes
-      case ThermostatHistoryRange.day:
-        return 3600; // 1 hour
-      case ThermostatHistoryRange.week:
-        return 21600; // 6 hours
-      case ThermostatHistoryRange.month:
-        return 86400; // 1 day
-      case ThermostatHistoryRange.year:
-        return 604800; // 7 days
-      case ThermostatHistoryRange.all:
-        return 2592000; // 30 days
-    }
-  }
+  // Gap threshold removed; chart is continuous based on aggregated samples
 }

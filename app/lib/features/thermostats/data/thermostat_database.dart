@@ -75,6 +75,8 @@ class AlertConfigEntries extends Table {
   BoolColumn get volumeBoost => boolean().withDefault(const Constant(false))();
 
   DateTimeColumn get pauseAllUntil => dateTime().nullable()();
+
+  TextColumn get githubToken => text().nullable()();
 }
 
 @TableIndex(
@@ -130,7 +132,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -163,6 +165,9 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       }
       if (from < 5) {
         await m.createTable(temperatureReadings);
+      }
+      if (from < 6) {
+        await m.addColumn(alertConfigEntries, alertConfigEntries.githubToken);
       }
     },
   );
@@ -325,7 +330,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       ..where((tbl) => tbl.thermostatId.equals(thermostatId))
       ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
     if (since != null) {
-      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+      query.where((tbl) => tbl.observedAt.isBiggerOrEqualValue(since));
     }
     return query.watch();
   }
@@ -338,8 +343,47 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       ..where((tbl) => tbl.thermostatId.equals(thermostatId))
       ..orderBy([(tbl) => OrderingTerm.asc(tbl.observedAt)]);
     if (since != null) {
-      query.where((tbl) => tbl.observedAt.isBiggerThanValue(since));
+      query.where((tbl) => tbl.observedAt.isBiggerOrEqualValue(since));
     }
     return query.get();
+  }
+
+  Stream<AlertConfigEntry> watchAlertConfig() {
+    return (select(alertConfigEntries)..limit(1)).watchSingleOrNull().map(
+      (entry) => entry ?? _defaultAlertConfig(),
+    );
+  }
+
+  Future<AlertConfigEntry> getAlertConfig() async {
+    final entry = await (select(
+      alertConfigEntries,
+    )..limit(1)).getSingleOrNull();
+    return entry ?? _defaultAlertConfig();
+  }
+
+  Future<void> updateAlertConfig(AlertConfigEntriesCompanion companion) async {
+    final existing = await (select(
+      alertConfigEntries,
+    )..limit(1)).getSingleOrNull();
+    if (existing == null) {
+      await into(alertConfigEntries).insert(companion);
+    } else {
+      await (update(
+        alertConfigEntries,
+      )..where((tbl) => tbl.id.equals(existing.id))).write(companion);
+    }
+  }
+
+  AlertConfigEntry _defaultAlertConfig() {
+    return AlertConfigEntry(
+      id: 1,
+      pollIntervalMin: 5,
+      exactAlarmsEnabled: false,
+      soundUri: null,
+      vibrate: true,
+      volumeBoost: false,
+      pauseAllUntil: null,
+      githubToken: null,
+    );
   }
 }

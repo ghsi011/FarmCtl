@@ -298,6 +298,33 @@ Future<void> cancelAlarmNotification(String thermostatId) async {
   }
 }
 
+Future<void> showTestAlarmNotification({required dynamic config}) async {
+  final plugin = FlutterLocalNotificationsPlugin();
+  await _initializeNotifications(plugin);
+
+  await plugin.show(
+    999999,
+    'Test Alarm',
+    'This is a test alarm notification',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _alarmChannel.id,
+        _alarmChannel.name,
+        channelDescription: _alarmChannel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        fullScreenIntent: true,
+        category: AndroidNotificationCategory.alarm,
+        ticker: 'Test alarm',
+        autoCancel: true,
+        ongoing: false,
+        enableVibration: true,
+        playSound: true,
+      ),
+    ),
+  );
+}
+
 int _alarmNotificationId(String thermostatId) {
   final hash = thermostatId.hashCode & 0x7fffffff;
   return _alarmNotificationBaseId + (hash % 1000000);

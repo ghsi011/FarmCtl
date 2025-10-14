@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ThermostatHistoryDownsampler', () {
-    test('returns sorted samples when count below target', () {
+    test('aggregates into fixed 10-minute buckets for day range', () {
       final samples = [
         TemperatureSample(
           id: 'b',
@@ -38,17 +38,19 @@ void main() {
         ThermostatHistoryRange.day,
       );
 
-      expect(result, hasLength(3));
-      expect(result[0].id, 'a');
-      expect(result[1].id, 'b');
-      expect(result[2].id, 'c');
-      expect(result[0].observedAt.isBefore(result[1].observedAt), isTrue);
-      expect(result[1].observedAt.isBefore(result[2].observedAt), isTrue);
+      // Two 10-minute buckets: [12:00–12:10) and [12:10–12:20)
+      expect(result, hasLength(2));
+      expect(result.first.valueC, closeTo(18.25, 1e-9));
+      expect(result.first.observedAt, DateTime.utc(2025, 1, 1, 12, 5));
+      expect(result.last.valueC, closeTo(19.0, 1e-9));
+      // Representative time is bucket midpoint (12:15)
+      expect(result.last.observedAt, DateTime.utc(2025, 1, 1, 12, 15));
     });
 
-    test('downsamples dense data to target buckets', () {
+    test('downsamples to 5-minute buckets for hour range', () {
       final start = DateTime.utc(2025, 1, 1, 0, 0);
-      final samples = List.generate(300, (index) {
+      // One-hour of per-second samples (3600)
+      final samples = List.generate(3600, (index) {
         return TemperatureSample(
           id: 's$index',
           thermostatId: 't1',
@@ -64,14 +66,16 @@ void main() {
         ThermostatHistoryRange.hour,
       );
 
-      expect(result.length, lessThan(samples.length));
-      expect(result.length, lessThanOrEqualTo(240));
+      // 60 minutes / 5-minute buckets = 12 buckets
+      expect(result.length, 12);
 
-      expect(result.first.valueC, closeTo(0.5, 1e-9));
-      expect(result.first.observedAt, start.add(const Duration(seconds: 1)));
+      // First bucket [0..299]
+      expect(result.first.valueC, closeTo(149.5, 1e-9));
+      expect(result.first.observedAt, start.add(const Duration(seconds: 150)));
 
-      expect(result.last.valueC, closeTo(298.5, 1e-9));
-      expect(result.last.observedAt, start.add(const Duration(seconds: 299)));
+      // Last bucket [3300..3599]
+      expect(result.last.valueC, closeTo(3449.5, 1e-9));
+      expect(result.last.observedAt, start.add(const Duration(seconds: 3450)));
 
       for (var i = 1; i < result.length; i += 1) {
         expect(

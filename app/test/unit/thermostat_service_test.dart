@@ -56,6 +56,11 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
   Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
     return revisionValues[revisionId];
   }
+
+  @override
+  Future<String> testToken() async {
+    return 'OK';
+  }
 }
 
 void main() {
