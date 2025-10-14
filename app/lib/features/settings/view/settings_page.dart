@@ -77,7 +77,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ref
           .read(alertConfigRepositoryProvider)
           .setPollInterval(Duration(minutes: minutes));
-      await initializeBackgroundMonitoring();
+      await initializeBackgroundMonitoring(
+        pollFrequency: Duration(minutes: minutes),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
