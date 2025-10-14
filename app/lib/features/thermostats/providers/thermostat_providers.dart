@@ -84,7 +84,42 @@ final thermostatHistoryProvider =
     });
 
 final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
-    .family<void, String>((ref, thermostatId) async {
+    .family<void, ({String thermostatId, bool prioritizeLastHour})>((
+      ref,
+      args,
+    ) async {
+      // Debounce: wait briefly; if user navigates away quickly, provider disposes
+      // and this work is canceled, avoiding redundant requests on quick tab flips.
+      const debounce = Duration(milliseconds: 300);
+      await Future<void>.delayed(debounce);
+      if (!ref.mounted) return;
+
+      // Throttle: avoid repeated heavy refreshes within a short window.
+      // This is per-thermostat and survives rapid rebuilds while in view.
+      // Note: In-memory only; resets on app restart which is fine.
+      _RefreshThrottleRegistry registry = ref.read(
+        _refreshThrottleRegistryProvider,
+      );
+      final now = DateTime.now().toUtc();
+      final last = registry.lastRun[args.thermostatId];
+      if (last != null && now.difference(last) < const Duration(seconds: 10)) {
+        return;
+      }
+      registry.lastRun[args.thermostatId] = now;
+
       final service = ref.watch(thermostatServiceProvider);
-      await service.refreshHistory(thermostatId);
+      await service.refreshHistory(
+        args.thermostatId,
+        prioritizeLastHour: args.prioritizeLastHour,
+      );
     });
+
+class _RefreshThrottleRegistry {
+  final Map<String, DateTime> lastRun = <String, DateTime>{};
+}
+
+final _refreshThrottleRegistryProvider = Provider<_RefreshThrottleRegistry>((
+  ref,
+) {
+  return _RefreshThrottleRegistry();
+});

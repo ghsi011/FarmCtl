@@ -31,7 +31,10 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
       )),
     );
     final refreshAsync = ref.watch(
-      thermostatHistoryRefreshProvider(widget.thermostatId),
+      thermostatHistoryRefreshProvider((
+        thermostatId: widget.thermostatId,
+        prioritizeLastHour: true,
+      )),
     );
 
     final title = summaryAsync.asData?.value?.thermostat.name ?? 'Thermostat';
@@ -45,7 +48,10 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                 ? null
                 : () {
                     ref.invalidate(
-                      thermostatHistoryRefreshProvider(widget.thermostatId),
+                      thermostatHistoryRefreshProvider((
+                        thermostatId: widget.thermostatId,
+                        prioritizeLastHour: true,
+                      )),
                     );
                   },
             icon: refreshAsync.isLoading
@@ -67,10 +73,16 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(
-                thermostatHistoryRefreshProvider(widget.thermostatId),
+                thermostatHistoryRefreshProvider((
+                  thermostatId: widget.thermostatId,
+                  prioritizeLastHour: true,
+                )),
               );
               await ref.read(
-                thermostatHistoryRefreshProvider(widget.thermostatId).future,
+                thermostatHistoryRefreshProvider((
+                  thermostatId: widget.thermostatId,
+                  prioritizeLastHour: true,
+                )).future,
               );
             },
             child: ListView(
@@ -92,29 +104,20 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const Spacer(),
-                            Flexible(
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SegmentedButton<ThermostatHistoryRange>(
-                                  segments: ThermostatHistoryRange.values
-                                      .map(
-                                        (range) => ButtonSegment(
-                                          value: range,
-                                          label: Text(range.label),
-                                        ),
-                                      )
-                                      .toList(),
-                                  selected: {_range},
-                                  onSelectionChanged: (selection) {
-                                    if (selection.isEmpty) {
-                                      return;
-                                    }
-                                    setState(() {
-                                      _range = selection.first;
-                                    });
-                                  },
-                                ),
-                              ),
+                            DropdownButton<ThermostatHistoryRange>(
+                              value: _range,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() => _range = value);
+                              },
+                              items: ThermostatHistoryRange.values
+                                  .map(
+                                    (range) => DropdownMenuItem(
+                                      value: range,
+                                      child: Text(range.label),
+                                    ),
+                                  )
+                                  .toList(),
                             ),
                           ],
                         ),
