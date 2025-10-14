@@ -224,6 +224,13 @@ Future<void> _runMonitorTask() async {
         debugPrint('$stackTrace');
       }
     }
+
+    try {
+      await repository.pruneRetention();
+    } catch (error, stackTrace) {
+      debugPrint('Retention pruning failed in background: $error');
+      debugPrint('$stackTrace');
+    }
   } catch (error, stackTrace) {
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');

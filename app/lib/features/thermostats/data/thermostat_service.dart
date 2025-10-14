@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
@@ -318,6 +319,13 @@ class ThermostatService {
       thermostatId: thermostatId,
       samples: samples,
     );
+
+    try {
+      await _repository.pruneRetention(thermostatId: thermostatId);
+    } catch (error, stackTrace) {
+      debugPrint('Retention pruning failed for $thermostatId: $error');
+      debugPrint('$stackTrace');
+    }
   }
 
   String _timeBucketKey(DateTime t, Duration interval) {

@@ -57,89 +57,103 @@ class ThermostatHistoryChart extends StatelessWidget {
     final maxX = spots.last.x;
     final interval = _suggestedInterval(maxX - minX);
 
-    return SizedBox(
-      height: 240,
-      child: LineChart(
-        LineChartData(
-          minX: minX,
-          maxX: maxX == minX ? maxX + 1 : maxX,
-          minY: minY - padding,
-          maxY: maxY + padding,
-          clipData: const FlClipData.all(),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 48,
-                interval: _suggestedYInterval(minY, maxY),
-                getTitlesWidget: (value, meta) => Text(
-                  value.toStringAsFixed(2),
-                  style: Theme.of(context).textTheme.bodySmall,
+    final semanticsFormatter = DateFormat.yMMMd().add_Hm();
+    final semanticsValue =
+        'From ${semanticsFormatter.format(sorted.first.observedAt.toLocal())} '
+        'to ${semanticsFormatter.format(sorted.last.observedAt.toLocal())}. '
+        'Temperatures ranged from ${minY.toStringAsFixed(1)} to '
+        '${maxY.toStringAsFixed(1)} degrees Celsius.';
+
+    return Semantics(
+      container: true,
+      label: 'Temperature history for ${range.label}',
+      value: semanticsValue,
+      child: SizedBox(
+        height: 240,
+        child: LineChart(
+          LineChartData(
+            minX: minX,
+            maxX: maxX == minX ? maxX + 1 : maxX,
+            minY: minY - padding,
+            maxY: maxY + padding,
+            clipData: const FlClipData.all(),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 48,
+                  interval: _suggestedYInterval(minY, maxY),
+                  getTitlesWidget: (value, meta) => Text(
+                    value.toStringAsFixed(2),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  interval: interval,
+                  reservedSize: 36,
+                  getTitlesWidget: (value, meta) {
+                    final date = base.add(Duration(seconds: value.toInt()));
+                    final formatter = _formatterForRange(range);
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        formatter.format(date.toLocal()),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: interval,
-                reservedSize: 36,
-                getTitlesWidget: (value, meta) {
-                  final date = base.add(Duration(seconds: value.toInt()));
-                  final formatter = _formatterForRange(range);
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      formatter.format(date.toLocal()),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  );
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: _suggestedYInterval(minY, maxY),
+            ),
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipColor: (_) =>
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                getTooltipItems: (touchedSpots) {
+                  final formatter = _detailedFormatterForRange(range);
+                  return touchedSpots.map((spot) {
+                    final timestamp = base.add(
+                      Duration(seconds: spot.x.toInt()),
+                    );
+                    return LineTooltipItem(
+                      '${spot.y.toStringAsFixed(2)}°C\n${formatter.format(timestamp.toLocal())}',
+                      Theme.of(context).textTheme.bodyMedium!,
+                    );
+                  }).toList();
                 },
               ),
             ),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: _suggestedYInterval(minY, maxY),
-          ),
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (_) =>
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-              getTooltipItems: (touchedSpots) {
-                final formatter = _detailedFormatterForRange(range);
-                return touchedSpots.map((spot) {
-                  final timestamp = base.add(Duration(seconds: spot.x.toInt()));
-                  return LineTooltipItem(
-                    '${spot.y.toStringAsFixed(2)}°C\n${formatter.format(timestamp.toLocal())}',
-                    Theme.of(context).textTheme.bodyMedium!,
-                  );
-                }).toList();
-              },
-            ),
-          ),
-          lineBarsData: [
-            for (final seg in segmentedSpots)
-              LineChartBarData(
-                spots: seg,
-                isCurved: false,
-                barWidth: 3,
-                color: Theme.of(context).colorScheme.primary,
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.12),
+            lineBarsData: [
+              for (final seg in segmentedSpots)
+                LineChartBarData(
+                  spots: seg,
+                  isCurved: false,
+                  barWidth: 3,
+                  color: Theme.of(context).colorScheme.primary,
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.12),
+                  ),
+                  dotData: const FlDotData(show: false),
                 ),
-                dotData: const FlDotData(show: false),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

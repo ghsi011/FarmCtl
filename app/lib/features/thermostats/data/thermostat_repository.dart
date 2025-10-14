@@ -7,6 +7,8 @@ import '../models/thermostat_state.dart';
 import 'thermostat_database.dart';
 
 final _uuid = const Uuid();
+const Duration _defaultRetentionMaxAge = Duration(days: 548);
+const int _defaultRetentionMaxEntries = 5000;
 
 class ThermostatRepository {
   ThermostatRepository(this._database);
@@ -290,5 +292,30 @@ class ThermostatRepository {
 
   Future<Set<String>> listKnownRevisionIds(String thermostatId) {
     return _database.listKnownRevisionIds(thermostatId);
+  }
+
+  Future<void> pruneRetention({
+    Duration maxAge = _defaultRetentionMaxAge,
+    int maxEntriesPerThermostat = _defaultRetentionMaxEntries,
+    String? thermostatId,
+    DateTime? now,
+  }) async {
+    final referenceTime = (now ?? DateTime.now()).toUtc();
+
+    if (maxAge > Duration.zero) {
+      final cutoff = referenceTime.subtract(maxAge);
+      await _database.pruneTemperatureReadingsBefore(cutoff);
+    }
+
+    final ids = thermostatId != null
+        ? <String>[thermostatId]
+        : (await _database.listThermostats()).map((entry) => entry.id).toList();
+
+    for (final id in ids) {
+      await _database.pruneTemperatureReadingsExceedingLimit(
+        id,
+        maxEntriesPerThermostat,
+      );
+    }
   }
 }

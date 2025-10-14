@@ -162,40 +162,122 @@ class ThermostatsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncThermostats = ref.watch(thermostatsProvider);
+    final offlineStatus = ref.watch(offlineStatusProvider);
+
+    final content = asyncThermostats.when(
+      data: (thermostats) {
+        if (thermostats.isEmpty) {
+          return const _EmptyState();
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemBuilder: (context, index) {
+            final summary = thermostats[index];
+            return ThermostatCard(
+              summary: summary,
+              onEdit: () => _editThermostat(context, ref, summary),
+              onDelete: () => _deleteThermostat(context, ref, summary),
+              onRefresh: () => _refreshThermostat(context, ref, summary),
+              onTap: () => context.pushNamed(
+                ThermostatDetailRoute.name,
+                pathParameters: {'id': summary.thermostat.id},
+              ),
+            );
+          },
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemCount: thermostats.length,
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stackTrace) => _ErrorState(error: error),
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Thermostats')),
-      body: asyncThermostats.when(
-        data: (thermostats) {
-          if (thermostats.isEmpty) {
-            return const _EmptyState();
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemBuilder: (context, index) {
-              final summary = thermostats[index];
-              return ThermostatCard(
-                summary: summary,
-                onEdit: () => _editThermostat(context, ref, summary),
-                onDelete: () => _deleteThermostat(context, ref, summary),
-                onRefresh: () => _refreshThermostat(context, ref, summary),
-                onTap: () => context.pushNamed(
-                  ThermostatDetailRoute.name,
-                  pathParameters: {'id': summary.thermostat.id},
-                ),
-              );
-            },
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
-            itemCount: thermostats.length,
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => _ErrorState(error: error),
+      body: Column(
+        children: [
+          if (offlineStatus == OfflineStatus.offline ||
+              offlineStatus == OfflineStatus.degraded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _OfflineBanner(status: offlineStatus),
+            ),
+          Expanded(child: content),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createThermostat(context, ref),
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({required this.status});
+
+  final OfflineStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final (title, message, icon) = switch (status) {
+      OfflineStatus.offline => (
+        'Offline mode',
+        'FarmCtl is showing the last known readings until the connection returns.',
+        Icons.cloud_off,
+      ),
+      OfflineStatus.degraded => (
+        'Connectivity issues',
+        'Some thermostats are unreachable and recent values may be stale.',
+        Icons.cloud_queue,
+      ),
+      _ => (
+        'Connectivity notice',
+        'Network status is unavailable.',
+        Icons.cloud_queue,
+      ),
+    };
+
+    return Semantics(
+      container: true,
+      label: title,
+      value: message,
+      child: Card(
+        color: colorScheme.surfaceContainerHighest,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

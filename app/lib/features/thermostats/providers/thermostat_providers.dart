@@ -114,6 +114,59 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
       );
     });
 
+enum OfflineStatus { online, degraded, offline, unknown }
+
+final offlineStatusProvider = Provider<OfflineStatus>((ref) {
+  final thermostatsAsync = ref.watch(thermostatsProvider);
+  return thermostatsAsync.when(
+    data: (thermostats) {
+      if (thermostats.isEmpty) {
+        return OfflineStatus.online;
+      }
+
+      final now = DateTime.now().toUtc();
+      var recentNetworkFailures = 0;
+      var recentSuccess = false;
+
+      for (final summary in thermostats) {
+        final state = summary.state;
+        if (state == null) {
+          continue;
+        }
+
+        final lastFetchedAt = state.lastFetchedAt;
+        switch (state.status) {
+          case ThermostatReadingStatus.ok:
+          case ThermostatReadingStatus.outOfRange:
+            if (lastFetchedAt != null &&
+                now.difference(lastFetchedAt) <= const Duration(minutes: 15)) {
+              recentSuccess = true;
+            }
+            break;
+          case ThermostatReadingStatus.networkError:
+            if (lastFetchedAt != null &&
+                now.difference(lastFetchedAt) <= const Duration(minutes: 30)) {
+              recentNetworkFailures += 1;
+            }
+            break;
+          case ThermostatReadingStatus.httpError:
+          case ThermostatReadingStatus.parseError:
+          case ThermostatReadingStatus.unknown:
+            break;
+        }
+      }
+
+      if (recentNetworkFailures == 0) {
+        return OfflineStatus.online;
+      }
+
+      return recentSuccess ? OfflineStatus.degraded : OfflineStatus.offline;
+    },
+    loading: () => OfflineStatus.unknown,
+    error: (error, stackTrace) => OfflineStatus.unknown,
+  );
+});
+
 class _RefreshThrottleRegistry {
   final Map<String, DateTime> lastRun = <String, DateTime>{};
 }

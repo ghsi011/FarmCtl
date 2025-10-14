@@ -201,6 +201,73 @@ void main() {
     },
   );
 
+  test(
+    'pruneRetention removes stale readings and caps total entries',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Storage',
+          rawUrl: '11111111111111111111111111111111',
+          minC: 2,
+          maxC: 10,
+        ),
+      );
+
+      final now = DateTime.utc(2025, 10, 20, 12);
+      final samples = <TemperatureSample>[];
+
+      for (var i = 0; i < 12; i++) {
+        samples.add(
+          TemperatureSample.revision(
+            thermostatId: thermostat.id,
+            revisionId: 'old_$i',
+            valueC: 4.0 + i,
+            observedAt: now.subtract(Duration(days: 600 + i)),
+          ),
+        );
+      }
+
+      for (var i = 0; i < 5200; i++) {
+        samples.add(
+          TemperatureSample.revision(
+            thermostatId: thermostat.id,
+            revisionId: 'recent_$i',
+            valueC: 6.0,
+            observedAt: now.subtract(Duration(minutes: i)),
+          ),
+        );
+      }
+
+      await repository.upsertHistory(
+        thermostatId: thermostat.id,
+        samples: samples,
+      );
+
+      await repository.pruneRetention(
+        thermostatId: thermostat.id,
+        maxAge: const Duration(days: 365),
+        maxEntriesPerThermostat: 5000,
+        now: now,
+      );
+
+      final remaining = await database.listTemperatureReadings(thermostat.id);
+      expect(remaining.length, 5000);
+      expect(
+        remaining.every((row) => !row.id.contains('old_')),
+        isTrue,
+        reason: 'older revisions should be pruned',
+      );
+      final oldest = remaining
+          .map((row) => row.observedAt)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+      expect(
+        oldest.isAfter(now.subtract(const Duration(days: 365))),
+        isTrue,
+        reason: 'readings older than retention window should be removed',
+      );
+    },
+  );
+
   test('replaceHistory stores samples and sorts ascending', () async {
     final thermostat = await repository.create(
       ThermostatDraft(

@@ -29,7 +29,12 @@ flutter pub get
 flutter run
 ```
 
-The application launches with Material 3 theming, Riverpod-provided state management, and a bottom navigation bar exposing the Thermostats and Settings tabs. The Thermostats tab shows a static thermostat card that will be replaced with live data in future iterations.
+The application launches with Material 3 theming and Riverpod-provided state management. The Thermostats tab lists every configured sensor with live status, last-known values, and range context. Background monitoring keeps readings fresh, and an offline banner surfaces when connectivity drops so users know they are viewing cached data. Settings exposes polling cadence, alarm options, and GitHub token management.
+
+### Key capabilities
+- Offline-aware UI that highlights degraded connectivity while continuing to show the last known readings.
+- Automatic retention pruning that keeps roughly 18 months of history per thermostat so the on-device database remains lightweight.
+- Accessibility improvements including localization scaffolding (English) and enhanced semantics for thermostat cards and history charts.
 
 ### Quality Checks
 

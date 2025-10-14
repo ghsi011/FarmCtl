@@ -85,6 +85,9 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - ☐ `[2025-10-17 16:00Z]` Gate A reliability validation and decision.
 - ✅ `[2025-10-18 16:00Z]` Normalize revision history storage, add detail chart with downsampling for long ranges.
 - ✅ `[2025-10-19 14:00Z]` Completed iteration 8 settings deliverables: system sound picker with persisted permissions and developer log export refinements.
+- ✅ `[2025-10-20 16:00Z]` Hardened offline experience with connectivity heuristics, banner UX, and unit tests for status detection.
+- ✅ `[2025-10-20 16:45Z]` Implemented history retention pruning (18-month window + entry cap) wired into foreground and background refresh paths.
+- ✅ `[2025-10-20 17:15Z]` Added accessibility semantics, localization delegates, and release-ready documentation updates.
 
 ### Executive Summary (current)
 - Created supported Flutter app under `app/` with Material 3 + Riverpod and bottom navigation.
@@ -97,6 +100,7 @@ Use ☐/[-]/✅ with UTC timestamps to reflect real progress.
 - Normalized thermostat timestamps to UTC to avoid device/timezone skew and simplify comparisons.
 - Registered plugins in the background isolate (no native code) to enable notifications and path provider.
 - Switched to GitHub Gist API with Gist ID–only configuration; simplified client and tests.
+- Delivered offline-aware UI, retention pruning, and accessibility/localization polish to reach iteration 10 release readiness.
 
 ---
 
