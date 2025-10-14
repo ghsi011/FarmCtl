@@ -92,7 +92,7 @@ class ThermostatCard extends StatelessWidget {
                   Icon(Icons.thermostat, color: colorScheme.primary),
                   const SizedBox(width: 12),
                   Text(
-                    'Range: ${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                    'Range: ${thermostat.minC.toStringAsFixed(2)}°C – ${thermostat.maxC.toStringAsFixed(2)}°C',
                     style: textTheme.bodyLarge,
                   ),
                 ],
@@ -141,7 +141,7 @@ class _LastSeenStatus extends StatelessWidget {
     switch (status) {
       case ThermostatReadingStatus.ok:
         final base = value != null
-            ? '${value.toStringAsFixed(1)}°C • Updated $relative'
+            ? '${value.toStringAsFixed(2)}°C • Updated $relative'
             : 'Updated $relative';
         statusText = message != null ? '$message • Updated $relative' : base;
         break;
@@ -153,7 +153,7 @@ class _LastSeenStatus extends StatelessWidget {
       case ThermostatReadingStatus.outOfRange:
         final base = message ?? 'Temperature outside configured range';
         statusText = value != null
-            ? '$base (${value.toStringAsFixed(1)}°C) • Updated $relative'
+            ? '$base (${value.toStringAsFixed(2)}°C) • Updated $relative'
             : '$base • Updated $relative';
         isError = true;
         break;

@@ -31,10 +31,10 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     _nameController = TextEditingController(text: initial?.name ?? '');
     _urlController = TextEditingController(text: initial?.rawUrl ?? '');
     _minController = TextEditingController(
-      text: initial != null ? initial.minC.toStringAsFixed(1) : '',
+      text: initial != null ? initial.minC.toStringAsFixed(2) : '',
     );
     _maxController = TextEditingController(
-      text: initial != null ? initial.maxC.toStringAsFixed(1) : '',
+      text: initial != null ? initial.maxC.toStringAsFixed(2) : '',
     );
   }
 

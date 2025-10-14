@@ -166,7 +166,7 @@ class ThermostatMonitorRunner {
             );
           }
         } else {
-          final message = 'Fetched ${value.toStringAsFixed(1)}°C';
+          final message = 'Fetched ${value.toStringAsFixed(2)}°C';
           final shouldClearSnooze = previousState?.snoozedUntil != null;
           final hadSilence = previousState?.silenceUntilOk == true;
           final wasOutOfRange =
@@ -259,9 +259,9 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     await _notifications.show(
       _alarmNotificationId(thermostat.id),
       '${thermostat.name} out of range',
-      'Current ${valueC.toStringAsFixed(1)}°C • '
-          'Range ${thermostat.minC.toStringAsFixed(1)}°C – '
-          '${thermostat.maxC.toStringAsFixed(1)}°C',
+      'Current ${valueC.toStringAsFixed(2)}°C • '
+          'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
+          '${thermostat.maxC.toStringAsFixed(2)}°C',
       NotificationDetails(
         android: AndroidNotificationDetails(
           _alarmChannel.id,

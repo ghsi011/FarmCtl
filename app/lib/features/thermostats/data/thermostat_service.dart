@@ -30,7 +30,7 @@ class ThermostatService {
       valueC: result.valueC,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
-      message: 'Fetched ${result.valueC.toStringAsFixed(1)}°C',
+      message: 'Fetched ${result.valueC.toStringAsFixed(2)}°C',
     );
     return saved;
   }
@@ -52,7 +52,7 @@ class ThermostatService {
       valueC: result.valueC,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
-      message: 'Fetched ${result.valueC.toStringAsFixed(1)}°C',
+      message: 'Fetched ${result.valueC.toStringAsFixed(2)}°C',
     );
     return updated;
   }
@@ -86,7 +86,7 @@ class ThermostatService {
         );
       }
 
-      final message = 'Fetched ${value.toStringAsFixed(1)}°C';
+      final message = 'Fetched ${value.toStringAsFixed(2)}°C';
       final shouldClearSnooze = previousState?.snoozedUntil != null;
       final hadSilence = previousState?.silenceUntilOk == true;
       await _repository.saveState(

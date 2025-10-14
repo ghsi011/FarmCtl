@@ -98,7 +98,7 @@ void main() {
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 14.2);
-    expect(state.statusMessage, 'Fetched 14.2°C');
+    expect(state.statusMessage, 'Fetched 14.20°C');
   });
 
   test('updateAndTest updates thermostat and state', () async {
@@ -131,7 +131,7 @@ void main() {
     final state = await repository.loadState(updated.id);
     expect(state, isNotNull);
     expect(state!.lastValueC, 9.0);
-    expect(state.statusMessage, 'Fetched 9.0°C');
+    expect(state.statusMessage, 'Fetched 9.00°C');
   });
 
   test('createAndTest rethrows fetch errors', () async {
@@ -193,7 +193,7 @@ void main() {
       final result = await service.refresh(thermostat);
 
       expect(result.status, ThermostatReadingStatus.ok);
-      expect(result.message, 'Fetched 18.4°C');
+      expect(result.message, 'Fetched 18.40°C');
       expect(result.valueC, 18.4);
 
       final state = await repository.loadState(thermostat.id);
@@ -201,7 +201,7 @@ void main() {
       expect(state!.status, ThermostatReadingStatus.ok);
       expect(state.lastValueC, 18.4);
       expect(state.lastFetchedAt, result.fetchedAt);
-      expect(state.statusMessage, 'Fetched 18.4°C');
+      expect(state.statusMessage, 'Fetched 18.40°C');
       expect(state.snoozedUntil, isNull);
       expect(state.silenceUntilOk, isFalse);
     });
@@ -218,14 +218,17 @@ void main() {
         final result = await service.refresh(thermostat);
 
         expect(result.status, ThermostatReadingStatus.outOfRange);
-        expect(result.message, 'Out of range: 25.2°C (10.0°C – 20.0°C)');
+        expect(result.message, 'Out of range: 25.20°C (10.00°C – 20.00°C)');
         expect(result.valueC, 25.2);
 
         final state = await repository.loadState(thermostat.id);
         expect(state, isNotNull);
         expect(state!.status, ThermostatReadingStatus.outOfRange);
         expect(state.lastValueC, 25.2);
-        expect(state.statusMessage, 'Out of range: 25.2°C (10.0°C – 20.0°C)');
+        expect(
+          state.statusMessage,
+          'Out of range: 25.20°C (10.00°C – 20.00°C)',
+        );
       },
     );
 
@@ -236,7 +239,7 @@ void main() {
         valueC: 15.0,
         fetchedAt: DateTime.utc(2025, 1, 3, 7),
         etag: 'etag',
-        message: 'Fetched 15.0°C',
+        message: 'Fetched 15.00°C',
       );
 
       network._exception = const ThermostatFetchException(

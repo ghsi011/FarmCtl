@@ -99,7 +99,7 @@ class ThermostatHistoryChart extends StatelessWidget {
                 reservedSize: 48,
                 interval: _suggestedYInterval(minY, maxY),
                 getTitlesWidget: (value, meta) => Text(
-                  value.toStringAsFixed(1),
+                  value.toStringAsFixed(2),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -137,7 +137,7 @@ class ThermostatHistoryChart extends StatelessWidget {
                 return touchedSpots.map((spot) {
                   final timestamp = base.add(Duration(seconds: spot.x.toInt()));
                   return LineTooltipItem(
-                    '${spot.y.toStringAsFixed(1)}°C\n${formatter.format(timestamp.toLocal())}',
+                    '${spot.y.toStringAsFixed(2)}°C\n${formatter.format(timestamp.toLocal())}',
                     Theme.of(context).textTheme.bodyMedium!,
                   );
                 }).toList();

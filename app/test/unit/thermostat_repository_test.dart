@@ -90,7 +90,7 @@ void main() {
       valueC: 12.3,
       fetchedAt: DateTime.utc(2025, 1, 1, 12),
       etag: 'etag',
-      message: 'Fetched 12.3°C',
+      message: 'Fetched 12.30°C',
     );
 
     await repository.delete(thermostat.id);
@@ -133,14 +133,14 @@ void main() {
       valueC: 9.5,
       fetchedAt: DateTime.utc(2025, 1, 2, 8),
       etag: 'tag',
-      message: 'Fetched 9.5°C',
+      message: 'Fetched 9.50°C',
     );
 
     var state = await repository.loadState(thermostat.id);
     expect(state, isNotNull);
     expect(state!.status, ThermostatReadingStatus.ok);
     expect(state.lastValueC, 9.5);
-    expect(state.statusMessage, 'Fetched 9.5°C');
+    expect(state.statusMessage, 'Fetched 9.50°C');
     expect(state.snoozedUntil, isNull);
     expect(state.silenceUntilOk, isFalse);
 
