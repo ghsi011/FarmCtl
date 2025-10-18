@@ -34,4 +34,33 @@ extension ThermostatHistoryRangeX on ThermostatHistoryRange {
         return 'All';
     }
   }
+
+  String get description {
+    switch (this) {
+      case ThermostatHistoryRange.hour:
+        return 'Last hour';
+      case ThermostatHistoryRange.day:
+        return 'Last 24 hours';
+      case ThermostatHistoryRange.week:
+        return 'Last 7 days';
+      case ThermostatHistoryRange.month:
+        return 'Last 30 days';
+      case ThermostatHistoryRange.year:
+        return 'Last year';
+      case ThermostatHistoryRange.all:
+        return 'All readings';
+    }
+  }
+}
+
+ThermostatHistoryRange? thermostatHistoryRangeFromName(String? name) {
+  if (name == null) {
+    return null;
+  }
+  for (final range in ThermostatHistoryRange.values) {
+    if (range.name == name) {
+      return range;
+    }
+  }
+  return null;
 }
