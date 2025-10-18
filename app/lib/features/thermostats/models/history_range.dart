@@ -52,3 +52,15 @@ extension ThermostatHistoryRangeX on ThermostatHistoryRange {
     }
   }
 }
+
+ThermostatHistoryRange? thermostatHistoryRangeFromName(String? name) {
+  if (name == null) {
+    return null;
+  }
+  for (final range in ThermostatHistoryRange.values) {
+    if (range.name == name) {
+      return range;
+    }
+  }
+  return null;
+}

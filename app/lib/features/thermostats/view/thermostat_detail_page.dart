@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/history_range.dart';
 import '../providers/thermostat_providers.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_history_chart.dart';
+import '../../../core/router/app_router.dart';
 
 class ThermostatDetailPage extends ConsumerStatefulWidget {
   const ThermostatDetailPage({required this.thermostatId, super.key});
@@ -100,20 +102,53 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'History',
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Visualise previous readings and compare trends across different time frames.',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'History',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Visualise previous readings and compare trends across different time frames.',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.fullscreen),
+                                  tooltip: 'Open full-screen chart',
+                                  onPressed: () {
+                                    context.pushNamed(
+                                      ThermostatHistoryFullscreenRoute.name,
+                                      pathParameters: {
+                                        'id': widget.thermostatId,
+                                      },
+                                      queryParameters: {'range': _range.name},
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 16),
                             SegmentedButton<ThermostatHistoryRange>(

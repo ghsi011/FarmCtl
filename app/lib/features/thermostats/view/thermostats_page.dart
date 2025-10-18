@@ -178,20 +178,39 @@ class ThermostatsPage extends ConsumerWidget {
               >= 760 => 2,
               _ => 1,
             };
-            final spacing = 18.0;
+            final bottomPadding = MediaQuery.of(context).padding.bottom;
+            final padding = EdgeInsets.fromLTRB(16, 16, 16, 24 + bottomPadding);
+
+            if (crossAxisCount == 1) {
+              return ListView.separated(
+                padding: padding,
+                itemCount: thermostats.length,
+                separatorBuilder: (context, _) => const SizedBox(height: 18),
+                itemBuilder: (context, index) {
+                  final summary = thermostats[index];
+                  return ThermostatCard(
+                    summary: summary,
+                    onEdit: () => _editThermostat(context, ref, summary),
+                    onDelete: () => _deleteThermostat(context, ref, summary),
+                    onRefresh: () => _refreshThermostat(context, ref, summary),
+                    onTap: () => context.pushNamed(
+                      ThermostatDetailRoute.name,
+                      pathParameters: {'id': summary.thermostat.id},
+                    ),
+                  );
+                },
+              );
+            }
+
+            const spacing = 18.0;
             return GridView.builder(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                24 + MediaQuery.of(context).padding.bottom,
-              ),
+              padding: padding,
               primary: false,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: crossAxisCount,
                 mainAxisSpacing: spacing,
                 crossAxisSpacing: spacing,
-                childAspectRatio: crossAxisCount == 1 ? 1.02 : 0.94,
+                childAspectRatio: 0.94,
               ),
               itemCount: thermostats.length,
               itemBuilder: (context, index) {
