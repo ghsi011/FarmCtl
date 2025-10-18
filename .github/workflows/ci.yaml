@@ -7,6 +7,8 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -54,6 +56,7 @@ jobs:
         working-directory: app
 
       - name: Upload debug APK artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: farmctl-debug-apk
@@ -85,3 +88,5 @@ jobs:
           asset_path: app/build/app/outputs/flutter-apk/app-release.apk
           asset_name: farmctl-release-${{ github.run_number }}.apk
           asset_content_type: application/vnd.android.package-archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
