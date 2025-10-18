@@ -30,11 +30,12 @@ void main() {
         });
 
     final picker = SoundPicker();
-    final uri = await picker.pickSound(
+    final selection = await picker.pickSound(
       initialUri: Uri.parse('content://previous'),
     );
-
-    expect(uri, Uri.parse('content://picked'));
+    expect(selection, isNotNull);
+    expect(selection!.useDefault, isFalse);
+    expect(selection.uri, Uri.parse('content://picked'));
   });
 
   test('pickSound returns null when channel responds with null', () async {

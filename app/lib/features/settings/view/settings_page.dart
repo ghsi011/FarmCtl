@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../core/background/thermostat_monitor.dart';
 import '../models/alert_config.dart';
 import '../providers/settings_providers.dart';
+import '../services/sound_picker.dart';
 import '../../thermostats/data/thermostat_client.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -287,9 +288,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _showSoundPicker(AlertConfig config) async {
     final previous = config.soundUri;
     final initialUri = previous != null ? Uri.tryParse(previous) : null;
-    Uri? picked;
+    SoundSelection? selection;
     try {
-      picked = await ref
+      selection = await ref
           .read(soundPickerProvider)
           .pickSound(initialUri: initialUri);
     } on PlatformException catch (error, stackTrace) {
@@ -305,12 +306,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       return;
     }
 
-    if (picked == null) {
+    if (selection == null) {
       return;
     }
 
-    final newValue = picked.toString();
     try {
+      if (selection.useDefault) {
+        await ref.read(alertConfigRepositoryProvider).setSoundUri(null);
+        if (initialUri != null) {
+          try {
+            await ref.read(soundPickerProvider).releasePersistedUri(initialUri);
+          } catch (error, stackTrace) {
+            debugPrint(
+              'Failed to release previous sound URI permission: $error\n$stackTrace',
+            );
+          }
+        }
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Alarm sound reset to system default')),
+        );
+        return;
+      }
+
+      final pickedUri = selection.uri;
+      if (pickedUri == null) {
+        return;
+      }
+
+      final newValue = pickedUri.toString();
       await ref.read(alertConfigRepositoryProvider).setSoundUri(newValue);
 
       if (initialUri != null && initialUri.toString() != newValue) {
