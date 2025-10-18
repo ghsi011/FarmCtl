@@ -33,3 +33,4 @@ windows/flutter/ephemeral/
 
 # Drift generated (if any outside committed g.darts)
 **/*.g.dart
+app/.flutter-plugins-dependencies
