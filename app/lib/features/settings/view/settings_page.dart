@@ -28,44 +28,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final configAsync = ref.watch(alertConfigProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: configAsync.when(
-        data: (config) => _SettingsContent(
-          config: config,
-          pollIntervalOverride: _pollIntervalOverride,
-          onPollIntervalChanged: _handlePollIntervalChanged,
-          onPollIntervalChangeEnd: (value) {
-            _commitPollInterval(value);
-          },
-          onExactAlarmsChanged: (value) {
-            _setExactAlarmsEnabled(value);
-          },
-          onVibrateChanged: (value) {
-            _setVibrateEnabled(value);
-          },
-          onVolumeBoostChanged: (value) {
-            _setVolumeBoostEnabled(value);
-          },
-          onPauseFor: (duration) {
-            _pauseFor(duration);
-          },
-          onResumeNow: _resumeMonitoring,
-          onPickSound: (config) {
-            _showSoundPicker(config);
-          },
-          onUseDefaultSound: (config) {
-            _useDefaultSound(config);
-          },
-          onTestAlarm: (config) {
-            _testAlarm(config);
-          },
-          onExportLogs: _exportLogs,
-          onGithubTokenChanged: (token) {
-            _setGithubToken(token);
-          },
-          onTestGithubToken: _testGithubToken,
+      body: SafeArea(
+        child: configAsync.when(
+          data: (config) => _SettingsContent(
+            config: config,
+            pollIntervalOverride: _pollIntervalOverride,
+            onPollIntervalChanged: _handlePollIntervalChanged,
+            onPollIntervalChangeEnd: (value) {
+              _commitPollInterval(value);
+            },
+            onExactAlarmsChanged: (value) {
+              _setExactAlarmsEnabled(value);
+            },
+            onVibrateChanged: (value) {
+              _setVibrateEnabled(value);
+            },
+            onVolumeBoostChanged: (value) {
+              _setVolumeBoostEnabled(value);
+            },
+            onPauseFor: (duration) {
+              _pauseFor(duration);
+            },
+            onResumeNow: _resumeMonitoring,
+            onPickSound: (value) {
+              _showSoundPicker(value);
+            },
+            onUseDefaultSound: (value) {
+              _useDefaultSound(value);
+            },
+            onTestAlarm: (value) {
+              _testAlarm(value);
+            },
+            onExportLogs: _exportLogs,
+            onGithubTokenChanged: (token) {
+              _setGithubToken(token);
+            },
+            onTestGithubToken: _testGithubToken,
+          ),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) => _ErrorContent(error: error),
         ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => _ErrorContent(error: error),
       ),
     );
   }
@@ -502,153 +504,93 @@ class _SettingsContentState extends State<_SettingsContent> {
     final pauseMessage = _pauseMessage(context, widget.config, now);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
       children: [
         _Section(
           title: 'Monitoring',
+          description:
+              'Configure background polling cadence and pause behaviour.',
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Poll interval', style: theme.textTheme.titleMedium),
-                    Slider(
-                      min: 1,
-                      max: 30,
-                      divisions: 29,
-                      value: sliderValue,
-                      label: '${sliderValue.round()} min',
-                      onChanged: widget.onPollIntervalChanged,
-                      onChangeEnd: widget.onPollIntervalChangeEnd,
-                    ),
-                    Text(
-                      '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const Divider(height: 24),
-                    SwitchListTile.adaptive(
-                      value: widget.config.exactAlarmsEnabled,
-                      onChanged: widget.onExactAlarmsChanged,
-                      title: const Text('Allow exact alarms'),
-                      subtitle: const Text(
-                        'Improve reliability on Android 12+ by requesting '
-                        'the exact alarm permission.',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Pause all monitoring',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    if (pauseMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          pauseMessage,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _pauseOptions
-                          .map(
-                            (option) => FilledButton.tonal(
-                              onPressed: () =>
-                                  widget.onPauseFor(option.duration),
-                              child: Text(option.label),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: widget.config.isPaused(now)
-                            ? widget.onResumeNow
-                            : null,
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Resume now'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        _Section(
-          title: 'Alarm',
-          children: [
-            Card(
+            _SettingsCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ListTile(
-                    title: const Text('Alarm sound'),
-                    subtitle: Text(
-                      widget.config.soundUri ?? 'System default alarm sound',
-                    ),
+                  const _SettingsTileHeader(
+                    title: 'Poll interval',
+                    subtitle:
+                        'Choose how often FarmCtl checks each thermostat for updates.',
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        FilledButton.tonal(
-                          onPressed: () => widget.onPickSound(widget.config),
-                          child: const Text('Choose sound'),
-                        ),
-                        TextButton(
-                          onPressed: widget.config.soundUri == null
-                              ? null
-                              : () => widget.onUseDefaultSound(widget.config),
-                          child: const Text('Use system default'),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 16),
+                  Slider(
+                    min: 1,
+                    max: 30,
+                    divisions: 29,
+                    value: sliderValue,
+                    label: '${sliderValue.round()} min',
+                    onChanged: widget.onPollIntervalChanged,
+                    onChangeEnd: widget.onPollIntervalChangeEnd,
                   ),
+                  Text(
+                    '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  const _SettingsTileHeader(
+                    title: 'Exact alarms',
+                    subtitle:
+                        'Improve reliability on Android 12+ by requesting the exact alarm permission.',
+                  ),
+                  const SizedBox(height: 12),
                   SwitchListTile.adaptive(
-                    value: widget.config.vibrate,
-                    onChanged: widget.onVibrateChanged,
-                    title: const Text('Vibrate on alarm'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: widget.config.volumeBoost,
-                    onChanged: widget.onVolumeBoostChanged,
-                    title: const Text('Boost volume'),
+                    value: widget.config.exactAlarmsEnabled,
+                    onChanged: widget.onExactAlarmsChanged,
+                    title: const Text('Allow exact alarms'),
                     subtitle: const Text(
-                      'Keeps alarm volume at maximum while alarming.',
+                      'FarmCtl may request the schedule exact alarm permission.',
                     ),
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.alarm_on),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilledButton.icon(
-                        onPressed: () => widget.onTestAlarm(widget.config),
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Test alarm'),
-                      ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SettingsCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SettingsTileHeader(
+                    title: 'Pause monitoring',
+                    subtitle:
+                        'Temporarily stop background refreshes and notifications.',
+                  ),
+                  if (pauseMessage != null) ...[
+                    const SizedBox(height: 12),
+                    _InfoBanner(message: pauseMessage),
+                  ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final option in _pauseOptions)
+                        FilledButton.tonal(
+                          onPressed: () => widget.onPauseFor(option.duration),
+                          child: Text(option.label),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      onPressed: widget.config.isPaused(now)
+                          ? widget.onResumeNow
+                          : null,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Resume monitoring'),
                     ),
                   ),
                 ],
@@ -656,104 +598,181 @@ class _SettingsContentState extends State<_SettingsContent> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32),
         _Section(
-          title: 'API Configuration',
+          title: 'Alarm',
+          description:
+              'Tune how alarms sound and feel when a threshold is crossed.',
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'GitHub Personal Access Token',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Optional token to increase GitHub API rate limits (60 → 5,000 requests/hour).',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _tokenController,
-                      obscureText: _tokenObscured,
-                      decoration: InputDecoration(
-                        labelText: 'Personal Access Token',
-                        hintText: 'ghp_...',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                _tokenObscured
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _tokenObscured = !_tokenObscured;
-                                });
-                              },
-                              tooltip: _tokenObscured ? 'Show' : 'Hide',
-                            ),
-                            if (_tokenController.text.isNotEmpty)
-                              IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _tokenController.clear();
-                                  widget.onGithubTokenChanged(null);
-                                },
-                                tooltip: 'Clear',
-                              ),
-                          ],
-                        ),
+            _SettingsCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SettingsTileHeader(
+                    title: 'Alarm sound',
+                    subtitle:
+                        widget.config.soundUri ?? 'System default alarm sound',
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      FilledButton.tonal(
+                        onPressed: () => widget.onPickSound(widget.config),
+                        child: const Text('Choose sound'),
                       ),
-                      onSubmitted: widget.onGithubTokenChanged,
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 12,
-                        children: [
-                          FilledButton(
-                            onPressed: () {
-                              widget.onGithubTokenChanged(
-                                _tokenController.text,
-                              );
-                            },
-                            child: const Text('Save Token'),
-                          ),
-                          OutlinedButton(
-                            onPressed: widget.onTestGithubToken,
-                            child: const Text('Test Token'),
-                          ),
-                        ],
+                      TextButton(
+                        onPressed: widget.config.soundUri == null
+                            ? null
+                            : () => widget.onUseDefaultSound(widget.config),
+                        child: const Text('Use system default'),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  SwitchListTile.adaptive(
+                    value: widget.config.vibrate,
+                    onChanged: widget.onVibrateChanged,
+                    title: const Text('Vibrate on alarm'),
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.vibration),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    value: widget.config.volumeBoost,
+                    onChanged: widget.onVolumeBoostChanged,
+                    title: const Text('Boost volume'),
+                    subtitle: const Text(
+                      'Keeps alarm volume at maximum while alarming.',
                     ),
-                  ],
-                ),
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.volume_up),
+                  ),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      onPressed: () => widget.onTestAlarm(widget.config),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Test alarm'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32),
+        _Section(
+          title: 'API configuration',
+          description:
+              'Provide credentials to unlock higher GitHub API limits.',
+          children: [
+            _SettingsCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SettingsTileHeader(
+                    title: 'GitHub personal access token',
+                    subtitle:
+                        'Optional token to increase API rate limits (60 → 5,000 requests/hour).',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _tokenController,
+                    obscureText: _tokenObscured,
+                    decoration: InputDecoration(
+                      labelText: 'Personal access token',
+                      hintText: 'ghp_...',
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              _tokenObscured
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _tokenObscured = !_tokenObscured;
+                              });
+                            },
+                            tooltip: _tokenObscured ? 'Show' : 'Hide',
+                          ),
+                          if (_tokenController.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _tokenController.clear();
+                                widget.onGithubTokenChanged(null);
+                              },
+                              tooltip: 'Clear',
+                            ),
+                        ],
+                      ),
+                    ),
+                    onSubmitted: widget.onGithubTokenChanged,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    textInputAction: TextInputAction.done,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Stored securely on-device and used only for GitHub API requests.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      FilledButton(
+                        onPressed: () {
+                          widget.onGithubTokenChanged(
+                            _tokenController.text.isEmpty
+                                ? null
+                                : _tokenController.text,
+                          );
+                        },
+                        child: const Text('Save token'),
+                      ),
+                      OutlinedButton(
+                        onPressed: widget.onTestGithubToken,
+                        child: const Text('Test token'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
         _Section(
           title: 'Developer tools',
+          description:
+              'Utilities intended for diagnostics and troubleshooting.',
           children: [
-            Card(
-              child: ListTile(
-                title: const Text('Export developer log'),
-                subtitle: const Text(
-                  'Writes a JSON snapshot of thermostats and current state.',
-                ),
-                trailing: FilledButton(
-                  onPressed: widget.onExportLogs,
-                  child: const Text('Export'),
-                ),
+            _SettingsCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SettingsTileHeader(
+                    title: 'Export developer log',
+                    subtitle:
+                        'Writes a JSON snapshot of thermostats and their current state.',
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: widget.onExportLogs,
+                    icon: const Icon(Icons.output),
+                    label: const Text('Export log'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -787,21 +806,110 @@ class _PauseOption {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({
+    required this.title,
+    required this.children,
+    this.description,
+  });
 
   final String title;
+  final String? description;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
+        Text(title, style: theme.textTheme.headlineSmall),
+        if (description != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            description!,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
         ...children,
       ],
+    );
+  }
+}
+
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(padding: const EdgeInsets.all(20), child: child),
+    );
+  }
+}
+
+class _SettingsTileHeader extends StatelessWidget {
+  const _SettingsTileHeader({required this.title, this.subtitle});
+
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            subtitle!,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.pause_circle_filled, color: colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
     );
   }
 }

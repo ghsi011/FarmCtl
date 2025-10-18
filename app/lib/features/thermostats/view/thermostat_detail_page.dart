@@ -86,46 +86,63 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
               );
             },
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 ThermostatCard(summary: summary),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 Card(
-                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                        child: Row(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'History',
-                              style: Theme.of(context).textTheme.titleMedium,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
-                            const Spacer(),
-                            DropdownButton<ThermostatHistoryRange>(
-                              value: _range,
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setState(() => _range = value);
+                            const SizedBox(height: 8),
+                            Text(
+                              'Visualise previous readings and compare trends across different time frames.',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 16),
+                            SegmentedButton<ThermostatHistoryRange>(
+                              showSelectedIcon: false,
+                              segments: [
+                                for (final range
+                                    in ThermostatHistoryRange.values)
+                                  ButtonSegment(
+                                    value: range,
+                                    label: Text(range.label),
+                                    tooltip: range.description,
+                                  ),
+                              ],
+                              selected: {_range},
+                              onSelectionChanged: (selection) {
+                                if (selection.isEmpty) {
+                                  return;
+                                }
+                                setState(() => _range = selection.first);
                               },
-                              items: ThermostatHistoryRange.values
-                                  .map(
-                                    (range) => DropdownMenuItem(
-                                      value: range,
-                                      child: Text(range.label),
-                                    ),
-                                  )
-                                  .toList(),
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(height: 12),
                       if (refreshAsync.isLoading)
                         const LinearProgressIndicator(minHeight: 2),
                       Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         child: historyAsync.when(
                           data: (samples) => ThermostatHistoryChart(
                             samples: samples,

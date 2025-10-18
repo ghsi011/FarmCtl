@@ -170,45 +170,79 @@ class ThermostatsPage extends ConsumerWidget {
           return const _EmptyState();
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemBuilder: (context, index) {
-            final summary = thermostats[index];
-            return ThermostatCard(
-              summary: summary,
-              onEdit: () => _editThermostat(context, ref, summary),
-              onDelete: () => _deleteThermostat(context, ref, summary),
-              onRefresh: () => _refreshThermostat(context, ref, summary),
-              onTap: () => context.pushNamed(
-                ThermostatDetailRoute.name,
-                pathParameters: {'id': summary.thermostat.id},
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final crossAxisCount = switch (width) {
+              >= 1200 => 3,
+              >= 760 => 2,
+              _ => 1,
+            };
+            final spacing = 18.0;
+            return GridView.builder(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                24 + MediaQuery.of(context).padding.bottom,
               ),
+              primary: false,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: spacing,
+                crossAxisSpacing: spacing,
+                childAspectRatio: crossAxisCount == 1 ? 1.02 : 0.94,
+              ),
+              itemCount: thermostats.length,
+              itemBuilder: (context, index) {
+                final summary = thermostats[index];
+                return ThermostatCard(
+                  summary: summary,
+                  onEdit: () => _editThermostat(context, ref, summary),
+                  onDelete: () => _deleteThermostat(context, ref, summary),
+                  onRefresh: () => _refreshThermostat(context, ref, summary),
+                  onTap: () => context.pushNamed(
+                    ThermostatDetailRoute.name,
+                    pathParameters: {'id': summary.thermostat.id},
+                  ),
+                );
+              },
             );
           },
-          separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemCount: thermostats.length,
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => _ErrorState(error: error),
     );
 
+    final showOfflineBanner =
+        offlineStatus == OfflineStatus.offline ||
+        offlineStatus == OfflineStatus.degraded;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Thermostats')),
-      body: Column(
-        children: [
-          if (offlineStatus == OfflineStatus.offline ||
-              offlineStatus == OfflineStatus.degraded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _OfflineBanner(status: offlineStatus),
+      body: SafeArea(
+        child: Column(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: showOfflineBanner
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: _OfflineBanner(status: offlineStatus),
+                    )
+                  : const SizedBox.shrink(),
             ),
-          Expanded(child: content),
-        ],
+            Expanded(child: content),
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _createThermostat(context, ref),
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('Add thermostat'),
       ),
     );
   }
@@ -247,14 +281,19 @@ class _OfflineBanner extends StatelessWidget {
       label: title,
       value: message,
       child: Card(
-        color: colorScheme.surfaceContainerHighest,
+        margin: EdgeInsets.zero,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: colorScheme.primary),
-              const SizedBox(width: 12),
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: colorScheme.primaryContainer,
+                foregroundColor: colorScheme.onPrimaryContainer,
+                child: Icon(icon),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,7 +304,7 @@ class _OfflineBanner extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       message,
                       style: textTheme.bodyMedium?.copyWith(
