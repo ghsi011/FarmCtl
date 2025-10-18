@@ -172,6 +172,20 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   await _showMonitoringActiveNotification(notifications);
 }
 
+// Entry point used by the Android BootCompletedReceiver to restore scheduling
+// after device reboot or app update without launching the full UI.
+@pragma('vm:entry-point')
+Future<void> initializeMonitoringOnBoot() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
+  try {
+    await initializeBackgroundMonitoring();
+  } catch (error, stackTrace) {
+    debugPrint('Boot init failed: $error');
+    debugPrint('$stackTrace');
+  }
+}
+
 @pragma('vm:entry-point')
 void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
@@ -621,7 +635,10 @@ Future<void> _showMonitoringActiveNotification(
         channelDescription: _monitoringChannel.description,
         importance: Importance.low,
         priority: Priority.low,
+        // Make this notification non-dismissible by swipe
+        autoCancel: false,
         ongoing: true,
+        category: AndroidNotificationCategory.service,
         showWhen: false,
         playSound: false,
         enableVibration: false,
