@@ -76,6 +76,7 @@ class _ThermostatHistoryFullscreenPageState
     );
 
     final thermostatName = summaryAsync.asData?.value?.thermostat.name;
+    final orientation = MediaQuery.of(context).orientation;
 
     return Scaffold(
       appBar: AppBar(
@@ -90,6 +91,31 @@ class _ThermostatHistoryFullscreenPageState
               : 'Thermostat history',
         ),
         actions: [
+          if (orientation == Orientation.landscape)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<ThermostatHistoryRange>(
+                    value: _range,
+                    isExpanded: true,
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _range = value);
+                      }
+                    },
+                    items: [
+                      for (final option in ThermostatHistoryRange.values)
+                        DropdownMenuItem(
+                          value: option,
+                          child: Text(option.label),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             onPressed: refreshAsync.isLoading ? null : _refreshHistory,
             icon: refreshAsync.isLoading
@@ -119,13 +145,7 @@ class _ThermostatHistoryFullscreenPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _LandscapeHistoryControls(
-                      range: _range,
-                      onRangeChanged: (range) {
-                        setState(() => _range = range);
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                    // Controls moved to AppBar in landscape to maximise chart space
                     Expanded(child: chart),
                   ],
                 ),
@@ -142,7 +162,7 @@ class _ThermostatHistoryFullscreenPageState
                       setState(() => _range = range);
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Expanded(child: chart),
                 ],
               ),
@@ -154,11 +174,10 @@ class _ThermostatHistoryFullscreenPageState
   }
 }
 
-class _LandscapeHistoryControls extends StatelessWidget {
-  const _LandscapeHistoryControls({
-    required this.range,
-    required this.onRangeChanged,
-  });
+// Legacy landscape controls removed; controls now live in the AppBar.
+
+class _HistoryControls extends StatelessWidget {
+  const _HistoryControls({required this.range, required this.onRangeChanged});
 
   final ThermostatHistoryRange range;
   final ValueChanged<ThermostatHistoryRange> onRangeChanged;
@@ -168,6 +187,7 @@ class _LandscapeHistoryControls extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // Compact, single-row controls to maximise vertical space for the chart
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -179,7 +199,7 @@ class _LandscapeHistoryControls extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<ThermostatHistoryRange>(
@@ -202,84 +222,14 @@ class _LandscapeHistoryControls extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          range.description,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: 4),
         Text(
-          'Pinch or drag across the graph to inspect temperature changes.',
+          range.description,
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _HistoryControls extends StatelessWidget {
-  const _HistoryControls({required this.range, required this.onRangeChanged});
-
-  final ThermostatHistoryRange range;
-  final ValueChanged<ThermostatHistoryRange> onRangeChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Range',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<ThermostatHistoryRange>(
-              showSelectedIcon: false,
-              segments: [
-                for (final option in ThermostatHistoryRange.values)
-                  ButtonSegment(
-                    value: option,
-                    label: Text(option.label),
-                    tooltip: option.description,
-                  ),
-              ],
-              selected: {range},
-              onSelectionChanged: (selection) {
-                if (selection.isEmpty) {
-                  return;
-                }
-                onRangeChanged(selection.first);
-              },
-            ),
-            const SizedBox(height: 16),
-            Text(
-              range.description,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Charts are optimised for horizontal space in this view. Pinch or drag across the graph to inspect temperature changes.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -306,7 +256,7 @@ class _HistoryChartPane extends StatelessWidget {
         if (refreshAsync.isLoading) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: historyAsync.when(
               data: (samples) => ThermostatHistoryChart(
                 samples: samples,
