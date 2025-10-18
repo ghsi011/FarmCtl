@@ -325,9 +325,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Alarm sound reset to system default'),
-          ),
+          const SnackBar(content: Text('Alarm sound reset to system default')),
         );
         return;
       }

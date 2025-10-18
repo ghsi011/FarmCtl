@@ -405,8 +405,9 @@ String _alarmChannelIdForSound(String? soundUri) {
 }
 
 AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
-  final target =
-      (soundUri != null && soundUri.isNotEmpty) ? soundUri : _defaultAlarmSoundUri;
+  final target = (soundUri != null && soundUri.isNotEmpty)
+      ? soundUri
+      : _defaultAlarmSoundUri;
   return UriAndroidNotificationSound(target);
 }
 
