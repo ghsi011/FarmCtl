@@ -374,6 +374,37 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     }
   }
 
+  Future<int> pruneTemperatureReadingsBefore(DateTime cutoff) {
+    return (delete(
+      temperatureReadings,
+    )..where((tbl) => tbl.observedAt.isSmallerThanValue(cutoff))).go();
+  }
+
+  Future<void> pruneTemperatureReadingsExceedingLimit(
+    String thermostatId,
+    int keepLatest,
+  ) async {
+    if (keepLatest <= 0) {
+      await (delete(
+        temperatureReadings,
+      )..where((tbl) => tbl.thermostatId.equals(thermostatId))).go();
+      return;
+    }
+
+    await customStatement(
+      '''
+      DELETE FROM temperature_readings
+      WHERE thermostat_id = ? AND id NOT IN (
+        SELECT id FROM temperature_readings
+        WHERE thermostat_id = ?
+        ORDER BY observed_at DESC, id DESC
+        LIMIT ?
+      )
+      ''',
+      [thermostatId, thermostatId, keepLatest],
+    );
+  }
+
   AlertConfigEntry _defaultAlertConfig() {
     return AlertConfigEntry(
       id: 1,
