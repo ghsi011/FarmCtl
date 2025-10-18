@@ -209,18 +209,19 @@ Future<void> _runMonitorTask() async {
 
   try {
     final repository = ThermostatRepository(database);
-    final network = ThermostatHttpClient(githubToken: config.githubToken);
+    final alertConfig = config; // promote to non-null for closures
+    final network = ThermostatHttpClient(githubToken: alertConfig.githubToken);
     final service = ThermostatService(
       repository: repository,
       network: network,
-      tokenSupplier: () async => config.githubToken,
+      tokenSupplier: () async => alertConfig.githubToken,
     );
     final runner = ThermostatMonitorRunner(
       repository: repository,
       network: network,
       alarmDispatcher: NotificationAlarmDispatcher(
         notifications,
-        config: config,
+        config: alertConfig,
       ),
     );
 
@@ -256,9 +257,8 @@ Future<void> _runMonitorTask() async {
     await database.close();
   }
 
-  if (config != null) {
-    await _updateAlarmSchedule(config);
-  }
+  // config is non-null here
+  await _updateAlarmSchedule(config);
 }
 
 class ThermostatMonitorRunner {
@@ -398,10 +398,10 @@ class ThermostatMonitorRunner {
 
 String _alarmChannelIdForSound(String? soundUri) {
   if (soundUri == null || soundUri.isEmpty) {
-    return '$_alarmChannelPrefix_default';
+    return '${_alarmChannelPrefix}_default';
   }
   final hash = soundUri.hashCode & 0x7fffffff;
-  return '$_alarmChannelPrefix_${hash.toRadixString(36)}';
+  return '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
 }
 
 AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
@@ -420,7 +420,6 @@ AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
     playSound: true,
     sound: _alarmNotificationSound(soundUri),
     audioAttributesUsage: AudioAttributesUsage.alarm,
-    audioAttributesContentType: AudioAttributesContentType.sonification,
     enableVibration: true,
   );
 }
@@ -457,7 +456,6 @@ Future<NotificationDetails> _prepareAlarmNotificationDetails({
     playSound: true,
     sound: sound,
     audioAttributesUsage: AudioAttributesUsage.alarm,
-    audioAttributesContentType: AudioAttributesContentType.sonification,
     channelAction: AndroidNotificationChannelAction.createIfNotExists,
     actions: actions,
   );
