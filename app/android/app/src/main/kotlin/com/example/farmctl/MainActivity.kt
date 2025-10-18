@@ -5,7 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.provider.DocumentsContract
+import android.media.RingtoneManager
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -38,16 +38,16 @@ class MainActivity : FlutterActivity() {
       return
     }
 
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-      addCategory(Intent.CATEGORY_OPENABLE)
-      type = "audio/*"
-      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+    // Use the platform ringtone picker for alarm sounds, which matches the Clock app UI.
+    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+      putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+      putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+      putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
       if (!initialUri.isNullOrBlank()) {
         try {
           val uri = Uri.parse(initialUri)
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri)
-          }
+          putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
         } catch (ex: IllegalArgumentException) {
           Log.w(TAG, "Ignoring invalid initial URI: $initialUri", ex)
         }
@@ -62,7 +62,7 @@ class MainActivity : FlutterActivity() {
       pendingResult = null
       result.error(
         "NO_PICKER",
-        "No installed app can provide an audio picker.",
+        "No installed app can provide a ringtone picker.",
         error.localizedMessage
       )
     }
@@ -104,21 +104,29 @@ class MainActivity : FlutterActivity() {
       return
     }
 
-    val uri = data.data
+    // Ringtone picker returns the selection in EXTRA_RINGTONE_PICKED_URI
+    val uri: Uri? = if (Build.VERSION.SDK_INT >= 33) {
+      data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+    } else {
+      @Suppress("DEPRECATION")
+      data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+    }
     if (uri == null) {
       result.success(null)
       return
     }
 
-    val takeFlags = data.flags and
-      (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-    try {
-      contentResolver.takePersistableUriPermission(
-        uri,
-        takeFlags or Intent.FLAG_GRANT_READ_URI_PERMISSION
-      )
-    } catch (error: SecurityException) {
-      Log.w(TAG, "Unable to persist permission for selected URI $uri", error)
+    // Attempt to persist read permission if granted via the picker
+    val takeFlags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    if (takeFlags != 0) {
+      try {
+        contentResolver.takePersistableUriPermission(
+          uri,
+          takeFlags
+        )
+      } catch (error: SecurityException) {
+        Log.w(TAG, "Unable to persist permission for selected URI $uri", error)
+      }
     }
 
     result.success(mapOf("uri" to uri.toString()))
