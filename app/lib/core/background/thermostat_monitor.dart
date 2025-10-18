@@ -166,6 +166,10 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
         : config;
     await _updateAlarmSchedule(schedulingConfig);
   }
+
+  // Keep a persistent low-priority notification visible between runs so the
+  // user knows monitoring is active.
+  await _showMonitoringActiveNotification(notifications);
 }
 
 @pragma('vm:entry-point')
@@ -198,6 +202,7 @@ Future<void> _runMonitorTask() async {
   }
 
   await _initializeNotifications(notifications, config: config);
+  // Show a transient notification while the check is running.
   await _showMonitoringNotification(notifications);
 
   if (config == null) {
@@ -253,7 +258,8 @@ Future<void> _runMonitorTask() async {
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');
   } finally {
-    await notifications.cancel(_monitoringNotificationId);
+    // Switch back to the persistent monitoring indicator when the run ends.
+    await _showMonitoringActiveNotification(notifications);
     await database.close();
   }
 
@@ -585,6 +591,29 @@ Future<void> _showMonitoringNotification(
     _monitoringNotificationId,
     'FarmCtl monitoring',
     'Checking thermostats…',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _monitoringChannel.id,
+        _monitoringChannel.name,
+        channelDescription: _monitoringChannel.description,
+        importance: Importance.low,
+        priority: Priority.low,
+        ongoing: true,
+        showWhen: false,
+        playSound: false,
+        enableVibration: false,
+      ),
+    ),
+  );
+}
+
+Future<void> _showMonitoringActiveNotification(
+  FlutterLocalNotificationsPlugin plugin,
+) {
+  return plugin.show(
+    _monitoringNotificationId,
+    'FarmCtl monitoring',
+    'Monitoring active',
     NotificationDetails(
       android: AndroidNotificationDetails(
         _monitoringChannel.id,
