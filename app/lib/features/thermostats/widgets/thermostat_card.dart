@@ -135,134 +135,133 @@ class ThermostatCard extends StatelessWidget {
           '${thermostat.maxC.toStringAsFixed(1)} degrees Celsius.',
     ].join(' ');
 
-    return MergeSemantics(
-      child: Semantics(
-        container: true,
-        label: 'Thermostat ${thermostat.name}',
-        value: semanticsValue,
-        hint: onTap != null ? 'Tap to view details.' : null,
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(thermostat.name, style: textTheme.titleLarge),
-                            const SizedBox(height: 6),
-                            Text(
-                              thermostat.rawUrl,
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (onRefresh != null)
-                        IconButton(
-                          onPressed: onRefresh,
-                          tooltip: 'Refresh',
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      if (onEdit != null || onDelete != null)
-                        PopupMenuButton<_ThermostatMenuAction>(
-                          onSelected: (value) {
-                            switch (value) {
-                              case _ThermostatMenuAction.edit:
-                                onEdit?.call();
-                                break;
-                              case _ThermostatMenuAction.delete:
-                                onDelete?.call();
-                                break;
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            if (onEdit != null)
-                              const PopupMenuItem(
-                                value: _ThermostatMenuAction.edit,
-                                child: Text('Edit'),
-                              ),
-                            if (onDelete != null)
-                              const PopupMenuItem(
-                                value: _ThermostatMenuAction.delete,
-                                child: Text('Delete'),
-                              ),
-                          ],
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [
-                          colorScheme.primaryContainer.withValues(alpha: 0.65),
-                          colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.85,
-                          ),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 28),
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: 'Thermostat ${thermostat.name}',
+      value: semanticsValue,
+      hint: onTap != null ? 'Tap to view details.' : null,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(thermostat.name, style: textTheme.titleLarge),
+                          const SizedBox(height: 6),
                           Text(
-                            temperatureLabel,
-                            style: textTheme.displaySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            supportingLabel,
+                            thermostat.rawUrl,
                             style: textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onPrimaryContainer.withValues(
-                                alpha: 0.8,
-                              ),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Icon(Icons.thermostat, color: colorScheme.primary),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
-                        style: textTheme.titleMedium,
+                    if (onRefresh != null)
+                      IconButton(
+                        onPressed: onRefresh,
+                        tooltip: 'Refresh',
+                        icon: const Icon(Icons.refresh),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Target range',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                    if (onEdit != null || onDelete != null)
+                      PopupMenuButton<_ThermostatMenuAction>(
+                        onSelected: (value) {
+                          switch (value) {
+                            case _ThermostatMenuAction.edit:
+                              onEdit?.call();
+                              break;
+                            case _ThermostatMenuAction.delete:
+                              onDelete?.call();
+                              break;
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          if (onEdit != null)
+                            const PopupMenuItem(
+                              value: _ThermostatMenuAction.edit,
+                              child: Text('Edit'),
+                            ),
+                          if (onDelete != null)
+                            const PopupMenuItem(
+                              value: _ThermostatMenuAction.delete,
+                              child: Text('Delete'),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      colors: [
+                        colorScheme.primaryContainer.withValues(alpha: 0.65),
+                        colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.85,
                         ),
-                      ),
-                    ],
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  _LastSeenStatus(presentation: statusPresentation),
-                ],
-              ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          temperatureLabel,
+                          style: textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          supportingLabel,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onPrimaryContainer.withValues(
+                              alpha: 0.8,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Icon(Icons.thermostat, color: colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                      style: textTheme.titleMedium,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Target range',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _LastSeenStatus(presentation: statusPresentation),
+              ],
             ),
           ),
         ),
