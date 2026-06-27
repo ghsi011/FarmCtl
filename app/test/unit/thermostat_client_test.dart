@@ -44,17 +44,16 @@ void main() {
         return ResponseBody.fromString('not found', 404);
       });
 
-    final client = ThermostatHttpClient(dio: dio);
+    final fixedNow = DateTime.utc(2025, 6, 27, 12);
+    final client = ThermostatHttpClient(dio: dio, clock: () => fixedNow);
 
     final result = await client.fetchCurrent(
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     );
 
     expect(result.valueC, closeTo(12.5, 0.0001));
-    expect(
-      DateTime.now().difference(result.fetchedAt).inSeconds.abs(),
-      lessThan(5),
-    );
+    // Injected clock removes the previous wall-clock dependency.
+    expect(result.fetchedAt, fixedNow);
   });
 
   test('fetchCurrent throws on parse error (Gist API)', () async {

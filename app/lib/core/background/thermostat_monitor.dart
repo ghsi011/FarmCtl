@@ -150,6 +150,21 @@ const String _snooze10ActionId = 'alarm_snooze_10';
 const String _snooze30ActionId = 'alarm_snooze_30';
 const String _silenceActionId = 'alarm_silence_until_ok';
 
+/// Maps a notification snooze action id to its snooze duration, or null when the
+/// action is not a snooze (silence, body tap, or unknown). Pure for testability.
+Duration? snoozeDurationForAction(String? actionId) {
+  switch (actionId) {
+    case _snooze5ActionId:
+      return const Duration(minutes: 5);
+    case _snooze10ActionId:
+      return const Duration(minutes: 10);
+    case _snooze30ActionId:
+      return const Duration(minutes: 30);
+    default:
+      return null;
+  }
+}
+
 Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   final notifications = FlutterLocalNotificationsPlugin();
 
@@ -710,31 +725,12 @@ Future<void> _handleNotificationResponse(NotificationResponse response) async {
   final repository = ThermostatRepository(database);
   try {
     final now = DateTime.now().toUtc();
-    switch (actionId) {
-      case _snooze5ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 5)),
-        );
-        break;
-      case _snooze10ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 10)),
-        );
-        break;
-      case _snooze30ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 30)),
-        );
-        break;
-      case _silenceActionId:
-        await repository.updateSilenceUntilOk(thermostatId, true);
-        await repository.updateSnoozedUntil(thermostatId, null);
-        break;
-      default:
-        break;
+    final snooze = snoozeDurationForAction(actionId);
+    if (snooze != null) {
+      await repository.updateSnoozedUntil(thermostatId, now.add(snooze));
+    } else if (actionId == _silenceActionId) {
+      await repository.updateSilenceUntilOk(thermostatId, true);
+      await repository.updateSnoozedUntil(thermostatId, null);
     }
   } finally {
     await database.close();

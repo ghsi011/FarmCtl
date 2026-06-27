@@ -52,4 +52,27 @@ void main() {
       );
     });
   });
+
+  group('snoozeDurationForAction', () {
+    test('maps each snooze action id to its duration', () {
+      expect(
+        snoozeDurationForAction('alarm_snooze_5'),
+        const Duration(minutes: 5),
+      );
+      expect(
+        snoozeDurationForAction('alarm_snooze_10'),
+        const Duration(minutes: 10),
+      );
+      expect(
+        snoozeDurationForAction('alarm_snooze_30'),
+        const Duration(minutes: 30),
+      );
+    });
+
+    test('returns null for silence, unknown, or null actions', () {
+      expect(snoozeDurationForAction('alarm_silence_until_ok'), isNull);
+      expect(snoozeDurationForAction('something_else'), isNull);
+      expect(snoozeDurationForAction(null), isNull);
+    });
+  });
 }

@@ -25,7 +25,9 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     Dio? dioNoAuth,
     String? githubToken,
     bool allowAnonFallback = true,
-  }) : _resolvedToken =
+    DateTime Function()? clock,
+  }) : _clock = clock ?? _defaultClock,
+       _resolvedToken =
            githubToken ??
            Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
            Platform.environment['GITHUB_TOKEN'],
@@ -51,8 +53,11 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   final String? _resolvedToken;
   final bool _hasGithubToken;
   final bool _allowAnonFallback;
+  final DateTime Function() _clock;
   static const int _maxHistoryCommits =
       60; // cap history requests to reduce API load
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
 
   static Dio _createDio([String? githubToken]) {
     final dio = Dio(
@@ -117,7 +122,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       );
       return ThermostatFetchSuccess(
         valueC: snapshot.value,
-        fetchedAt: DateTime.now().toUtc(),
+        fetchedAt: _clock(),
         etag: snapshot.etag,
       );
     } on ThermostatFetchException {

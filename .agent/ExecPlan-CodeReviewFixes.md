@@ -60,7 +60,12 @@ Each iteration: implement → `build_runner` → `flutter test --coverage` + `da
     - M-6: migration tests (v6→v7 and full v1→v7) via Drift-built schema + raw downgrade; also fixed a
       latent createTable/addColumn ordering bug that crashed real v1→v7 upgrades.
 - ☐ Iteration 4 — tests & CI coverage gate.
-- ☐ Iteration 4 — tests & CI coverage gate.
+- ✅ `[2026-06-27]` Iteration 4 — tests & CI coverage gate (M-11, I-6, I-7, I-8). 85→90 tests, →33.10%.
+    - I-6: injectable clock on `ThermostatHttpClient`; the wall-clock test now pins `fetchedAt`.
+    - I-7: extracted pure `snoozeDurationForAction`; added `DeveloperLogExporter` tests (incl. a
+      token-never-leaks assertion) and snooze-mapping tests.
+    - I-8: parsing package now runs `dart test --coverage` → lcov, gated at 85% (currently 100%).
+    - M-11: app coverage gate ratcheted 27% → 31% (current 33.1%); parsing package gated separately.
 - ☐ Iteration 5 — UI & architecture polish.
 - ☐ Final — deep review, coverage check, PR.
 
