@@ -7,6 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // Pin "now" so the provider's freshness windows are evaluated against the same
+  // instant the fixtures are built around, keeping the tests deterministic.
+  final fixedNow = DateTime.utc(2025, 10, 20, 12);
+
   Thermostat createThermostat(String id) {
     final now = DateTime.utc(2025, 10, 20);
     return Thermostat(
@@ -69,6 +73,7 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          nowProvider.overrideWithValue(() => fixedNow),
           thermostatsProvider.overrideWith(
             (ref) => Stream.value([
               ThermostatSummary(
@@ -93,6 +98,7 @@ void main() {
   test('offlineStatusProvider reports degraded when mixed results', () async {
     final container = ProviderContainer(
       overrides: [
+        nowProvider.overrideWithValue(() => fixedNow),
         thermostatsProvider.overrideWith(
           (ref) => Stream.value([
             ThermostatSummary(
@@ -126,6 +132,7 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          nowProvider.overrideWithValue(() => fixedNow),
           thermostatsProvider.overrideWith(
             (ref) => Stream.value([
               ThermostatSummary(

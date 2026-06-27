@@ -6,9 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build:
-    permissions:
-      contents: write
+  build-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,7 +26,7 @@ jobs:
         working-directory: app
 
       - name: Generate code (build_runner)
-        run: flutter pub run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build --delete-conflicting-outputs
         working-directory: app
 
       - name: Verify formatting
@@ -44,41 +42,18 @@ jobs:
         working-directory: packages/farmctl_parsing
 
       - name: Run Dart unit tests
-        working-directory: packages/farmctl_parsing
         run: dart test
+        working-directory: packages/farmctl_parsing
 
-      - name: Run Flutter tests
-        run: flutter test
+      - name: Run Flutter tests with coverage
+        run: flutter test --coverage
         working-directory: app
+
+      # Baseline as of this workflow: ~27% line coverage. The threshold is the
+      # floor (regression guard); raising it toward 85% is tracked in an issue.
+      - name: Enforce coverage threshold
+        run: bash tool/check_coverage.sh 27
 
       - name: Assemble debug APK
         run: flutter build apk --debug
         working-directory: app
-
-      - name: Assemble release APK
-        if: github.ref == 'refs/heads/master'
-        run: flutter build apk --release
-        working-directory: app
-
-      - name: Create GitHub release
-        if: github.ref == 'refs/heads/master'
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: release-${{ github.run_number }}
-          release_name: FarmCtl Release ${{ github.run_number }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release APK asset
-        if: github.ref == 'refs/heads/master'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: app/build/app/outputs/flutter-apk/app-release.apk
-          asset_name: farmctl-release-${{ github.run_number }}.apk
-          asset_content_type: application/vnd.android.package-archive
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

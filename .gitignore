@@ -6,7 +6,7 @@
 # Flutter/Dart
 .dart_tool/
 .packages
-pubspec.lock
+# Dependency lockfiles (app/ and packages/) are committed for reproducible builds.
 **/flutter_export_environment.sh
 **/generated_plugin_registrant.*
 **/generated_plugins.cmake
@@ -15,6 +15,7 @@ pubspec.lock
 build/
 **/flutter_assets/
 **/native_assets/
+**/coverage/
 
 # Platform builds (auto-generated)
 android/.gradle/
@@ -38,3 +39,9 @@ app/.flutter-plugins-dependencies
 
 # graphify knowledge-graph output (regenerable via /graphify; contains machine-specific paths)
 graphify-out/
+
+# Android release signing — never commit keystores or credentials
+**/key.properties
+**/*.jks
+**/*.keystore
+*.keystore.base64

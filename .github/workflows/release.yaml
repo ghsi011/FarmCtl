@@ -1,0 +1,84 @@
+name: Release
+
+# Cuts a signed release only when a version tag is pushed (e.g. v0.2.0). Plain
+# pushes to master do not trigger a release. The tag should match the version in
+# app/pubspec.yaml.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify signing secrets are present
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set — cannot build a signed release. Add all four ANDROID_* signing secrets in repo settings."
+              exit 1
+            fi
+          done
+
+      - name: Verify tag matches app version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pubspec_version="$(grep -m1 '^version:' app/pubspec.yaml | sed -E 's/^version:[[:space:]]*//; s/\+.*$//')"
+          if [ "$tag" != "$pubspec_version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} (-> ${tag}) does not match app/pubspec.yaml version (${pubspec_version}). Bump pubspec and retag."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches pubspec version ${pubspec_version}."
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: app
+
+      - name: Generate code (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: app
+
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/app/android/app/farmctl-release.jks"
+
+      - name: Write key.properties
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cat > "$GITHUB_WORKSPACE/app/android/key.properties" <<EOF
+          storeFile=$GITHUB_WORKSPACE/app/android/app/farmctl-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build signed release APK
+        run: flutter build apk --release
+        working-directory: app
+
+      - name: Publish GitHub release with signed APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
