@@ -266,7 +266,9 @@ class ThermostatRepository {
                   id: row.id,
                   thermostatId: row.thermostatId,
                   valueC: row.valueC,
-                  observedAt: row.observedAt,
+                  // Normalise to UTC; Drift stores datetimes in unix mode which
+                  // reads back in the local zone.
+                  observedAt: row.observedAt.toUtc(),
                   source: row.source,
                   sourceId: row.sourceId,
                 ),
@@ -353,20 +355,26 @@ class ThermostatRepository {
   }) async {
     final referenceTime = (now ?? DateTime.now()).toUtc();
 
-    if (maxAge > Duration.zero) {
-      final cutoff = referenceTime.subtract(maxAge);
-      await _database.pruneTemperatureReadingsBefore(cutoff);
-    }
+    // Run the age-based and per-thermostat caps in one transaction so a failure
+    // partway through cannot leave readings half-pruned.
+    await _database.transaction(() async {
+      if (maxAge > Duration.zero) {
+        final cutoff = referenceTime.subtract(maxAge);
+        await _database.pruneTemperatureReadingsBefore(cutoff);
+      }
 
-    final ids = thermostatId != null
-        ? <String>[thermostatId]
-        : (await _database.listThermostats()).map((entry) => entry.id).toList();
+      final ids = thermostatId != null
+          ? <String>[thermostatId]
+          : (await _database.listThermostats())
+                .map((entry) => entry.id)
+                .toList();
 
-    for (final id in ids) {
-      await _database.pruneTemperatureReadingsExceedingLimit(
-        id,
-        maxEntriesPerThermostat,
-      );
-    }
+      for (final id in ids) {
+        await _database.pruneTemperatureReadingsExceedingLimit(
+          id,
+          maxEntriesPerThermostat,
+        );
+      }
+    });
   }
 }

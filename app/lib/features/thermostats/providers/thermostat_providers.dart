@@ -102,7 +102,7 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
       _RefreshThrottleRegistry registry = ref.read(
         _refreshThrottleRegistryProvider,
       );
-      final now = DateTime.now().toUtc();
+      final now = ref.read(nowProvider)();
       final last = registry.lastRun[args.thermostatId];
       if (last != null && now.difference(last) < const Duration(seconds: 10)) {
         return;

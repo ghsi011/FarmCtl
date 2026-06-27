@@ -66,7 +66,32 @@ Each iteration: implement → `build_runner` → `flutter test --coverage` + `da
       token-never-leaks assertion) and snooze-mapping tests.
     - I-8: parsing package now runs `dart test --coverage` → lcov, gated at 85% (currently 100%).
     - M-11: app coverage gate ratcheted 27% → 31% (current 33.1%); parsing package gated separately.
-- ☐ Iteration 5 — UI & architecture polish.
+- ✅ `[2026-06-27]` Iteration 5 — UI & architecture polish. 90→99 tests, →34.85%.
+    - M-7: `buildMonitorDependencies` factory centralises the isolate's repo/client/service/runner wiring.
+    - M-8: light + dark themes from a shared builder, `themeMode: ThemeMode.system`.
+    - L-1: value equality (`==`/`hashCode`) on Thermostat / ThermostatState / ThermostatSummary /
+      TemperatureSample / AlertConfig.
+    - L-2: refresh throttle uses `nowProvider` instead of inline `DateTime.now()`.
+    - L-5: `watchHistory` normalises `observedAt` to UTC.
+    - L-8: `pruneRetention` runs its deletes in a single transaction.
+    - I-1: alarm page holds a wakelock while mounted (wakelock_plus, best-effort).
+    - I-2: history `SegmentedButton` scrolls horizontally so it can't overflow.
+
+### Deferred (Low/Info — documented, not fixed)
+Deliberately not changed in this stabilization PR; all are the lowest-severity tier and several are
+flagged "negligible / not a defect / intended" by the review itself. Rationale per item:
+- **L-3** (settings writes config via repository + reschedules in-widget): partially eased by M-7;
+  a full MonitoringController indirection would churn the 985-line settings page for low benefit.
+- **L-6** (first history sync doesn't seed coarse buckets): latent, self-heals over later runs.
+- **L-7** (manual refresh is display-only, no alarm): intended — the background watchdog owns alarms;
+  the review confirms it does not corrupt rate-limit state.
+- **L-9** (notification-id `hashCode % 1e6` collision): probability ~1e-4 for a handful of sensors.
+- **L-10** (developer-log export embeds gist IDs): developer-only export, not auto-shared; the token
+  is already omitted.
+- **I-4 / I-5** (token-field tap targets; alert-card colour tokens): cosmetic; I-5 is "not a defect"
+  (Semantics already encode status).
+- **I-3** (full l10n/ARB scaffolding): deferred per the user's scope decision.
+
 - ☐ Final — deep review, coverage check, PR.
 
 ## 🗒️ Decision Log

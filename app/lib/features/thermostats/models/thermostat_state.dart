@@ -72,6 +72,37 @@ class ThermostatState {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ThermostatState &&
+          other.thermostatId == thermostatId &&
+          other.status == status &&
+          other.lastValueC == lastValueC &&
+          other.lastFetchedAt == lastFetchedAt &&
+          other.etag == etag &&
+          other.statusMessage == statusMessage &&
+          other.lastAlarmAt == lastAlarmAt &&
+          other.snoozedUntil == snoozedUntil &&
+          other.silenceUntilOk == silenceUntilOk &&
+          other.createdAt == createdAt &&
+          other.updatedAt == updatedAt;
+
+  @override
+  int get hashCode => Object.hash(
+    thermostatId,
+    status,
+    lastValueC,
+    lastFetchedAt,
+    etag,
+    statusMessage,
+    lastAlarmAt,
+    snoozedUntil,
+    silenceUntilOk,
+    createdAt,
+    updatedAt,
+  );
 }
 
 @immutable
@@ -80,6 +111,16 @@ class ThermostatSummary {
 
   final Thermostat thermostat;
   final ThermostatState? state;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ThermostatSummary &&
+          other.thermostat == thermostat &&
+          other.state == state;
+
+  @override
+  int get hashCode => Object.hash(thermostat, state);
 }
 
 enum ThermostatReadingStatus {

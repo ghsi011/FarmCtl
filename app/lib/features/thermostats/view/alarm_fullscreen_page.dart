@@ -1,17 +1,41 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/background/thermostat_monitor.dart';
 import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
 
-class AlarmFullScreenPage extends ConsumerWidget {
+class AlarmFullScreenPage extends ConsumerStatefulWidget {
   const AlarmFullScreenPage({required this.thermostatId, super.key});
 
   final String thermostatId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AlarmFullScreenPage> createState() =>
+      _AlarmFullScreenPageState();
+}
+
+class _AlarmFullScreenPageState extends ConsumerState<AlarmFullScreenPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Keep the screen awake while an alarm is showing. Best-effort: ignore
+    // platform failures (and the unsupported test environment).
+    unawaited(WakelockPlus.enable().catchError((Object _) {}));
+  }
+
+  @override
+  void dispose() {
+    unawaited(WakelockPlus.disable().catchError((Object _) {}));
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thermostatId = widget.thermostatId;
     final summaryAsync = ref.watch(thermostatSummaryProvider(thermostatId));
 
     final colorScheme = Theme.of(context).colorScheme;

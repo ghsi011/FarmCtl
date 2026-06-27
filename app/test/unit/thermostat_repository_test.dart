@@ -302,6 +302,31 @@ void main() {
     expect(samples.last.sourceId, 'two');
   });
 
+  test('watchHistory returns observedAt normalised to UTC', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Timezone',
+        rawUrl: '44444444444444444444444444444444',
+        minC: 0,
+        maxC: 20,
+      ),
+    );
+    await repository.replaceHistory(
+      thermostatId: thermostat.id,
+      samples: [
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'r1',
+          valueC: 10,
+          observedAt: DateTime.utc(2025, 1, 1, 10),
+        ),
+      ],
+    );
+
+    final samples = await repository.watchHistory(thermostat.id).first;
+    expect(samples.single.observedAt.isUtc, isTrue);
+  });
+
   test(
     'recordOutOfRangeAndShouldAlarm fires once then rate-limits (compare-and-set)',
     () async {

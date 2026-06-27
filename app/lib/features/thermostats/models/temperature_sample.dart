@@ -51,4 +51,19 @@ class TemperatureSample {
       sourceId: revisionId,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemperatureSample &&
+          other.id == id &&
+          other.thermostatId == thermostatId &&
+          other.valueC == valueC &&
+          other.observedAt == observedAt &&
+          other.source == source &&
+          other.sourceId == sourceId;
+
+  @override
+  int get hashCode =>
+      Object.hash(id, thermostatId, valueC, observedAt, source, sourceId);
 }

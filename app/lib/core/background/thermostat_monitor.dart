@@ -305,22 +305,11 @@ Future<bool> _runMonitorTask() async {
 
   var success = true;
   try {
-    final repository = ThermostatRepository(database);
     final alertConfig = config; // promote to non-null for closures
-    final network = ThermostatHttpClient(githubToken: alertConfig.githubToken);
-    final service = ThermostatService(
-      repository: repository,
-      network: network,
-      tokenSupplier: () async => alertConfig.githubToken,
-    );
-    final runner = ThermostatMonitorRunner(
-      repository: repository,
-      network: network,
-      alarmDispatcher: NotificationAlarmDispatcher(
-        notifications,
-        config: alertConfig,
-      ),
-    );
+    final deps = buildMonitorDependencies(database, alertConfig, notifications);
+    final repository = deps.repository;
+    final service = deps.service;
+    final runner = deps.runner;
 
     if (alertConfig.isPaused(now)) {
       debugPrint(
@@ -463,6 +452,48 @@ class ThermostatMonitorRunner {
       }
     }
   }
+}
+
+/// Bundle of the collaborators a monitor run needs, built from a database and
+/// the loaded config. Centralised so the background isolate entry points don't
+/// each re-wire the repository / client / service / runner by hand.
+class MonitorDependencies {
+  const MonitorDependencies({
+    required this.repository,
+    required this.network,
+    required this.service,
+    required this.runner,
+  });
+
+  final ThermostatRepository repository;
+  final ThermostatHttpClient network;
+  final ThermostatService service;
+  final ThermostatMonitorRunner runner;
+}
+
+MonitorDependencies buildMonitorDependencies(
+  ThermostatDatabase database,
+  AlertConfig config,
+  FlutterLocalNotificationsPlugin notifications,
+) {
+  final repository = ThermostatRepository(database);
+  final network = ThermostatHttpClient(githubToken: config.githubToken);
+  final service = ThermostatService(
+    repository: repository,
+    network: network,
+    tokenSupplier: () async => config.githubToken,
+  );
+  final runner = ThermostatMonitorRunner(
+    repository: repository,
+    network: network,
+    alarmDispatcher: NotificationAlarmDispatcher(notifications, config: config),
+  );
+  return MonitorDependencies(
+    repository: repository,
+    network: network,
+    service: service,
+    runner: runner,
+  );
 }
 
 String _alarmChannelIdForSound(String? soundUri) {

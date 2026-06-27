@@ -92,4 +92,29 @@ class AlertConfig {
       lastMonitorRunAt: lastMonitorRunAt ?? this.lastMonitorRunAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AlertConfig &&
+          other.pollInterval == pollInterval &&
+          other.exactAlarmsEnabled == exactAlarmsEnabled &&
+          other.soundUri == soundUri &&
+          other.vibrate == vibrate &&
+          other.volumeBoost == volumeBoost &&
+          other.pauseAllUntil == pauseAllUntil &&
+          other.githubToken == githubToken &&
+          other.lastMonitorRunAt == lastMonitorRunAt;
+
+  @override
+  int get hashCode => Object.hash(
+    pollInterval,
+    exactAlarmsEnabled,
+    soundUri,
+    vibrate,
+    volumeBoost,
+    pauseAllUntil,
+    githubToken,
+    lastMonitorRunAt,
+  );
 }
