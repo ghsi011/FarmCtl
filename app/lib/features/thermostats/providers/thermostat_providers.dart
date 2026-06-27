@@ -116,6 +116,13 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
 
 enum OfflineStatus { online, degraded, offline, unknown }
 
+/// Current UTC time as an injectable function so time-dependent providers stay
+/// testable. Override in tests to pin "now" to a fixed instant.
+final nowProvider = Provider<DateTime Function()>(
+  (ref) =>
+      () => DateTime.now().toUtc(),
+);
+
 final offlineStatusProvider = Provider<OfflineStatus>((ref) {
   final thermostatsAsync = ref.watch(thermostatsProvider);
   return thermostatsAsync.when(
@@ -124,7 +131,7 @@ final offlineStatusProvider = Provider<OfflineStatus>((ref) {
         return OfflineStatus.online;
       }
 
-      final now = DateTime.now().toUtc();
+      final now = ref.watch(nowProvider)();
       var recentNetworkFailures = 0;
       var recentSuccess = false;
 
