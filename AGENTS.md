@@ -6,6 +6,68 @@ This document guides Codex agents contributing to FarmCtl. It defines project la
 - Applies to the entire repository unless a more deeply nested `AGENTS.md` overrides it.
 - Direct user instructions always take precedence over this file.
 
+## 🤖 Autonomous Development Workflow
+
+Default operating procedure for any coding agent (Claude Code or Codex, local **or**
+cloud session) given a task in this repo. Follow it unless the user explicitly opts out.
+
+### 1. Triage the request
+- **Small / low-risk change** (typo, small bug fix, doc tweak, config nudge — roughly
+  under ~50 lines, no architectural impact, unambiguous intent): just do it. Run the
+  relevant tests, then commit and push **directly to `master`**. No branch, no PR.
+- **Larger change** (new feature, refactor, anything ambiguous or cross-cutting): follow
+  the full pipeline below.
+
+### 2. Clarify — the FIRST and one of only TWO points where questions are allowed
+Before writing code on a larger change, ask the user concise clarification questions to
+(a) confirm exactly what they want and (b) surface gaps or risks they may have missed
+(missing secrets, breaking changes, edge cases). Batch the questions together.
+**After this step the flow is fully autonomous until the PR is opened — do not ask the
+user anything in between.**
+
+### 3. Plan & branch
+- Write a short plan: the target end state and the work split into small iterations.
+- For substantial features, create/maintain an ExecPlan under `.agent/` (see below).
+- Create a feature branch `feat/<slug>` (or `fix/<slug>`); all work happens there.
+
+### 4. Iterate
+For each iteration:
+1. Implement the slice.
+2. Regenerate code if needed: `dart run build_runner build --delete-conflicting-outputs`.
+3. Run tests with coverage: `flutter test --coverage` in `app/`, `dart test` in
+   `packages/farmctl_parsing`. **Coverage must stay at or above the CI baseline** — add
+   tests for new code.
+4. Run a code-review pass and apply the fixes it surfaces.
+5. Proceed to the next iteration.
+
+### 5. Reviews
+- Routine per-iteration review: a single focused pass is fine.
+- **Bigger reviews** (whole feature, risky or security-sensitive changes): run **at least
+  two review agents with different focuses** (e.g. correctness/logic vs.
+  security/robustness, or API design vs. test coverage) **plus a third validator agent**
+  that goes over their findings, discards false positives, and produces the concrete
+  list of issues that are actually worth fixing. Then fix them.
+
+### 6. Final review & PR
+- After the last iteration, run a **deeper review over the whole feature**: confirm
+  everything is tested, coverage is healthy, and analyze/format/tests are green.
+- Open a PR with a **concise** description: what changed and what is delivered (not a
+  blow-by-blow log).
+- Opening the PR is the **only** other point (besides step 2) where questions to the user
+  are allowed. In chat, post a short summary and **list open questions only if there
+  genuinely are any** — the goal is none.
+
+### 7. Merge & release
+- On user approval, merge the PR to `master`, then **bump `version:` in
+  `app/pubspec.yaml` and push a matching `v<version>` tag**.
+- The tag triggers CI to build a **signed release APK** and publish a GitHub release
+  (see `.github/workflows/`). Plain direct-to-`master` commits do **not** cut releases.
+
+### Guardrails
+- Never commit secrets, keystores, or `key.properties` (all gitignored).
+- Keep `app/pubspec.lock` committed; do not float dependency versions.
+- Keep diffs focused and follow the coding conventions below.
+
 ## Repository Layout
 - `app/` — Flutter application workspace
   - `lib/` — source, organized feature‑first
