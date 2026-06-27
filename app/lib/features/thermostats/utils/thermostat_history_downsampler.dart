@@ -33,7 +33,6 @@ class ThermostatHistoryDownsampler {
         () => _SampleBucket(
           thermostatId: sample.thermostatId,
           bucketStart: bucketStart,
-          bucketSeconds: bucketSeconds,
         ),
       );
       bucket.add(sample);
@@ -66,23 +65,20 @@ class ThermostatHistoryDownsampler {
 }
 
 class _SampleBucket {
-  _SampleBucket({
-    required this.thermostatId,
-    required this.bucketStart,
-    required this.bucketSeconds,
-  });
+  _SampleBucket({required this.thermostatId, required this.bucketStart});
 
   final String thermostatId;
   final DateTime bucketStart;
-  final int bucketSeconds;
 
   double _sum = 0;
   int _count = 0;
+  int _observedSumMs = 0;
   String? _firstSourceId;
 
   void add(TemperatureSample sample) {
     _sum += sample.valueC;
     _count += 1;
+    _observedSumMs += sample.observedAt.toUtc().millisecondsSinceEpoch;
     _firstSourceId ??= sample.sourceId;
   }
 
@@ -92,13 +88,13 @@ class _SampleBucket {
     }
 
     final average = _sum / _count;
-    final representative = bucketStart.add(
-      Duration(seconds: bucketSeconds ~/ 2),
+    // Plot at the mean of the contained samples' actual timestamps rather than
+    // the bucket centre, so a partially-filled (e.g. trailing) bucket isn't
+    // shifted forward in time — possibly past now — relative to its real data.
+    final observedAt = DateTime.fromMillisecondsSinceEpoch(
+      (_observedSumMs / _count).round(),
+      isUtc: true,
     );
-
-    final observedAt = representative.isUtc
-        ? representative
-        : representative.toUtc();
 
     return TemperatureSample(
       id: '${thermostatId}_bucket_${bucketStart.millisecondsSinceEpoch}_${range.name}',

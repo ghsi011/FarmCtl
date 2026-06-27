@@ -440,13 +440,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _testGithubToken() async {
-    final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
-    final client = ThermostatHttpClient(githubToken: config.githubToken);
-    final message = await client.testToken();
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    try {
+      final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
+      final client = ThermostatHttpClient(githubToken: config.githubToken);
+      final message = await client.testToken();
+      client.close();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to test GitHub token: $error')),
+      );
+    }
   }
 }
 
@@ -497,6 +505,15 @@ class _SettingsContentState extends State<_SettingsContent> {
   void initState() {
     super.initState();
     _tokenController = TextEditingController(text: widget.config.githubToken);
+    // Rebuild on each keystroke so the suffix Clear (×) icon, which is rendered
+    // conditionally on the field being non-empty, tracks the text.
+    _tokenController.addListener(_onTokenChanged);
+  }
+
+  void _onTokenChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -509,6 +526,7 @@ class _SettingsContentState extends State<_SettingsContent> {
 
   @override
   void dispose() {
+    _tokenController.removeListener(_onTokenChanged);
     _tokenController.dispose();
     super.dispose();
   }
