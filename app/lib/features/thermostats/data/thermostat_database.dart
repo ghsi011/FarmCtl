@@ -111,7 +111,17 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final directory = await getApplicationDocumentsDirectory();
     final file = File(p.join(directory.path, 'thermostats.sqlite'));
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(
+      file,
+      setup: (db) {
+        // The foreground app and the background monitor isolate each open their
+        // own connection to this file. WAL lets a reader and a writer coexist,
+        // and a busy timeout makes a contended write wait for the other
+        // connection to commit instead of immediately raising SQLITE_BUSY.
+        db.execute('PRAGMA journal_mode = WAL;');
+        db.execute('PRAGMA busy_timeout = 5000;');
+      },
+    );
   });
 }
 

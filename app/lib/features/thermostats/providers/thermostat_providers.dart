@@ -127,7 +127,16 @@ final nowProvider = Provider<DateTime Function()>(
       () => DateTime.now().toUtc(),
 );
 
+/// Ticks periodically so [offlineStatusProvider] re-evaluates its wall-clock
+/// thresholds even when no thermostat rows change (otherwise a device that went
+/// offline could keep reporting "online" until the next DB write).
+final _offlineRefreshTickProvider = StreamProvider<int>((ref) {
+  return Stream<int>.periodic(const Duration(minutes: 1), (count) => count);
+});
+
 final offlineStatusProvider = Provider<OfflineStatus>((ref) {
+  // Re-run on each tick so stale time thresholds are recomputed.
+  ref.watch(_offlineRefreshTickProvider);
   final thermostatsAsync = ref.watch(thermostatsProvider);
   return thermostatsAsync.when(
     data: (thermostats) {

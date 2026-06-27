@@ -307,6 +307,9 @@ Future<bool> _runMonitorTask() async {
   // Show a transient notification while the check is running.
   await _showMonitoringNotification(notifications);
 
+  // Reschedule from the freshest config so a pollInterval / pause change made
+  // during this (possibly multi-second) run is honored by the next wakeup.
+  var scheduleConfig = config;
   var success = true;
   try {
     final alertConfig = config; // promote to non-null for closures
@@ -338,6 +341,12 @@ Future<bool> _runMonitorTask() async {
       debugPrint('Retention pruning failed in background: $error');
       debugPrint('$stackTrace');
     }
+
+    try {
+      scheduleConfig = AlertConfig.fromEntry(await database.getAlertConfig());
+    } catch (_) {
+      // Keep the run-start config if the re-read fails.
+    }
   } catch (error, stackTrace) {
     success = false;
     debugPrint('Thermostat monitor failed: $error');
@@ -348,7 +357,7 @@ Future<bool> _runMonitorTask() async {
     await database.close();
   }
 
-  await _updateAlarmSchedule(config, now: now);
+  await _updateAlarmSchedule(scheduleConfig, now: now);
   return success;
 }
 
@@ -417,8 +426,6 @@ class ThermostatMonitorRunner {
           final message = 'Fetched ${value.toStringAsFixed(2)}°C';
           final shouldClearSnooze = previousState?.snoozedUntil != null;
           final hadSilence = previousState?.silenceUntilOk == true;
-          final wasOutOfRange =
-              previousState?.status == ThermostatReadingStatus.outOfRange;
           await _repository.saveState(
             thermostatId: thermostat.id,
             status: ThermostatReadingStatus.ok,
@@ -431,9 +438,11 @@ class ThermostatMonitorRunner {
             setSilenceUntilOk: hadSilence,
             silenceUntilOk: false,
           );
-          if (hadSilence || wasOutOfRange) {
-            await cancelAlarmNotification(thermostat.id);
-          }
+          // Always clear any alarm notification on an OK reading: the decision
+          // above is made from a pre-run snapshot that may be stale, so gating
+          // the cancel on it could leave a stale alarm showing after the device
+          // recovered. cancel is a no-op when nothing is showing.
+          await cancelAlarmNotification(thermostat.id);
         }
       } on ThermostatFetchException catch (error) {
         await _repository.saveState(
@@ -775,13 +784,25 @@ Future<void> _handleNotificationResponse(NotificationResponse response) async {
 }
 
 void _navigateToAlarm(String thermostatId) {
+  // Bound the retry: if the root navigator never mounts (e.g. app bootstrap
+  // failed after a cold launch from a notification tap), stop re-arming the
+  // post-frame callback instead of spinning every frame forever.
+  const maxAttempts = 60;
+  var attempts = 0;
   void attemptNavigation() {
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
       GoRouter.of(context).push(AlarmRoute.pathFor(thermostatId));
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) => attemptNavigation());
+      return;
     }
+    if (attempts++ >= maxAttempts) {
+      debugPrint(
+        'Could not navigate to alarm: navigator unavailable after '
+        '$maxAttempts attempts.',
+      );
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => attemptNavigation());
   }
 
   attemptNavigation();
