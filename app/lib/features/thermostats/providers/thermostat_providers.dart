@@ -22,8 +22,10 @@ final thermostatRepositoryProvider = Provider<ThermostatRepository>((ref) {
 });
 
 final _githubTokenProvider = StreamProvider<String?>((ref) {
-  final database = ref.watch(thermostatDatabaseProvider);
-  return database.watchAlertConfig().map((config) => config.githubToken);
+  // Resolve via the repository so the token comes from secure storage rather
+  // than the (now legacy) plaintext database column.
+  final repository = ref.watch(alertConfigRepositoryProvider);
+  return repository.watchConfig().map((config) => config.githubToken);
 });
 
 final thermostatNetworkProvider = Provider<ThermostatNetworkDataSource>((ref) {

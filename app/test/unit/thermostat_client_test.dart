@@ -171,4 +171,132 @@ void main() {
     expect(samples.first.valueC, 10.5);
     expect(samples.last.revisionId, 'rev2');
   });
+
+  test('rejects an invalid Gist ID without hitting the network', () async {
+    var called = false;
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        called = true;
+        return ResponseBody.fromString('', 200);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.fetchHistory('not-a-gist-id'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.parseError,
+        ),
+      ),
+    );
+    expect(called, isFalse);
+  });
+
+  test('fetchHistory maps a non-200 commits response to httpError', () async {
+    // Without validateStatus this 500 would throw before reaching the status
+    // check and be relabelled networkError (M-4 regression guard).
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('{"message":"boom"}', 500);
+      });
+    final client = ThermostatHttpClient(dio: dio); // no token -> no anon path
+
+    await expectLater(
+      () => client.fetchHistory('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.httpError,
+        ),
+      ),
+    );
+  });
+
+  test('listCommits maps a 5xx response to httpError', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('{"message":"unavailable"}', 503);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.listCommits('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.httpError,
+        ),
+      ),
+    );
+  });
+
+  test('fetchCurrent maps malformed JSON on a 200 to parseError', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('definitely not json', 200);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.fetchCurrent('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.parseError,
+        ),
+      ),
+    );
+  });
+
+  test('fetchHistory falls back to the anonymous client on a 403', () async {
+    final jsonHeaders = {
+      Headers.contentTypeHeader: [ContentType.json.mimeType],
+    };
+    // The authenticated client is rate-limited (403) on every request.
+    final authDio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"message":"API rate limit exceeded"}',
+          403,
+          headers: jsonHeaders,
+        );
+      });
+    // The anonymous client serves both the commit list and the revision body.
+    final anonDio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        if (options.path.endsWith('/commits')) {
+          return ResponseBody.fromString(
+            '[{"version":"rev1","committed_at":"2025-01-02T10:00:00Z"}]',
+            200,
+            headers: jsonHeaders,
+          );
+        }
+        if (options.path.contains('rev1')) {
+          return ResponseBody.fromString(
+            '{"files":{"thermostat.txt":{"truncated":false,"content":"Temperature: 10.5 C"}}}',
+            200,
+            headers: jsonHeaders,
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+
+    final client = ThermostatHttpClient(
+      dio: authDio,
+      dioNoAuth: anonDio,
+      githubToken: 'ghp_token',
+    );
+
+    final samples = await client.fetchHistory(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(samples, hasLength(1));
+    expect(samples.first.revisionId, 'rev1');
+    expect(samples.first.valueC, 10.5);
+  });
 }

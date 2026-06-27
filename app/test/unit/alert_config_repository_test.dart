@@ -1,18 +1,38 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/features/settings/data/alert_config_repository.dart';
+import 'package:farmctl/features/settings/data/secure_token_store.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
+
+class _FakeTokenStore implements SecureTokenStore {
+  String? token;
+
+  @override
+  Future<String?> readToken() async => token;
+
+  @override
+  Future<void> writeToken(String? value) async {
+    token = (value == null || value.isEmpty) ? null : value;
+  }
+}
 
 void main() {
   late ThermostatDatabase database;
   late AlertConfigRepository repository;
+  late _FakeTokenStore tokenStore;
   late DateTime currentTime;
 
   setUp(() {
     database = ThermostatDatabase.forTesting(NativeDatabase.memory());
     currentTime = DateTime.utc(2025, 1, 1, 12);
-    repository = AlertConfigRepository(database, clock: () => currentTime);
+    tokenStore = _FakeTokenStore();
+    repository = AlertConfigRepository(
+      database,
+      clock: () => currentTime,
+      tokenStore: tokenStore,
+    );
   });
 
   tearDown(() async {
@@ -68,5 +88,43 @@ void main() {
     await repository.setSoundUri(null);
     config = await repository.loadConfig();
     expect(config.soundUri, isNull);
+  });
+
+  test('setGithubToken stores in secure storage, not the database', () async {
+    await repository.setGithubToken('ghp_secret');
+
+    expect(tokenStore.token, 'ghp_secret');
+    final config = await repository.loadConfig();
+    expect(config.githubToken, 'ghp_secret');
+
+    // The plaintext database column must not hold the token.
+    final entry = await database.getAlertConfig();
+    expect(entry.githubToken, isNull);
+  });
+
+  test('setGithubToken(null) clears the token', () async {
+    await repository.setGithubToken('ghp_secret');
+    await repository.setGithubToken(null);
+
+    expect(tokenStore.token, isNull);
+    final config = await repository.loadConfig();
+    expect(config.githubToken, isNull);
+  });
+
+  test('migrates a legacy plaintext token into secure storage', () async {
+    // Simulate an existing install with the token in the plaintext column.
+    await database.updateAlertConfig(
+      const AlertConfigEntriesCompanion(githubToken: Value('ghp_legacy')),
+    );
+    expect((await database.getAlertConfig()).githubToken, 'ghp_legacy');
+    expect(tokenStore.token, isNull);
+
+    final config = await repository.loadConfig();
+    expect(config.githubToken, 'ghp_legacy');
+
+    // After migration the secret lives in secure storage and is scrubbed from
+    // the database.
+    expect(tokenStore.token, 'ghp_legacy');
+    expect((await database.getAlertConfig()).githubToken, isNull);
   });
 }

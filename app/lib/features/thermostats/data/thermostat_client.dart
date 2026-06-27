@@ -22,6 +22,7 @@ abstract class ThermostatNetworkDataSource {
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
   ThermostatHttpClient({
     Dio? dio,
+    Dio? dioNoAuth,
     String? githubToken,
     bool allowAnonFallback = true,
   }) : _resolvedToken =
@@ -35,7 +36,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
                  Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
                  Platform.environment['GITHUB_TOKEN'],
            ),
-       _dioNoAuth = _createDio(null),
+       _dioNoAuth = dioNoAuth ?? _createDio(null),
        _hasGithubToken = (() {
          final token =
              githubToken ??
@@ -151,6 +152,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (_) => true,
           headers: _resolvedToken != null && _resolvedToken.isNotEmpty
               ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
               : null,
@@ -165,6 +167,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           'https://api.github.com/gists/$input/commits',
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (_) => true,
             headers: const {
               HttpHeaders.acceptHeader: 'application/vnd.github+json',
             },
@@ -173,7 +176,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         );
         // Continue with anon response
         final raw = anon.data ?? '[]';
-        final decoded = jsonDecode(raw) as List<dynamic>;
+        final decoded = _decodeJsonArray(raw);
         final samples = <ThermostatHistorySample>[];
         var processed = 0;
         for (final entry in decoded) {
@@ -223,7 +226,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       }
 
       final raw = response.data ?? '[]';
-      final decoded = jsonDecode(raw) as List<dynamic>;
+      final decoded = _decodeJsonArray(raw);
       final samples = <ThermostatHistorySample>[];
 
       var processed = 0;
@@ -299,6 +302,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (_) => true,
           headers: _resolvedToken != null && _resolvedToken.isNotEmpty
               ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
               : null,
@@ -310,6 +314,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           'https://api.github.com/gists/$input/commits',
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (_) => true,
             headers: const {
               HttpHeaders.acceptHeader: 'application/vnd.github+json',
             },
@@ -418,6 +423,39 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     return re.hasMatch(input);
   }
 
+  // Decode a GitHub response body, mapping malformed/unexpected JSON on an
+  // otherwise-successful (200) response to a parseError rather than letting the
+  // raw cast throw and be relabelled as a networkError by the outer catch.
+  List<dynamic> _decodeJsonArray(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded;
+      }
+    } on FormatException {
+      // fall through to the parse error below
+    }
+    throw const ThermostatFetchException(
+      status: ThermostatReadingStatus.parseError,
+      message: 'Gist API returned malformed JSON.',
+    );
+  }
+
+  Map<String, dynamic> _decodeJsonObject(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } on FormatException {
+      // fall through to the parse error below
+    }
+    throw const ThermostatFetchException(
+      status: ThermostatReadingStatus.parseError,
+      message: 'Gist API returned malformed JSON.',
+    );
+  }
+
   Future<_SnapshotResult> _fetchSnapshot(String url) async {
     final authHeaders = <String, dynamic>{
       HttpHeaders.acceptHeader: 'application/vnd.github+json',
@@ -470,7 +508,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     }
 
     final raw = response.data ?? '';
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final decoded = _decodeJsonObject(raw);
     final files = (decoded['files'] as Map<String, dynamic>?) ?? {};
     if (files.isEmpty) {
       throw ThermostatFetchException(
@@ -542,6 +580,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         rawUrl,
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (_) => true,
           headers: {
             HttpHeaders.acceptHeader: 'text/plain',
             if (_resolvedToken != null && _resolvedToken.isNotEmpty)
@@ -554,6 +593,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           rawUrl,
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (_) => true,
             headers: const {HttpHeaders.acceptHeader: 'text/plain'},
           ),
         );

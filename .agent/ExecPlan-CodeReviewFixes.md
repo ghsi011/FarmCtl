@@ -49,8 +49,17 @@ Each iteration: implement → `build_runner` → `flutter test --coverage` + `da
     - M-1: `lastMonitorRunAt` (schema v7) + `shouldSkipMonitorRun` debounce.
     - M-2: exact→flexible alarm fallback in `_updateAlarmSchedule`.
     - M-3: `_runMonitorTask` returns success; WorkManager retries on failure.
-    - NOTE: the v7 (and full 1→7) migration test is delivered in Iteration 3 / M-6 (SchemaVerifier).
-- ☐ Iteration 3 — data / HTTP / security.
+    - NOTE: the v7 (and full 1→7) migration test is delivered in Iteration 3 / M-6.
+- ✅ `[2026-06-27]` Iteration 3 — data / HTTP / security (M-4, M-5, M-6, L-11, L-12). 75→85 tests, →31.91%.
+    - M-4: `validateStatus: (_) => true` on fetchHistory/listCommits/_resolveFileContent so the
+      403 anon-fallback + non-200 error mapping are live; made `_dioNoAuth` injectable.
+    - L-11: `_decodeJsonArray`/`_decodeJsonObject` map malformed 200 bodies to parseError.
+    - L-12: client tests — gist-id guard, non-200→httpError, 5xx→httpError, malformed→parseError, 403 fallback.
+    - M-5: GitHub PAT moved to `flutter_secure_storage` via `SecureTokenStore`; legacy plaintext token
+      migrated out of the DB on first read; providers + background isolate resolve via the repository.
+    - M-6: migration tests (v6→v7 and full v1→v7) via Drift-built schema + raw downgrade; also fixed a
+      latent createTable/addColumn ordering bug that crashed real v1→v7 upgrades.
+- ☐ Iteration 4 — tests & CI coverage gate.
 - ☐ Iteration 4 — tests & CI coverage gate.
 - ☐ Iteration 5 — UI & architecture polish.
 - ☐ Final — deep review, coverage check, PR.

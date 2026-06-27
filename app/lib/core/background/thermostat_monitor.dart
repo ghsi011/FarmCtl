@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../../features/settings/data/alert_config_repository.dart';
 import '../../features/settings/models/alert_config.dart';
 import '../../features/thermostats/data/thermostat_client.dart';
 import '../../features/thermostats/data/thermostat_database.dart';
@@ -155,8 +156,7 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   AlertConfig? config;
   final database = ThermostatDatabase();
   try {
-    final entry = await database.getAlertConfig();
-    config = AlertConfig.fromEntry(entry);
+    config = await AlertConfigRepository(database).loadConfig();
   } catch (error, stackTrace) {
     debugPrint('Failed to load alert config for scheduling: $error');
     debugPrint('$stackTrace');
@@ -248,8 +248,7 @@ Future<bool> _runMonitorTask() async {
   final database = ThermostatDatabase();
   AlertConfig? config;
   try {
-    final entry = await database.getAlertConfig();
-    config = AlertConfig.fromEntry(entry);
+    config = await AlertConfigRepository(database).loadConfig();
   } catch (error, stackTrace) {
     debugPrint('Failed to load alert config: $error');
     debugPrint('$stackTrace');

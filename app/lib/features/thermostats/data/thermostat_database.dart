@@ -143,27 +143,31 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     },
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
+        // createTable builds the table with its *current* columns, so the
+        // per-column upgrades below (v3/v4) must be skipped for installs coming
+        // from v1 to avoid duplicate-column errors.
         await m.createTable(thermostatStateEntries);
-      }
-      if (from < 3) {
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.statusMessage,
-        );
-      }
-      if (from < 4) {
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.lastAlarmAt,
-        );
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.snoozedUntil,
-        );
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.silenceUntilOk,
-        );
+      } else {
+        if (from < 3) {
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.statusMessage,
+          );
+        }
+        if (from < 4) {
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.lastAlarmAt,
+          );
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.snoozedUntil,
+          );
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.silenceUntilOk,
+          );
+        }
       }
       if (from < 5) {
         await m.createTable(temperatureReadings);

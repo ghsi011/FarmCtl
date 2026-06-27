@@ -40,6 +40,22 @@ class AlertConfig {
     );
   }
 
+  /// Returns a copy with [githubToken] set to exactly [token] (including null).
+  /// Used to overlay the token resolved from secure storage onto the config
+  /// loaded from the database; `copyWith` cannot set a nullable field to null.
+  AlertConfig withToken(String? token) {
+    return AlertConfig(
+      pollInterval: pollInterval,
+      exactAlarmsEnabled: exactAlarmsEnabled,
+      soundUri: soundUri,
+      vibrate: vibrate,
+      volumeBoost: volumeBoost,
+      pauseAllUntil: pauseAllUntil,
+      githubToken: token,
+      lastMonitorRunAt: lastMonitorRunAt,
+    );
+  }
+
   bool isPaused(DateTime now) {
     final until = pauseAllUntil;
     if (until == null) {
