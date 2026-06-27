@@ -52,6 +52,19 @@ const int _alarmRequestId = 5001;
 // failure).
 const Duration _monitorRunDebounce = Duration(seconds: 10);
 
+// Used to keep the one-shot alarm chain alive when the real config can't be
+// loaded (e.g. a transient DB/secure-storage failure), so polling doesn't
+// silently drop to the WorkManager floor.
+const AlertConfig _fallbackConfig = AlertConfig(
+  pollInterval: Duration(minutes: 5),
+  exactAlarmsEnabled: false,
+  soundUri: null,
+  vibrate: true,
+  volumeBoost: false,
+  pauseAllUntil: null,
+  githubToken: null,
+);
+
 bool _alarmManagerInitialized = false;
 
 bool get _supportsAlarmScheduling => !kIsWeb && Platform.isAndroid;
@@ -76,7 +89,10 @@ Future<void> _ensureAlarmManagerInitialized() async {
   }
 }
 
-DateTime? _computeNextAlarmTime(AlertConfig config, DateTime nowUtc) {
+/// The next time (UTC) the monitor should run: `now + pollInterval`, deferred to
+/// the end of an active pause. Returns null when the interval is non-positive
+/// (monitoring effectively off). Pure so the polling cadence is unit-testable.
+DateTime? nextMonitorRunUtc(AlertConfig config, DateTime nowUtc) {
   final interval = config.pollInterval;
   if (interval <= Duration.zero) {
     return null;
@@ -88,7 +104,19 @@ DateTime? _computeNextAlarmTime(AlertConfig config, DateTime nowUtc) {
     target = pauseUntil;
   }
 
-  return target.toLocal();
+  return target;
+}
+
+/// The effective WorkManager periodic frequency: the configured interval clamped
+/// up to the 15-minute platform minimum. Pure for testability.
+Duration effectiveMonitorFrequency(Duration configuredInterval) {
+  return configuredInterval < _minimumFrequency
+      ? _minimumFrequency
+      : configuredInterval;
+}
+
+DateTime? _computeNextAlarmTime(AlertConfig config, DateTime nowUtc) {
+  return nextMonitorRunUtc(config, nowUtc)?.toLocal();
 }
 
 Future<void> _updateAlarmSchedule(AlertConfig config, {DateTime? now}) async {
@@ -191,9 +219,7 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
 
   final configuredInterval =
       pollFrequency ?? config?.pollInterval ?? const Duration(minutes: 5);
-  final effectiveFrequency = configuredInterval < _minimumFrequency
-      ? _minimumFrequency
-      : configuredInterval;
+  final effectiveFrequency = effectiveMonitorFrequency(configuredInterval);
 
   await Workmanager().initialize(thermostatMonitorCallbackDispatcher);
   await Workmanager().registerPeriodicTask(
@@ -278,6 +304,10 @@ Future<bool> _runMonitorTask() async {
   if (config == null) {
     debugPrint('Alert config unavailable; skipping monitor run.');
     await database.close();
+    // Keep the one-shot alarm chain alive at a safe default cadence so polling
+    // doesn't silently drop to the WorkManager floor while the config is
+    // transiently unreadable.
+    await _updateAlarmSchedule(_fallbackConfig);
     // Treat a failed config load as a failure so WorkManager retries.
     return false;
   }
