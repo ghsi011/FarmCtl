@@ -443,8 +443,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
       final client = ThermostatHttpClient(githubToken: config.githubToken);
-      final message = await client.testToken();
-      client.close();
+      final String message;
+      try {
+        message = await client.testToken();
+      } finally {
+        client.close();
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,

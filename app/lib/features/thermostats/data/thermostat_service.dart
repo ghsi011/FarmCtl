@@ -88,17 +88,33 @@ class ThermostatService {
       currentValue: value,
       previousState: previousState,
     );
+
+    if (outOfRange) {
+      await _repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.outOfRange,
+        valueC: value,
+        fetchedAt: result.fetchedAt,
+        etag: result.etag,
+        message: formatOutOfRangeThermostatMessage(thermostat, value),
+      );
+      return;
+    }
+
+    // OK reading: clear any snooze/silence, exactly as refresh() does — otherwise
+    // editing a snoozed/silenced thermostat to an in-range value would leave the
+    // suppression in place and mute the next genuine out-of-range alarm.
     await _repository.saveState(
       thermostatId: thermostat.id,
-      status: outOfRange
-          ? ThermostatReadingStatus.outOfRange
-          : ThermostatReadingStatus.ok,
+      status: ThermostatReadingStatus.ok,
       valueC: value,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
-      message: outOfRange
-          ? formatOutOfRangeThermostatMessage(thermostat, value)
-          : 'Fetched ${value.toStringAsFixed(2)}°C',
+      message: 'Fetched ${value.toStringAsFixed(2)}°C',
+      setSnoozedUntil: previousState?.snoozedUntil != null,
+      snoozedUntil: null,
+      setSilenceUntilOk: previousState?.silenceUntilOk == true,
+      silenceUntilOk: false,
     );
   }
 

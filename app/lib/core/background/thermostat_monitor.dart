@@ -695,7 +695,11 @@ typedef _NotificationResponseHandler =
 
 Future<void> _initializeNotifications(
   FlutterLocalNotificationsPlugin plugin, {
-  _NotificationResponseHandler? onDidReceiveNotificationResponse,
+  // Defaults to the real handler so a caller that re-initialises the plugin in
+  // the app isolate (e.g. the Settings "test alarm") can't null out the
+  // foreground notification-tap handler that routes to the alarm screen.
+  _NotificationResponseHandler? onDidReceiveNotificationResponse =
+      _handleNotificationResponse,
   AlertConfig? config,
 }) async {
   const initializationSettings = InitializationSettings(

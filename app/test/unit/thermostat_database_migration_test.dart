@@ -98,8 +98,8 @@ void main() {
     },
   );
 
-  test('upgrades from v1 to v7 without duplicate-column errors', () async {
-    // Build v7, seed a thermostat, then strip everything added after v1.
+  test('upgrades from v1 to latest without duplicate-column errors', () async {
+    // Build the latest schema, seed a thermostat, then strip everything after v1.
     final db = openDb();
     await seedThermostat(db, 't1');
     await db.customStatement('DROP TABLE temperature_readings');
@@ -137,6 +137,36 @@ void main() {
     expect(state!.silenceUntilOk, isTrue);
 
     expect(await upgraded.listThermostats(), hasLength(1));
+    await upgraded.close();
+  });
+
+  test('upgrades v7 -> v8, consolidating duplicate alert_config rows', () async {
+    final db = openDb();
+    // Simulate the pre-fix duplicate-row state: id=1 with defaults (no token),
+    // id=2 with a token and a custom poll interval. Then rewind to v7.
+    await db.customStatement(
+      'INSERT INTO alert_config_entries '
+      '(id, poll_interval_min, exact_alarms_enabled, sound_uri, vibrate, '
+      'volume_boost, pause_all_until, github_token, last_monitor_run_at) '
+      'VALUES (1, 5, 0, NULL, 1, 0, NULL, NULL, NULL)',
+    );
+    await db.customStatement(
+      'INSERT INTO alert_config_entries '
+      '(id, poll_interval_min, exact_alarms_enabled, sound_uri, vibrate, '
+      'volume_boost, pause_all_until, github_token, last_monitor_run_at) '
+      "VALUES (2, 9, 1, NULL, 1, 0, NULL, 'ghp_seed', NULL)",
+    );
+    await db.customStatement('PRAGMA user_version = 7');
+    await db.close();
+
+    // Re-open: onUpgrade(7 -> 8) collapses to a single row, keeping the
+    // token-bearing one (so its plaintext token can still be migrated).
+    final upgraded = openDb();
+    final rows = await upgraded.select(upgraded.alertConfigEntries).get();
+    expect(rows, hasLength(1));
+    final config = await upgraded.getAlertConfig();
+    expect(config.githubToken, 'ghp_seed');
+    expect(config.pollIntervalMin, 9);
     await upgraded.close();
   });
 }

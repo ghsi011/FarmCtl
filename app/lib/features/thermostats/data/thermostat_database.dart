@@ -144,7 +144,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -190,6 +190,20 @@ class ThermostatDatabase extends _$ThermostatDatabase {
           alertConfigEntries,
           alertConfigEntries.lastMonitorRunAt,
         );
+      }
+      if (from < 8) {
+        // A pre-fix concurrent-insert race could leave duplicate alert_config
+        // rows; collapse them into the single canonical row (id = 1). Keep a
+        // row that still holds a plaintext token if any (so it can be migrated
+        // to secure storage), otherwise the lowest id.
+        await customStatement('''
+          DELETE FROM alert_config_entries WHERE id NOT IN (
+            SELECT id FROM alert_config_entries
+            ORDER BY (github_token IS NOT NULL) DESC, id ASC
+            LIMIT 1
+          )
+        ''');
+        await customStatement('UPDATE alert_config_entries SET id = 1');
       }
     },
   );
