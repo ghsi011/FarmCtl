@@ -298,4 +298,36 @@ void main() {
     expect(samples.first.revisionId, 'rev1');
     expect(samples.first.valueC, 10.5);
   });
+
+  test(
+    'fetchHistory reports an anonymous-fallback failure as httpError',
+    () async {
+      // Authenticated request is rate-limited (403); the anonymous fallback then
+      // fails with a 5xx. The error must surface as httpError, not parseError.
+      final authDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"rate limited"}', 403);
+        });
+      final anonDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"server error"}', 500);
+        });
+      final client = ThermostatHttpClient(
+        dio: authDio,
+        dioNoAuth: anonDio,
+        githubToken: 'ghp_token',
+      );
+
+      await expectLater(
+        () => client.fetchHistory('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+        throwsA(
+          isA<ThermostatFetchException>().having(
+            (error) => error.status,
+            'status',
+            ThermostatReadingStatus.httpError,
+          ),
+        ),
+      );
+    },
+  );
 }

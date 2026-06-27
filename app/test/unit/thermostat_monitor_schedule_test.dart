@@ -13,7 +13,7 @@ void main() {
     test('skips a run that started within the debounce window', () {
       expect(
         shouldSkipMonitorRun(
-          lastRunStartedAt: now.subtract(const Duration(seconds: 10)),
+          lastRunStartedAt: now.subtract(const Duration(seconds: 3)),
           now: now,
         ),
         isTrue,

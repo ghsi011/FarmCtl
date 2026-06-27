@@ -179,7 +179,13 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           ),
           queryParameters: {'per_page': _maxHistoryCommits},
         );
-        // Continue with anon response
+        if ((anon.statusCode ?? 0) != 200) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.httpError,
+            statusCode: anon.statusCode ?? 0,
+            message: 'Gist commits API failed with status ${anon.statusCode}.',
+          );
+        }
         final raw = anon.data ?? '[]';
         final decoded = _decodeJsonArray(raw);
         final samples = <ThermostatHistorySample>[];
@@ -366,7 +372,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       );
     }
     final raw = response.data ?? '[]';
-    final decoded = jsonDecode(raw) as List<dynamic>;
+    final decoded = _decodeJsonArray(raw);
     final commits = <GistCommit>[];
     for (final entry in decoded) {
       if (entry is! Map<String, dynamic>) continue;
@@ -602,8 +608,12 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
             headers: const {HttpHeaders.acceptHeader: 'text/plain'},
           ),
         );
-        if ((anon.statusCode ?? 0) == 200) {
-          return anon.data ?? '';
+        if ((anon.statusCode ?? 0) != 200) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.httpError,
+            statusCode: anon.statusCode ?? 0,
+            message: 'Raw fetch failed with status ${anon.statusCode}.',
+          );
         }
         return anon.data ?? '';
       }

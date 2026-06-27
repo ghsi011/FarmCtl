@@ -44,10 +44,13 @@ const int _alarmNotificationBaseId = 4000;
 const Duration _minimumFrequency = Duration(minutes: 15);
 const int _alarmRequestId = 5001;
 
-// Collapses the near-simultaneous WorkManager + AlarmManager fires (and any
-// other overlapping trigger) into a single monitor run. Comfortably below the
-// 1-minute minimum poll interval so legitimate consecutive runs are not skipped.
-const Duration _monitorRunDebounce = Duration(seconds: 30);
+// Collapses the near-simultaneous WorkManager + AlarmManager fires (which land
+// within a few seconds of each other) into a single monitor run. Kept short so
+// it stays below both the 60s+ gap between legitimate consecutive runs AND the
+// WorkManager retry backoff — otherwise a failed run's own retry could be
+// debounced away (the run-start stamp is written before the run and persists on
+// failure).
+const Duration _monitorRunDebounce = Duration(seconds: 10);
 
 bool _alarmManagerInitialized = false;
 
@@ -126,7 +129,9 @@ Future<bool> _scheduleMonitorOneShot(
   required bool exact,
 }) async {
   try {
-    await AndroidAlarmManager.oneShotAt(
+    // oneShotAt returns false if scheduling was refused without throwing; honour
+    // it so the exact -> flexible downgrade still triggers in that case.
+    return await AndroidAlarmManager.oneShotAt(
       nextRun,
       _alarmRequestId,
       thermostatAlarmCallback,
@@ -135,7 +140,6 @@ Future<bool> _scheduleMonitorOneShot(
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    return true;
   } catch (error, stackTrace) {
     debugPrint(
       'Failed to schedule ${exact ? 'exact' : 'flexible'} alarm: $error',

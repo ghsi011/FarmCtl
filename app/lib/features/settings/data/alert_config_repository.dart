@@ -19,8 +19,10 @@ class AlertConfigRepository {
   static DateTime _defaultClock() => DateTime.now().toUtc();
 
   Stream<AlertConfig> watchConfig() {
+    // Read-only: overlay the token without writing, so the watch stream stays a
+    // pure read. Migration/scrub happens in loadConfig() and setGithubToken().
     return _database.watchAlertConfig().asyncMap((entry) async {
-      final token = await _resolveToken(entry);
+      final token = await _readToken(entry);
       return AlertConfig.fromEntry(entry).withToken(token);
     });
   }
@@ -29,6 +31,20 @@ class AlertConfigRepository {
     final entry = await _database.getAlertConfig();
     final token = await _resolveToken(entry);
     return AlertConfig.fromEntry(entry).withToken(token);
+  }
+
+  /// Read-only token resolution: prefer secure storage, falling back to the
+  /// legacy plaintext column. Does not write (no migration side effect).
+  Future<String?> _readToken(AlertConfigEntry entry) async {
+    try {
+      final secure = await _tokenStore.readToken();
+      if (secure != null) {
+        return secure;
+      }
+    } catch (_) {
+      // Secure storage unavailable — fall back to the database value.
+    }
+    return entry.githubToken;
   }
 
   /// Resolves the GitHub token from secure storage, migrating any legacy

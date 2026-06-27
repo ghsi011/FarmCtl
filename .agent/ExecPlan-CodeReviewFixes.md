@@ -92,7 +92,17 @@ flagged "negligible / not a defect / intended" by the review itself. Rationale p
   (Semantics already encode status).
 - **I-3** (full l10n/ARB scaffolding): deferred per the user's scope decision.
 
-- ☐ Final — deep review, coverage check, PR.
+- ✅ `[2026-06-27]` Final multi-agent review (3 reviewers + validator). Verdict: safe to PR.
+    Applied the must-fix + cheap legit cleanups:
+    - Debounce 30s→10s so a failed run's WorkManager backoff retry isn't debounced away (must-fix).
+    - `_scheduleMonitorOneShot` returns `oneShotAt`'s bool so a non-throwing refusal still downgrades.
+    - HTTP: anon-fallback non-200 → httpError in fetchHistory + _resolveFileContent; `_parseCommitsList`
+      uses `_decodeJsonArray` (consistent malformed-200 → parseError). +1 client test.
+    - `watchConfig` is now a pure read (no scrub-write side effect in the stream); migration stays in
+      loadConfig/setGithubToken.
+    Deferred nice-to-haves noted: deeper PopScope behavioural test (needs notification-plugin mock),
+    `AndroidOptions(encryptedSharedPreferences)` (needs on-device migration testing).
+- ☐ Open PR.
 
 ## 🗒️ Decision Log
 - `[2026-06-27]` Parser fix uses boundary anchoring (leading `(?<![\w.,])`, trailing
