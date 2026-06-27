@@ -77,6 +77,8 @@ class AlertConfigEntries extends Table {
   DateTimeColumn get pauseAllUntil => dateTime().nullable()();
 
   TextColumn get githubToken => text().nullable()();
+
+  DateTimeColumn get lastMonitorRunAt => dateTime().nullable()();
 }
 
 @TableIndex(
@@ -132,7 +134,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -168,6 +170,12 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       }
       if (from < 6) {
         await m.addColumn(alertConfigEntries, alertConfigEntries.githubToken);
+      }
+      if (from < 7) {
+        await m.addColumn(
+          alertConfigEntries,
+          alertConfigEntries.lastMonitorRunAt,
+        );
       }
     },
   );
@@ -374,6 +382,14 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     }
   }
 
+  /// Records when the background monitor last started a run so overlapping
+  /// triggers (WorkManager + AlarmManager) can be debounced into a single run.
+  Future<void> setLastMonitorRunAt(DateTime value) async {
+    await updateAlertConfig(
+      AlertConfigEntriesCompanion(lastMonitorRunAt: Value(value)),
+    );
+  }
+
   Future<int> pruneTemperatureReadingsBefore(DateTime cutoff) {
     return (delete(
       temperatureReadings,
@@ -415,6 +431,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       volumeBoost: false,
       pauseAllUntil: null,
       githubToken: null,
+      lastMonitorRunAt: null,
     );
   }
 }

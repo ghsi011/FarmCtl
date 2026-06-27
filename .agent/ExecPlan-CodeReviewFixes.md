@@ -43,8 +43,13 @@ Each iteration: implement → `build_runner` → `flutter test --coverage` + `da
 
 ## 📈 Progress
 - ✅ `[2026-06-27]` Setup: branch `feat/code-review-fixes`, baseline captured, ExecPlan written.
-- [-] `[2026-06-27]` Iteration 1 — safety-critical alarm pipeline (in progress).
-- ☐ Iteration 2 — background concurrency & scheduling.
+- ✅ `[2026-06-27]` Iteration 1 — safety-critical alarm pipeline (H-1, H-2, M-9, M-10). 48→62 tests, 27.46→29.49%.
+- ✅ `[2026-06-27]` Iteration 2 — background concurrency & scheduling (H-3, M-1, M-2, M-3). 62→75 tests.
+    - H-3: extracted pure `shouldTriggerAlarm`; atomic `recordOutOfRangeAndShouldAlarm` (txn + compare-and-set).
+    - M-1: `lastMonitorRunAt` (schema v7) + `shouldSkipMonitorRun` debounce.
+    - M-2: exact→flexible alarm fallback in `_updateAlarmSchedule`.
+    - M-3: `_runMonitorTask` returns success; WorkManager retries on failure.
+    - NOTE: the v7 (and full 1→7) migration test is delivered in Iteration 3 / M-6 (SchemaVerifier).
 - ☐ Iteration 3 — data / HTTP / security.
 - ☐ Iteration 4 — tests & CI coverage gate.
 - ☐ Iteration 5 — UI & architecture polish.

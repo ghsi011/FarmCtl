@@ -41,8 +41,12 @@ const String _defaultAlarmSoundUri = 'content://settings/system/alarm_alert';
 const int _monitoringNotificationId = 1001;
 const int _alarmNotificationBaseId = 4000;
 const Duration _minimumFrequency = Duration(minutes: 15);
-const Duration _alarmRateLimit = Duration(minutes: 5);
 const int _alarmRequestId = 5001;
+
+// Collapses the near-simultaneous WorkManager + AlarmManager fires (and any
+// other overlapping trigger) into a single monitor run. Comfortably below the
+// 1-minute minimum poll interval so legitimate consecutive runs are not skipped.
+const Duration _monitorRunDebounce = Duration(seconds: 30);
 
 bool _alarmManagerInitialized = false;
 
@@ -101,21 +105,42 @@ Future<void> _updateAlarmSchedule(AlertConfig config, {DateTime? now}) async {
   }
 
   final useExact = config.exactAlarmsEnabled;
+  var scheduled = await _scheduleMonitorOneShot(nextRun, exact: useExact);
+  if (!scheduled && useExact) {
+    // Exact scheduling throws if SCHEDULE_EXACT_ALARM was revoked since the user
+    // enabled it. Downgrade to a flexible alarm so checks keep happening rather
+    // than silently breaking the one-shot chain.
+    debugPrint(
+      'Exact alarm scheduling failed; falling back to a flexible alarm.',
+    );
+    scheduled = await _scheduleMonitorOneShot(nextRun, exact: false);
+  }
+  if (!scheduled) {
+    debugPrint('Unable to schedule the next monitor alarm.');
+  }
+}
+
+Future<bool> _scheduleMonitorOneShot(
+  DateTime nextRun, {
+  required bool exact,
+}) async {
   try {
     await AndroidAlarmManager.oneShotAt(
       nextRun,
       _alarmRequestId,
       thermostatAlarmCallback,
       allowWhileIdle: true,
-      exact: useExact,
+      exact: exact,
       wakeup: true,
       rescheduleOnReboot: true,
     );
+    return true;
   } catch (error, stackTrace) {
     debugPrint(
-      'Failed to schedule ${useExact ? 'exact' : 'flexible'} alarm: $error',
+      'Failed to schedule ${exact ? 'exact' : 'flexible'} alarm: $error',
     );
     debugPrint('$stackTrace');
+    return false;
   }
 }
 
@@ -189,8 +214,9 @@ Future<void> initializeMonitoringOnBoot() async {
 @pragma('vm:entry-point')
 void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
-    await _runMonitorTask();
-    return true;
+    // Returning false on failure lets WorkManager retry with backoff instead of
+    // waiting a full period after a transient error.
+    return _runMonitorTask();
   });
 }
 
@@ -199,7 +225,21 @@ Future<void> thermostatAlarmCallback() async {
   await _runMonitorTask();
 }
 
-Future<void> _runMonitorTask() async {
+/// Whether a monitor run that observed [lastRunStartedAt] should be skipped
+/// because another run started within [debounce]. Pure for testability.
+bool shouldSkipMonitorRun({
+  required DateTime? lastRunStartedAt,
+  required DateTime now,
+  Duration debounce = _monitorRunDebounce,
+}) {
+  if (lastRunStartedAt == null) {
+    return false;
+  }
+  final elapsed = now.difference(lastRunStartedAt);
+  return elapsed >= Duration.zero && elapsed < debounce;
+}
+
+Future<bool> _runMonitorTask() async {
   WidgetsFlutterBinding.ensureInitialized();
   ui.DartPluginRegistrant.ensureInitialized();
 
@@ -216,16 +256,40 @@ Future<void> _runMonitorTask() async {
   }
 
   await _initializeNotifications(notifications, config: config);
-  // Show a transient notification while the check is running.
-  await _showMonitoringNotification(notifications);
 
   if (config == null) {
     debugPrint('Alert config unavailable; skipping monitor run.');
-    await notifications.cancel(_monitoringNotificationId);
     await database.close();
-    return;
+    // Treat a failed config load as a failure so WorkManager retries.
+    return false;
   }
 
+  final now = DateTime.now().toUtc();
+
+  // Debounce the overlapping WorkManager + AlarmManager triggers into a single
+  // run rather than fetching and writing the same rows twice.
+  if (shouldSkipMonitorRun(
+    lastRunStartedAt: config.lastMonitorRunAt,
+    now: now,
+  )) {
+    debugPrint('Skipping monitor run; another run started recently.');
+    await _updateAlarmSchedule(config, now: now);
+    await database.close();
+    return true;
+  }
+
+  // Record the run start up-front so a near-simultaneous trigger debounces.
+  try {
+    await database.setLastMonitorRunAt(now);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to record monitor run start: $error');
+    debugPrint('$stackTrace');
+  }
+
+  // Show a transient notification while the check is running.
+  await _showMonitoringNotification(notifications);
+
+  var success = true;
   try {
     final repository = ThermostatRepository(database);
     final alertConfig = config; // promote to non-null for closures
@@ -244,10 +308,9 @@ Future<void> _runMonitorTask() async {
       ),
     );
 
-    final now = DateTime.now().toUtc();
-    if (config.isPaused(now)) {
+    if (alertConfig.isPaused(now)) {
       debugPrint(
-        'Monitoring paused until ${config.pauseAllUntil?.toIso8601String()}',
+        'Monitoring paused until ${alertConfig.pauseAllUntil?.toIso8601String()}',
       );
     } else {
       await runner.run();
@@ -269,6 +332,7 @@ Future<void> _runMonitorTask() async {
       debugPrint('$stackTrace');
     }
   } catch (error, stackTrace) {
+    success = false;
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');
   } finally {
@@ -277,8 +341,8 @@ Future<void> _runMonitorTask() async {
     await database.close();
   }
 
-  // config is non-null here
-  await _updateAlarmSchedule(config);
+  await _updateAlarmSchedule(config, now: now);
+  return success;
 }
 
 class ThermostatMonitorRunner {
@@ -323,20 +387,17 @@ class ThermostatMonitorRunner {
             thermostat,
             value,
           );
-          final shouldAlarm = _shouldTriggerAlarm(previousState, now);
-          final clearSnooze =
-              shouldAlarm && (previousState?.snoozedUntil != null);
-          await _repository.saveState(
+          // Atomic compare-and-set: the decision and the lastAlarmAt write
+          // happen in one transaction that re-reads the latest state, so
+          // concurrent snooze/silence writes are never lost and overlapping
+          // runs cannot both fire.
+          final shouldAlarm = await _repository.recordOutOfRangeAndShouldAlarm(
             thermostatId: thermostat.id,
-            status: ThermostatReadingStatus.outOfRange,
             valueC: value,
             fetchedAt: fetchedAt,
             etag: result.etag,
             message: baseMessage,
-            lastAlarmAt: shouldAlarm ? now : null,
-            setLastAlarmAt: shouldAlarm,
-            setSnoozedUntil: clearSnooze,
-            snoozedUntil: null,
+            now: now,
           );
           if (shouldAlarm) {
             await _alarmDispatcher.showAlarm(
@@ -387,32 +448,6 @@ class ThermostatMonitorRunner {
         );
       }
     }
-  }
-
-  bool _shouldTriggerAlarm(ThermostatState? previousState, DateTime now) {
-    if (previousState == null) {
-      return true;
-    }
-
-    if (previousState.silenceUntilOk) {
-      return false;
-    }
-
-    final snoozedUntil = previousState.snoozedUntil;
-    if (snoozedUntil != null && now.isBefore(snoozedUntil)) {
-      return false;
-    }
-
-    final lastAlarmAt = previousState.lastAlarmAt;
-    if (lastAlarmAt != null &&
-        previousState.status == ThermostatReadingStatus.outOfRange) {
-      final diff = now.difference(lastAlarmAt);
-      if (diff < _alarmRateLimit) {
-        return false;
-      }
-    }
-
-    return true;
   }
 }
 

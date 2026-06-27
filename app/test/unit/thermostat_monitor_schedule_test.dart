@@ -1,0 +1,55 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:farmctl/core/background/thermostat_monitor.dart';
+
+void main() {
+  group('shouldSkipMonitorRun', () {
+    final now = DateTime.utc(2025, 1, 1, 12);
+
+    test('does not skip when there is no prior run', () {
+      expect(shouldSkipMonitorRun(lastRunStartedAt: null, now: now), isFalse);
+    });
+
+    test('skips a run that started within the debounce window', () {
+      expect(
+        shouldSkipMonitorRun(
+          lastRunStartedAt: now.subtract(const Duration(seconds: 10)),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not skip once the debounce window has elapsed', () {
+      expect(
+        shouldSkipMonitorRun(
+          lastRunStartedAt: now.subtract(const Duration(seconds: 45)),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not skip when the prior timestamp is in the future', () {
+      // Guards against clock skew producing a negative elapsed time.
+      expect(
+        shouldSkipMonitorRun(
+          lastRunStartedAt: now.add(const Duration(seconds: 10)),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
+    test('honours a custom debounce window', () {
+      expect(
+        shouldSkipMonitorRun(
+          lastRunStartedAt: now.subtract(const Duration(seconds: 90)),
+          now: now,
+          debounce: const Duration(minutes: 2),
+        ),
+        isTrue,
+      );
+    });
+  });
+}

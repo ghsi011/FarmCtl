@@ -134,4 +134,101 @@ void main() {
       });
     });
   });
+
+  group('shouldTriggerAlarm', () {
+    final now = DateTime.utc(2025, 1, 1, 12);
+
+    ThermostatState stateWith({
+      ThermostatReadingStatus status = ThermostatReadingStatus.outOfRange,
+      DateTime? lastAlarmAt,
+      DateTime? snoozedUntil,
+      bool silenceUntilOk = false,
+    }) {
+      final timestamp = DateTime.utc(2025, 1, 1);
+      return ThermostatState(
+        thermostatId: 'id',
+        status: status,
+        lastAlarmAt: lastAlarmAt,
+        snoozedUntil: snoozedUntil,
+        silenceUntilOk: silenceUntilOk,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      );
+    }
+
+    test('fires when there is no previous state', () {
+      expect(shouldTriggerAlarm(previousState: null, now: now), isTrue);
+    });
+
+    test('does not fire while silenced until OK', () {
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(silenceUntilOk: true),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not fire during an active snooze', () {
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            snoozedUntil: now.add(const Duration(minutes: 5)),
+          ),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
+    test('fires once the snooze has expired', () {
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            snoozedUntil: now.subtract(const Duration(minutes: 1)),
+          ),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rate-limits within the window when previously out of range', () {
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            lastAlarmAt: now.subtract(const Duration(minutes: 4)),
+          ),
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            lastAlarmAt: now.subtract(const Duration(minutes: 6)),
+          ),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test(
+      'does not rate-limit when the previous status was not out of range',
+      () {
+        expect(
+          shouldTriggerAlarm(
+            previousState: stateWith(
+              status: ThermostatReadingStatus.ok,
+              lastAlarmAt: now.subtract(const Duration(minutes: 1)),
+            ),
+            now: now,
+          ),
+          isTrue,
+        );
+      },
+    );
+  });
 }

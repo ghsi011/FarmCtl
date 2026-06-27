@@ -12,6 +12,7 @@ class AlertConfig {
     required this.volumeBoost,
     required this.pauseAllUntil,
     required this.githubToken,
+    this.lastMonitorRunAt,
   });
 
   final Duration pollInterval;
@@ -22,6 +23,10 @@ class AlertConfig {
   final DateTime? pauseAllUntil;
   final String? githubToken;
 
+  /// When the background monitor last started a run. Used to debounce the
+  /// overlapping WorkManager + AlarmManager triggers into a single run.
+  final DateTime? lastMonitorRunAt;
+
   factory AlertConfig.fromEntry(AlertConfigEntry entry) {
     return AlertConfig(
       pollInterval: Duration(minutes: entry.pollIntervalMin),
@@ -31,6 +36,7 @@ class AlertConfig {
       volumeBoost: entry.volumeBoost,
       pauseAllUntil: entry.pauseAllUntil?.toUtc(),
       githubToken: entry.githubToken,
+      lastMonitorRunAt: entry.lastMonitorRunAt?.toUtc(),
     );
   }
 
@@ -57,6 +63,7 @@ class AlertConfig {
     bool? volumeBoost,
     DateTime? pauseAllUntil,
     String? githubToken,
+    DateTime? lastMonitorRunAt,
   }) {
     return AlertConfig(
       pollInterval: pollInterval ?? this.pollInterval,
@@ -66,6 +73,7 @@ class AlertConfig {
       volumeBoost: volumeBoost ?? this.volumeBoost,
       pauseAllUntil: pauseAllUntil ?? this.pauseAllUntil,
       githubToken: githubToken ?? this.githubToken,
+      lastMonitorRunAt: lastMonitorRunAt ?? this.lastMonitorRunAt,
     );
   }
 }
