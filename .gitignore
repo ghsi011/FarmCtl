@@ -33,3 +33,6 @@ windows/flutter/ephemeral/
 
 # Drift generated (if any outside committed g.darts)
 **/*.g.dart
+
+# graphify knowledge-graph output (regenerable via /graphify; contains machine-specific paths)
+graphify-out/
