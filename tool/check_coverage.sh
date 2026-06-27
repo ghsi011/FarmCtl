@@ -11,8 +11,15 @@ if [ ! -f "$LCOV" ]; then
   exit 1
 fi
 
-hit=$(awk -F: '/^LH:/ {s+=$2} END {print s+0}' "$LCOV")
-found=$(awk -F: '/^LF:/ {s+=$2} END {print s+0}' "$LCOV")
+# Exclude generated sources (*.g.dart, *.freezed.dart) — they are not
+# hand-written and testing them is meaningless, so they shouldn't dilute the
+# coverage metric.
+read -r hit found < <(awk -F: '
+  /^SF:/ { gen = ($0 ~ /\.g\.dart$/ || $0 ~ /\.freezed\.dart$/) }
+  /^LH:/ { if (!gen) h += $2 }
+  /^LF:/ { if (!gen) f += $2 }
+  END { print h+0, f+0 }
+' "$LCOV")
 
 if [ "$found" -eq 0 ]; then
   echo "::error::no lines found in coverage report"
