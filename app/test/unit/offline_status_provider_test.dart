@@ -161,4 +161,89 @@ void main() {
       expect(status, OfflineStatus.online);
     },
   );
+
+  ProviderContainer containerWith(List<ThermostatSummary> summaries) {
+    final container = ProviderContainer(
+      overrides: [
+        nowProvider.overrideWithValue(() => fixedNow),
+        thermostatsProvider.overrideWith((ref) => Stream.value(summaries)),
+      ],
+    );
+    addTearDown(container.dispose);
+    return container;
+  }
+
+  ThermostatSummary summaryWith(
+    String id,
+    ThermostatReadingStatus status, {
+    required DateTime fetchedAt,
+  }) {
+    return ThermostatSummary(
+      thermostat: createThermostat(id),
+      state: createState(
+        thermostatId: id,
+        status: status,
+        lastFetchedAt: fetchedAt,
+      ),
+    );
+  }
+
+  test('online when there are no thermostats', () async {
+    expect(await readStatus(containerWith([])), OfflineStatus.online);
+  });
+
+  test('online when the only network error is older than 30 minutes', () async {
+    final container = containerWith([
+      summaryWith(
+        '1',
+        ThermostatReadingStatus.networkError,
+        fetchedAt: fixedNow.subtract(const Duration(minutes: 40)),
+      ),
+    ]);
+    expect(await readStatus(container), OfflineStatus.online);
+  });
+
+  test(
+    'offline when a recent failure coexists with only stale successes',
+    () async {
+      final container = containerWith([
+        summaryWith(
+          '1',
+          ThermostatReadingStatus.networkError,
+          fetchedAt: fixedNow.subtract(const Duration(minutes: 10)),
+        ),
+        summaryWith(
+          '2',
+          ThermostatReadingStatus.ok,
+          // Older than the 15-minute "recent success" window.
+          fetchedAt: fixedNow.subtract(const Duration(minutes: 20)),
+        ),
+      ]);
+      expect(await readStatus(container), OfflineStatus.offline);
+    },
+  );
+
+  test('httpError is not treated as a connectivity failure', () async {
+    final container = containerWith([
+      summaryWith(
+        '1',
+        ThermostatReadingStatus.httpError,
+        fetchedAt: fixedNow.subtract(const Duration(minutes: 5)),
+      ),
+    ]);
+    expect(await readStatus(container), OfflineStatus.online);
+  });
+
+  test('unknown while the thermostats stream is loading/errored', () async {
+    final container = ProviderContainer(
+      overrides: [
+        nowProvider.overrideWithValue(() => fixedNow),
+        thermostatsProvider.overrideWith(
+          (ref) => Stream<List<ThermostatSummary>>.error(Exception('boom')),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    expect(container.read(offlineStatusProvider), OfflineStatus.unknown);
+  });
 }

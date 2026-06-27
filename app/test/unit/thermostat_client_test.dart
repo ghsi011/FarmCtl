@@ -390,4 +390,97 @@ void main() {
       expect(anonCalled, isFalse);
     },
   );
+
+  final jsonHeaders = {
+    Headers.contentTypeHeader: [ContentType.json.mimeType],
+  };
+
+  test('testToken reports the rate-limit summary on success', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"resources":{"core":{"remaining":42,"limit":5000}}}',
+          200,
+          headers: jsonHeaders,
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final message = await client.testToken();
+    expect(message, contains('remaining 42'));
+    expect(message, contains('5000'));
+  });
+
+  test('testToken reports an auth error on failure', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('{"message":"Bad credentials"}', 401);
+      });
+    final client = ThermostatHttpClient(dio: dio, githubToken: 'bad');
+
+    final message = await client.testToken();
+    expect(message.toLowerCase(), contains('error'));
+  });
+
+  test('listCommits returns parsed, ordered commits', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '[{"version":"rev1","committed_at":"2025-01-02T10:00:00Z"},'
+          '{"version":"rev2","committed_at":"2025-01-02T12:00:00Z"}]',
+          200,
+          headers: jsonHeaders,
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final commits = await client.listCommits(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(commits, hasLength(2));
+    expect(commits.first.revisionId, 'rev1');
+    expect(commits.last.observedAt, DateTime.utc(2025, 1, 2, 12));
+  });
+
+  test('fetchRevisionValue parses a single revision snapshot', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"files":{"thermostat.txt":{"truncated":false,"content":"Temperature: 9.9 C"}}}',
+          200,
+          headers: jsonHeaders,
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final value = await client.fetchRevisionValue(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'rev1',
+    );
+    expect(value, closeTo(9.9, 1e-9));
+  });
+
+  test(
+    'fetches the raw_url when the inline gist content is truncated',
+    () async {
+      final dio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          if (options.path.contains('raw-host')) {
+            return ResponseBody.fromString('Temperature: 7.7 C', 200);
+          }
+          return ResponseBody.fromString(
+            '{"files":{"thermostat.txt":{"truncated":true,'
+            '"raw_url":"https://raw-host.example/x"}}}',
+            200,
+            headers: jsonHeaders,
+          );
+        });
+      final client = ThermostatHttpClient(dio: dio);
+
+      final result = await client.fetchCurrent(
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      );
+      expect(result.valueC, closeTo(7.7, 1e-9));
+    },
+  );
 }
