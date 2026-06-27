@@ -16,5 +16,12 @@ void main() {
     test('returns null when no Celsius token is found', () {
       expect(parseCelsiusTemperature('No data available'), isNull);
     });
+
+    test('fails closed on ambiguous numbers that drive alarm decisions', () {
+      // Regression guards: these must never silently produce a wrong reading.
+      expect(parseCelsiusTemperature('1,234.5C'), isNull);
+      expect(parseCelsiusTemperature('.5C'), isNull);
+      expect(parseCelsiusTemperature('sensor id abc123Cdef 7.7C'), equals(7.7));
+    });
   });
 }

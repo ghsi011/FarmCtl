@@ -17,45 +17,61 @@ class AlarmFullScreenPage extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final backgroundColor = colorScheme.surfaceContainerHighest;
 
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                backgroundColor,
-                Color.alphaBlend(
-                  colorScheme.primary.withValues(alpha: 0.05),
+    // The alarm screen is the primary surface for acknowledging an out-of-range
+    // alert. A hardware/predictive back gesture must route through the same
+    // cancellation path as the in-page actions so the audible alarm and its
+    // notification are always silenced when the page leaves the stack.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          return;
+        }
+        await cancelAlarmNotification(thermostatId);
+        if (context.mounted) {
+          Navigator.of(context).pop(result);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: backgroundColor,
+        body: SafeArea(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
                   backgroundColor,
-                ),
-              ],
+                  Color.alphaBlend(
+                    colorScheme.primary.withValues(alpha: 0.05),
+                    backgroundColor,
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: summaryAsync.when(
-            data: (summary) {
-              if (summary == null) {
-                return const _MissingThermostat();
-              }
+            child: summaryAsync.when(
+              data: (summary) {
+                if (summary == null) {
+                  return const _MissingThermostat();
+                }
 
-              final thermostat = summary.thermostat;
-              final state = summary.state;
-              return _AlarmContent(
-                thermostatId: thermostat.id,
-                thermostatName: thermostat.name,
-                currentValue: state?.lastValueC,
-                minC: thermostat.minC,
-                maxC: thermostat.maxC,
-                status: state?.status,
-                statusMessage: state?.statusMessage,
-                snoozedUntil: state?.snoozedUntil,
-                silenceUntilOk: state?.silenceUntilOk ?? false,
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stackTrace) => _AlarmError(error: error),
+                final thermostat = summary.thermostat;
+                final state = summary.state;
+                return _AlarmContent(
+                  thermostatId: thermostat.id,
+                  thermostatName: thermostat.name,
+                  currentValue: state?.lastValueC,
+                  minC: thermostat.minC,
+                  maxC: thermostat.maxC,
+                  status: state?.status,
+                  statusMessage: state?.statusMessage,
+                  snoozedUntil: state?.snoozedUntil,
+                  silenceUntilOk: state?.silenceUntilOk ?? false,
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => _AlarmError(error: error),
+            ),
           ),
         ),
       ),
