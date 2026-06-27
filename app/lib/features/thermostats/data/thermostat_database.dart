@@ -360,30 +360,36 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     return query.get();
   }
 
+  // The alert config is a singleton; pin it to one canonical row id so reads
+  // are deterministic and concurrent writers can't each insert a separate row.
+  static const int _alertConfigRowId = 1;
+
   Stream<AlertConfigEntry> watchAlertConfig() {
-    return (select(alertConfigEntries)..limit(1)).watchSingleOrNull().map(
-      (entry) => entry ?? _defaultAlertConfig(),
-    );
+    return (select(alertConfigEntries)
+          ..orderBy([(tbl) => OrderingTerm.asc(tbl.id)])
+          ..limit(1))
+        .watchSingleOrNull()
+        .map((entry) => entry ?? _defaultAlertConfig());
   }
 
   Future<AlertConfigEntry> getAlertConfig() async {
-    final entry = await (select(
-      alertConfigEntries,
-    )..limit(1)).getSingleOrNull();
+    final entry =
+        await (select(alertConfigEntries)
+              ..orderBy([(tbl) => OrderingTerm.asc(tbl.id)])
+              ..limit(1))
+            .getSingleOrNull();
     return entry ?? _defaultAlertConfig();
   }
 
   Future<void> updateAlertConfig(AlertConfigEntriesCompanion companion) async {
-    final existing = await (select(
-      alertConfigEntries,
-    )..limit(1)).getSingleOrNull();
-    if (existing == null) {
-      await into(alertConfigEntries).insert(companion);
-    } else {
-      await (update(
-        alertConfigEntries,
-      )..where((tbl) => tbl.id.equals(existing.id))).write(companion);
-    }
+    // Atomic upsert on the single canonical row. insertOnConflictUpdate avoids
+    // the old non-atomic check-then-insert, under which two connections (the UI
+    // isolate and a background monitor run) could both observe "no row" on a
+    // fresh install and each INSERT, producing duplicate rows and inconsistent
+    // reads.
+    await into(alertConfigEntries).insertOnConflictUpdate(
+      companion.copyWith(id: const Value(_alertConfigRowId)),
+    );
   }
 
   /// Records when the background monitor last started a run so overlapping

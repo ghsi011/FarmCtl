@@ -69,9 +69,20 @@ class AlertConfigRepository {
     }
 
     if (legacy != null && legacy.isNotEmpty) {
-      // Migrate the plaintext token into secure storage, then scrub it.
+      // Migrate the plaintext token into secure storage, but only scrub the
+      // plaintext copy once we've confirmed the write actually persisted — a
+      // silent secure-storage write failure must not lose the only copy of the
+      // token (which would force anonymous, rate-limited requests forever).
       await _tokenStore.writeToken(legacy);
-      await _scrubLegacyToken();
+      String? readBack;
+      try {
+        readBack = await _tokenStore.readToken();
+      } catch (_) {
+        readBack = null;
+      }
+      if (readBack == legacy) {
+        await _scrubLegacyToken();
+      }
       return legacy;
     }
 

@@ -8,12 +8,18 @@ import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
 
 class _FakeTokenStore implements SecureTokenStore {
   String? token;
+  bool persistWrites = true;
 
   @override
   Future<String?> readToken() async => token;
 
   @override
   Future<void> writeToken(String? value) async {
+    // When persistWrites is false, simulate a secure-storage write that
+    // silently fails to persist (e.g. keystore not ready in a background isolate).
+    if (!persistWrites) {
+      return;
+    }
     token = (value == null || value.isEmpty) ? null : value;
   }
 }
@@ -109,6 +115,39 @@ void main() {
     expect(tokenStore.token, isNull);
     final config = await repository.loadConfig();
     expect(config.githubToken, isNull);
+  });
+
+  test('does not scrub the plaintext token if the secure write fails', () async {
+    // Seed a legacy plaintext token; secure storage silently fails to persist.
+    await database.updateAlertConfig(
+      const AlertConfigEntriesCompanion(githubToken: Value('ghp_legacy')),
+    );
+    tokenStore.persistWrites = false;
+
+    final config = await repository.loadConfig();
+    // The token is still usable for this run...
+    expect(config.githubToken, 'ghp_legacy');
+    // ...and the plaintext copy is NOT scrubbed, since the migration write did
+    // not persist (otherwise the only copy would be lost forever).
+    expect((await database.getAlertConfig()).githubToken, 'ghp_legacy');
+    expect(tokenStore.token, isNull);
+  });
+
+  test('keeps the alert config as a single row across many writers', () async {
+    await database.updateAlertConfig(
+      const AlertConfigEntriesCompanion(pollIntervalMin: Value(9)),
+    );
+    await database.updateAlertConfig(
+      const AlertConfigEntriesCompanion(exactAlarmsEnabled: Value(true)),
+    );
+    await database.setLastMonitorRunAt(DateTime.utc(2025, 6, 27, 12));
+
+    final rows = await database.select(database.alertConfigEntries).get();
+    expect(rows, hasLength(1));
+    final cfg = await database.getAlertConfig();
+    expect(cfg.pollIntervalMin, 9);
+    expect(cfg.exactAlarmsEnabled, isTrue);
+    expect(cfg.lastMonitorRunAt, isNotNull);
   });
 
   test('migrates a legacy plaintext token into secure storage', () async {

@@ -107,13 +107,15 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
       if (last != null && now.difference(last) < const Duration(seconds: 10)) {
         return;
       }
-      registry.lastRun[args.thermostatId] = now;
 
       final service = ref.watch(thermostatServiceProvider);
       await service.refreshHistory(
         args.thermostatId,
         prioritizeLastHour: args.prioritizeLastHour,
       );
+      // Stamp only after a successful refresh so a failed/cancelled one does not
+      // throttle the user's immediate retry for the next 10s.
+      registry.lastRun[args.thermostatId] = now;
     });
 
 enum OfflineStatus { online, degraded, offline, unknown }
