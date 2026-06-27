@@ -1,61 +1,101 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/background/thermostat_monitor.dart';
 import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
 
-class AlarmFullScreenPage extends ConsumerWidget {
+class AlarmFullScreenPage extends ConsumerStatefulWidget {
   const AlarmFullScreenPage({required this.thermostatId, super.key});
 
   final String thermostatId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AlarmFullScreenPage> createState() =>
+      _AlarmFullScreenPageState();
+}
+
+class _AlarmFullScreenPageState extends ConsumerState<AlarmFullScreenPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Keep the screen awake while an alarm is showing. Best-effort: ignore
+    // platform failures (and the unsupported test environment).
+    unawaited(WakelockPlus.enable().catchError((Object _) {}));
+  }
+
+  @override
+  void dispose() {
+    unawaited(WakelockPlus.disable().catchError((Object _) {}));
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thermostatId = widget.thermostatId;
     final summaryAsync = ref.watch(thermostatSummaryProvider(thermostatId));
 
     final colorScheme = Theme.of(context).colorScheme;
     final backgroundColor = colorScheme.surfaceContainerHighest;
 
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                backgroundColor,
-                Color.alphaBlend(
-                  colorScheme.primary.withValues(alpha: 0.05),
+    // The alarm screen is the primary surface for acknowledging an out-of-range
+    // alert. A hardware/predictive back gesture must route through the same
+    // cancellation path as the in-page actions so the audible alarm and its
+    // notification are always silenced when the page leaves the stack.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          return;
+        }
+        await cancelAlarmNotification(thermostatId);
+        if (context.mounted) {
+          Navigator.of(context).pop(result);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: backgroundColor,
+        body: SafeArea(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
                   backgroundColor,
-                ),
-              ],
+                  Color.alphaBlend(
+                    colorScheme.primary.withValues(alpha: 0.05),
+                    backgroundColor,
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: summaryAsync.when(
-            data: (summary) {
-              if (summary == null) {
-                return const _MissingThermostat();
-              }
+            child: summaryAsync.when(
+              data: (summary) {
+                if (summary == null) {
+                  return const _MissingThermostat();
+                }
 
-              final thermostat = summary.thermostat;
-              final state = summary.state;
-              return _AlarmContent(
-                thermostatId: thermostat.id,
-                thermostatName: thermostat.name,
-                currentValue: state?.lastValueC,
-                minC: thermostat.minC,
-                maxC: thermostat.maxC,
-                status: state?.status,
-                statusMessage: state?.statusMessage,
-                snoozedUntil: state?.snoozedUntil,
-                silenceUntilOk: state?.silenceUntilOk ?? false,
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stackTrace) => _AlarmError(error: error),
+                final thermostat = summary.thermostat;
+                final state = summary.state;
+                return _AlarmContent(
+                  thermostatId: thermostat.id,
+                  thermostatName: thermostat.name,
+                  currentValue: state?.lastValueC,
+                  minC: thermostat.minC,
+                  maxC: thermostat.maxC,
+                  status: state?.status,
+                  statusMessage: state?.statusMessage,
+                  snoozedUntil: state?.snoozedUntil,
+                  silenceUntilOk: state?.silenceUntilOk ?? false,
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => _AlarmError(error: error),
+            ),
           ),
         ),
       ),

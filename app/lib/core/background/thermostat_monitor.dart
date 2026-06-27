@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../../features/settings/data/alert_config_repository.dart';
 import '../../features/settings/models/alert_config.dart';
 import '../../features/thermostats/data/thermostat_client.dart';
 import '../../features/thermostats/data/thermostat_database.dart';
@@ -41,8 +42,15 @@ const String _defaultAlarmSoundUri = 'content://settings/system/alarm_alert';
 const int _monitoringNotificationId = 1001;
 const int _alarmNotificationBaseId = 4000;
 const Duration _minimumFrequency = Duration(minutes: 15);
-const Duration _alarmRateLimit = Duration(minutes: 5);
 const int _alarmRequestId = 5001;
+
+// Collapses the near-simultaneous WorkManager + AlarmManager fires (which land
+// within a few seconds of each other) into a single monitor run. Kept short so
+// it stays below both the 60s+ gap between legitimate consecutive runs AND the
+// WorkManager retry backoff — otherwise a failed run's own retry could be
+// debounced away (the run-start stamp is written before the run and persists on
+// failure).
+const Duration _monitorRunDebounce = Duration(seconds: 10);
 
 bool _alarmManagerInitialized = false;
 
@@ -101,21 +109,43 @@ Future<void> _updateAlarmSchedule(AlertConfig config, {DateTime? now}) async {
   }
 
   final useExact = config.exactAlarmsEnabled;
+  var scheduled = await _scheduleMonitorOneShot(nextRun, exact: useExact);
+  if (!scheduled && useExact) {
+    // Exact scheduling throws if SCHEDULE_EXACT_ALARM was revoked since the user
+    // enabled it. Downgrade to a flexible alarm so checks keep happening rather
+    // than silently breaking the one-shot chain.
+    debugPrint(
+      'Exact alarm scheduling failed; falling back to a flexible alarm.',
+    );
+    scheduled = await _scheduleMonitorOneShot(nextRun, exact: false);
+  }
+  if (!scheduled) {
+    debugPrint('Unable to schedule the next monitor alarm.');
+  }
+}
+
+Future<bool> _scheduleMonitorOneShot(
+  DateTime nextRun, {
+  required bool exact,
+}) async {
   try {
-    await AndroidAlarmManager.oneShotAt(
+    // oneShotAt returns false if scheduling was refused without throwing; honour
+    // it so the exact -> flexible downgrade still triggers in that case.
+    return await AndroidAlarmManager.oneShotAt(
       nextRun,
       _alarmRequestId,
       thermostatAlarmCallback,
       allowWhileIdle: true,
-      exact: useExact,
+      exact: exact,
       wakeup: true,
       rescheduleOnReboot: true,
     );
   } catch (error, stackTrace) {
     debugPrint(
-      'Failed to schedule ${useExact ? 'exact' : 'flexible'} alarm: $error',
+      'Failed to schedule ${exact ? 'exact' : 'flexible'} alarm: $error',
     );
     debugPrint('$stackTrace');
+    return false;
   }
 }
 
@@ -124,14 +154,28 @@ const String _snooze10ActionId = 'alarm_snooze_10';
 const String _snooze30ActionId = 'alarm_snooze_30';
 const String _silenceActionId = 'alarm_silence_until_ok';
 
+/// Maps a notification snooze action id to its snooze duration, or null when the
+/// action is not a snooze (silence, body tap, or unknown). Pure for testability.
+Duration? snoozeDurationForAction(String? actionId) {
+  switch (actionId) {
+    case _snooze5ActionId:
+      return const Duration(minutes: 5);
+    case _snooze10ActionId:
+      return const Duration(minutes: 10);
+    case _snooze30ActionId:
+      return const Duration(minutes: 30);
+    default:
+      return null;
+  }
+}
+
 Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   final notifications = FlutterLocalNotificationsPlugin();
 
   AlertConfig? config;
   final database = ThermostatDatabase();
   try {
-    final entry = await database.getAlertConfig();
-    config = AlertConfig.fromEntry(entry);
+    config = await AlertConfigRepository(database).loadConfig();
   } catch (error, stackTrace) {
     debugPrint('Failed to load alert config for scheduling: $error');
     debugPrint('$stackTrace');
@@ -189,8 +233,9 @@ Future<void> initializeMonitoringOnBoot() async {
 @pragma('vm:entry-point')
 void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
-    await _runMonitorTask();
-    return true;
+    // Returning false on failure lets WorkManager retry with backoff instead of
+    // waiting a full period after a transient error.
+    return _runMonitorTask();
   });
 }
 
@@ -199,7 +244,21 @@ Future<void> thermostatAlarmCallback() async {
   await _runMonitorTask();
 }
 
-Future<void> _runMonitorTask() async {
+/// Whether a monitor run that observed [lastRunStartedAt] should be skipped
+/// because another run started within [debounce]. Pure for testability.
+bool shouldSkipMonitorRun({
+  required DateTime? lastRunStartedAt,
+  required DateTime now,
+  Duration debounce = _monitorRunDebounce,
+}) {
+  if (lastRunStartedAt == null) {
+    return false;
+  }
+  final elapsed = now.difference(lastRunStartedAt);
+  return elapsed >= Duration.zero && elapsed < debounce;
+}
+
+Future<bool> _runMonitorTask() async {
   WidgetsFlutterBinding.ensureInitialized();
   ui.DartPluginRegistrant.ensureInitialized();
 
@@ -208,46 +267,60 @@ Future<void> _runMonitorTask() async {
   final database = ThermostatDatabase();
   AlertConfig? config;
   try {
-    final entry = await database.getAlertConfig();
-    config = AlertConfig.fromEntry(entry);
+    config = await AlertConfigRepository(database).loadConfig();
   } catch (error, stackTrace) {
     debugPrint('Failed to load alert config: $error');
     debugPrint('$stackTrace');
   }
 
   await _initializeNotifications(notifications, config: config);
-  // Show a transient notification while the check is running.
-  await _showMonitoringNotification(notifications);
 
   if (config == null) {
     debugPrint('Alert config unavailable; skipping monitor run.');
-    await notifications.cancel(_monitoringNotificationId);
     await database.close();
-    return;
+    // Treat a failed config load as a failure so WorkManager retries.
+    return false;
   }
 
-  try {
-    final repository = ThermostatRepository(database);
-    final alertConfig = config; // promote to non-null for closures
-    final network = ThermostatHttpClient(githubToken: alertConfig.githubToken);
-    final service = ThermostatService(
-      repository: repository,
-      network: network,
-      tokenSupplier: () async => alertConfig.githubToken,
-    );
-    final runner = ThermostatMonitorRunner(
-      repository: repository,
-      network: network,
-      alarmDispatcher: NotificationAlarmDispatcher(
-        notifications,
-        config: alertConfig,
-      ),
-    );
+  final now = DateTime.now().toUtc();
 
-    final now = DateTime.now().toUtc();
-    if (config.isPaused(now)) {
+  // Debounce the overlapping WorkManager + AlarmManager triggers into a single
+  // run rather than fetching and writing the same rows twice.
+  if (shouldSkipMonitorRun(
+    lastRunStartedAt: config.lastMonitorRunAt,
+    now: now,
+  )) {
+    debugPrint('Skipping monitor run; another run started recently.');
+    await _updateAlarmSchedule(config, now: now);
+    await database.close();
+    return true;
+  }
+
+  // Record the run start up-front so a near-simultaneous trigger debounces.
+  try {
+    await database.setLastMonitorRunAt(now);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to record monitor run start: $error');
+    debugPrint('$stackTrace');
+  }
+
+  // Show a transient notification while the check is running.
+  await _showMonitoringNotification(notifications);
+
+  // Reschedule from the freshest config so a pollInterval / pause change made
+  // during this (possibly multi-second) run is honored by the next wakeup.
+  var scheduleConfig = config;
+  var success = true;
+  try {
+    final alertConfig = config; // promote to non-null for closures
+    final deps = buildMonitorDependencies(database, alertConfig, notifications);
+    final repository = deps.repository;
+    final service = deps.service;
+    final runner = deps.runner;
+
+    if (alertConfig.isPaused(now)) {
       debugPrint(
-        'Monitoring paused until ${config.pauseAllUntil?.toIso8601String()}',
+        'Monitoring paused until ${alertConfig.pauseAllUntil?.toIso8601String()}',
       );
     } else {
       await runner.run();
@@ -268,7 +341,14 @@ Future<void> _runMonitorTask() async {
       debugPrint('Retention pruning failed in background: $error');
       debugPrint('$stackTrace');
     }
+
+    try {
+      scheduleConfig = AlertConfig.fromEntry(await database.getAlertConfig());
+    } catch (_) {
+      // Keep the run-start config if the re-read fails.
+    }
   } catch (error, stackTrace) {
+    success = false;
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');
   } finally {
@@ -277,8 +357,8 @@ Future<void> _runMonitorTask() async {
     await database.close();
   }
 
-  // config is non-null here
-  await _updateAlarmSchedule(config);
+  await _updateAlarmSchedule(scheduleConfig, now: now);
+  return success;
 }
 
 class ThermostatMonitorRunner {
@@ -323,20 +403,17 @@ class ThermostatMonitorRunner {
             thermostat,
             value,
           );
-          final shouldAlarm = _shouldTriggerAlarm(previousState, now);
-          final clearSnooze =
-              shouldAlarm && (previousState?.snoozedUntil != null);
-          await _repository.saveState(
+          // Atomic compare-and-set: the decision and the lastAlarmAt write
+          // happen in one transaction that re-reads the latest state, so
+          // concurrent snooze/silence writes are never lost and overlapping
+          // runs cannot both fire.
+          final shouldAlarm = await _repository.recordOutOfRangeAndShouldAlarm(
             thermostatId: thermostat.id,
-            status: ThermostatReadingStatus.outOfRange,
             valueC: value,
             fetchedAt: fetchedAt,
             etag: result.etag,
             message: baseMessage,
-            lastAlarmAt: shouldAlarm ? now : null,
-            setLastAlarmAt: shouldAlarm,
-            setSnoozedUntil: clearSnooze,
-            snoozedUntil: null,
+            now: now,
           );
           if (shouldAlarm) {
             await _alarmDispatcher.showAlarm(
@@ -349,8 +426,6 @@ class ThermostatMonitorRunner {
           final message = 'Fetched ${value.toStringAsFixed(2)}°C';
           final shouldClearSnooze = previousState?.snoozedUntil != null;
           final hadSilence = previousState?.silenceUntilOk == true;
-          final wasOutOfRange =
-              previousState?.status == ThermostatReadingStatus.outOfRange;
           await _repository.saveState(
             thermostatId: thermostat.id,
             status: ThermostatReadingStatus.ok,
@@ -363,9 +438,11 @@ class ThermostatMonitorRunner {
             setSilenceUntilOk: hadSilence,
             silenceUntilOk: false,
           );
-          if (hadSilence || wasOutOfRange) {
-            await cancelAlarmNotification(thermostat.id);
-          }
+          // Always clear any alarm notification on an OK reading: the decision
+          // above is made from a pre-run snapshot that may be stale, so gating
+          // the cancel on it could leave a stale alarm showing after the device
+          // recovered. cancel is a no-op when nothing is showing.
+          await cancelAlarmNotification(thermostat.id);
         }
       } on ThermostatFetchException catch (error) {
         await _repository.saveState(
@@ -388,32 +465,48 @@ class ThermostatMonitorRunner {
       }
     }
   }
+}
 
-  bool _shouldTriggerAlarm(ThermostatState? previousState, DateTime now) {
-    if (previousState == null) {
-      return true;
-    }
+/// Bundle of the collaborators a monitor run needs, built from a database and
+/// the loaded config. Centralised so the background isolate entry points don't
+/// each re-wire the repository / client / service / runner by hand.
+class MonitorDependencies {
+  const MonitorDependencies({
+    required this.repository,
+    required this.network,
+    required this.service,
+    required this.runner,
+  });
 
-    if (previousState.silenceUntilOk) {
-      return false;
-    }
+  final ThermostatRepository repository;
+  final ThermostatHttpClient network;
+  final ThermostatService service;
+  final ThermostatMonitorRunner runner;
+}
 
-    final snoozedUntil = previousState.snoozedUntil;
-    if (snoozedUntil != null && now.isBefore(snoozedUntil)) {
-      return false;
-    }
-
-    final lastAlarmAt = previousState.lastAlarmAt;
-    if (lastAlarmAt != null &&
-        previousState.status == ThermostatReadingStatus.outOfRange) {
-      final diff = now.difference(lastAlarmAt);
-      if (diff < _alarmRateLimit) {
-        return false;
-      }
-    }
-
-    return true;
-  }
+MonitorDependencies buildMonitorDependencies(
+  ThermostatDatabase database,
+  AlertConfig config,
+  FlutterLocalNotificationsPlugin notifications,
+) {
+  final repository = ThermostatRepository(database);
+  final network = ThermostatHttpClient(githubToken: config.githubToken);
+  final service = ThermostatService(
+    repository: repository,
+    network: network,
+    tokenSupplier: () async => config.githubToken,
+  );
+  final runner = ThermostatMonitorRunner(
+    repository: repository,
+    network: network,
+    alarmDispatcher: NotificationAlarmDispatcher(notifications, config: config),
+  );
+  return MonitorDependencies(
+    repository: repository,
+    network: network,
+    service: service,
+    runner: runner,
+  );
 }
 
 String _alarmChannelIdForSound(String? soundUri) {
@@ -676,31 +769,12 @@ Future<void> _handleNotificationResponse(NotificationResponse response) async {
   final repository = ThermostatRepository(database);
   try {
     final now = DateTime.now().toUtc();
-    switch (actionId) {
-      case _snooze5ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 5)),
-        );
-        break;
-      case _snooze10ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 10)),
-        );
-        break;
-      case _snooze30ActionId:
-        await repository.updateSnoozedUntil(
-          thermostatId,
-          now.add(const Duration(minutes: 30)),
-        );
-        break;
-      case _silenceActionId:
-        await repository.updateSilenceUntilOk(thermostatId, true);
-        await repository.updateSnoozedUntil(thermostatId, null);
-        break;
-      default:
-        break;
+    final snooze = snoozeDurationForAction(actionId);
+    if (snooze != null) {
+      await repository.updateSnoozedUntil(thermostatId, now.add(snooze));
+    } else if (actionId == _silenceActionId) {
+      await repository.updateSilenceUntilOk(thermostatId, true);
+      await repository.updateSnoozedUntil(thermostatId, null);
     }
   } finally {
     await database.close();
@@ -710,13 +784,25 @@ Future<void> _handleNotificationResponse(NotificationResponse response) async {
 }
 
 void _navigateToAlarm(String thermostatId) {
+  // Bound the retry: if the root navigator never mounts (e.g. app bootstrap
+  // failed after a cold launch from a notification tap), stop re-arming the
+  // post-frame callback instead of spinning every frame forever.
+  const maxAttempts = 60;
+  var attempts = 0;
   void attemptNavigation() {
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
       GoRouter.of(context).push(AlarmRoute.pathFor(thermostatId));
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) => attemptNavigation());
+      return;
     }
+    if (attempts++ >= maxAttempts) {
+      debugPrint(
+        'Could not navigate to alarm: navigator unavailable after '
+        '$maxAttempts attempts.',
+      );
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => attemptNavigation());
   }
 
   attemptNavigation();

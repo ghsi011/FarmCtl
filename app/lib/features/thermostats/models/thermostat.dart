@@ -62,6 +62,33 @@ class Thermostat {
       updatedAt: entry.updatedAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Thermostat &&
+          other.id == id &&
+          other.name == name &&
+          other.rawUrl == rawUrl &&
+          other.minC == minC &&
+          other.maxC == maxC &&
+          other.hysteresisEnabled == hysteresisEnabled &&
+          other.monitoringEnabled == monitoringEnabled &&
+          other.createdAt == createdAt &&
+          other.updatedAt == updatedAt;
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    rawUrl,
+    minC,
+    maxC,
+    hysteresisEnabled,
+    monitoringEnabled,
+    createdAt,
+    updatedAt,
+  );
 }
 
 class ThermostatDraft {

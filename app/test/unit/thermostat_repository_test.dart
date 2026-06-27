@@ -301,4 +301,103 @@ void main() {
     expect(samples.first.valueC, 8.5);
     expect(samples.last.sourceId, 'two');
   });
+
+  test('watchHistory returns observedAt normalised to UTC', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Timezone',
+        rawUrl: '44444444444444444444444444444444',
+        minC: 0,
+        maxC: 20,
+      ),
+    );
+    await repository.replaceHistory(
+      thermostatId: thermostat.id,
+      samples: [
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'r1',
+          valueC: 10,
+          observedAt: DateTime.utc(2025, 1, 1, 10),
+        ),
+      ],
+    );
+
+    final samples = await repository.watchHistory(thermostat.id).first;
+    expect(samples.single.observedAt.isUtc, isTrue);
+  });
+
+  test(
+    'recordOutOfRangeAndShouldAlarm fires once then rate-limits (compare-and-set)',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Vault',
+          rawUrl: '22222222222222222222222222222222',
+          minC: 10,
+          maxC: 20,
+        ),
+      );
+      final now = DateTime.utc(2025, 1, 1, 12);
+
+      final first = await repository.recordOutOfRangeAndShouldAlarm(
+        thermostatId: thermostat.id,
+        valueC: 4,
+        fetchedAt: now,
+        etag: 'e1',
+        message: 'Out of range',
+        now: now,
+      );
+      expect(first, isTrue);
+      var state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.outOfRange);
+      expect(state.lastAlarmAt, now);
+
+      // A second observation at the same instant must not fire again — it reads
+      // the freshly-written lastAlarmAt inside the transaction and rate-limits.
+      final second = await repository.recordOutOfRangeAndShouldAlarm(
+        thermostatId: thermostat.id,
+        valueC: 3.5,
+        fetchedAt: now,
+        etag: 'e2',
+        message: 'Out of range',
+        now: now,
+      );
+      expect(second, isFalse);
+      state = await repository.loadState(thermostat.id);
+      expect(state!.lastAlarmAt, now); // unchanged
+      expect(state.lastValueC, 3.5); // value still updated
+    },
+  );
+
+  test(
+    'recordOutOfRangeAndShouldAlarm respects a concurrently-set silence',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Cellar',
+          rawUrl: '33333333333333333333333333333333',
+          minC: 10,
+          maxC: 20,
+        ),
+      );
+      final now = DateTime.utc(2025, 1, 1, 12);
+
+      // Simulate the user silencing the thermostat just before the run writes.
+      await repository.updateSilenceUntilOk(thermostat.id, true);
+
+      final fired = await repository.recordOutOfRangeAndShouldAlarm(
+        thermostatId: thermostat.id,
+        valueC: 4,
+        fetchedAt: now,
+        message: 'Out of range',
+        now: now,
+      );
+
+      expect(fired, isFalse);
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.silenceUntilOk, isTrue); // preserved
+      expect(state.lastAlarmAt, isNull);
+    },
+  );
 }

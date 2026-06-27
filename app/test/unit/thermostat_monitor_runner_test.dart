@@ -287,4 +287,184 @@ void main() {
     expect(state.snoozedUntil, now.add(const Duration(minutes: 4)));
     expect(alarms.triggered, isEmpty);
   });
+
+  test('run suppresses alarm while silenced until OK', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Silo',
+        rawUrl: 'ffffffffffffffffffffffffffffffff',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+
+    final now = DateTime.utc(2025, 1, 1, 12);
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: 5,
+      fetchedAt: now.subtract(const Duration(minutes: 10)),
+      etag: 'etag',
+      message: 'Out of range',
+      setSilenceUntilOk: true,
+      silenceUntilOk: true,
+    );
+
+    network._result = ThermostatFetchSuccess(
+      valueC: 4,
+      fetchedAt: now,
+      etag: 'etag-silence',
+    );
+
+    final runner = ThermostatMonitorRunner(
+      repository: repository,
+      network: network,
+      alarmDispatcher: alarms,
+      clock: () => now,
+    );
+
+    await runner.run();
+
+    final state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.outOfRange);
+    expect(state.silenceUntilOk, isTrue);
+    expect(alarms.triggered, isEmpty);
+  });
+
+  test('run honours the rate limit just under five minutes', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Coop',
+        rawUrl: '11111111111111111111111111111111',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+
+    final now = DateTime.utc(2025, 1, 1, 12);
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: 5,
+      fetchedAt: now.subtract(const Duration(minutes: 4)),
+      etag: 'etag',
+      message: 'Out of range',
+      lastAlarmAt: now.subtract(const Duration(minutes: 4)),
+      setLastAlarmAt: true,
+    );
+
+    network._result = ThermostatFetchSuccess(
+      valueC: 4,
+      fetchedAt: now,
+      etag: 'etag-rl',
+    );
+
+    final runner = ThermostatMonitorRunner(
+      repository: repository,
+      network: network,
+      alarmDispatcher: alarms,
+      clock: () => now,
+    );
+
+    await runner.run();
+
+    final state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.outOfRange);
+    // Unchanged: no new alarm within the rate-limit window.
+    expect(state.lastAlarmAt, now.subtract(const Duration(minutes: 4)));
+    expect(alarms.triggered, isEmpty);
+  });
+
+  test('run re-alarms once the rate limit has elapsed', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Coop East',
+        rawUrl: '22222222222222222222222222222222',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+
+    final now = DateTime.utc(2025, 1, 1, 12);
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: 5,
+      fetchedAt: now.subtract(const Duration(minutes: 6)),
+      etag: 'etag',
+      message: 'Out of range',
+      lastAlarmAt: now.subtract(const Duration(minutes: 6)),
+      setLastAlarmAt: true,
+    );
+
+    network._result = ThermostatFetchSuccess(
+      valueC: 4,
+      fetchedAt: now,
+      etag: 'etag-rl2',
+    );
+
+    final runner = ThermostatMonitorRunner(
+      repository: repository,
+      network: network,
+      alarmDispatcher: alarms,
+      clock: () => now,
+    );
+
+    await runner.run();
+
+    final state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.outOfRange);
+    expect(state.lastAlarmAt, now);
+    expect(alarms.triggered, contains('${thermostat.id}::4.0'));
+  });
+
+  test('run re-alarms after an expired snooze and clears it', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'Hutch',
+        rawUrl: '33333333333333333333333333333333',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+
+    final now = DateTime.utc(2025, 1, 1, 12);
+    await repository.saveState(
+      thermostatId: thermostat.id,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: 5,
+      fetchedAt: now.subtract(const Duration(minutes: 10)),
+      etag: 'etag',
+      message: 'Out of range',
+      lastAlarmAt: now.subtract(const Duration(minutes: 10)),
+      setLastAlarmAt: true,
+      snoozedUntil: now.subtract(const Duration(minutes: 1)),
+      setSnoozedUntil: true,
+    );
+
+    network._result = ThermostatFetchSuccess(
+      valueC: 4,
+      fetchedAt: now,
+      etag: 'etag-snooze',
+    );
+
+    final runner = ThermostatMonitorRunner(
+      repository: repository,
+      network: network,
+      alarmDispatcher: alarms,
+      clock: () => now,
+    );
+
+    await runner.run();
+
+    final state = await repository.loadState(thermostat.id);
+    expect(state, isNotNull);
+    expect(state!.status, ThermostatReadingStatus.outOfRange);
+    expect(state.lastAlarmAt, now);
+    expect(state.snoozedUntil, isNull);
+    expect(alarms.triggered, contains('${thermostat.id}::4.0'));
+  });
 }

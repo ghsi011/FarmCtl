@@ -12,6 +12,7 @@ class AlertConfig {
     required this.volumeBoost,
     required this.pauseAllUntil,
     required this.githubToken,
+    this.lastMonitorRunAt,
   });
 
   final Duration pollInterval;
@@ -22,6 +23,10 @@ class AlertConfig {
   final DateTime? pauseAllUntil;
   final String? githubToken;
 
+  /// When the background monitor last started a run. Used to debounce the
+  /// overlapping WorkManager + AlarmManager triggers into a single run.
+  final DateTime? lastMonitorRunAt;
+
   factory AlertConfig.fromEntry(AlertConfigEntry entry) {
     return AlertConfig(
       pollInterval: Duration(minutes: entry.pollIntervalMin),
@@ -31,6 +36,23 @@ class AlertConfig {
       volumeBoost: entry.volumeBoost,
       pauseAllUntil: entry.pauseAllUntil?.toUtc(),
       githubToken: entry.githubToken,
+      lastMonitorRunAt: entry.lastMonitorRunAt?.toUtc(),
+    );
+  }
+
+  /// Returns a copy with [githubToken] set to exactly [token] (including null).
+  /// Used to overlay the token resolved from secure storage onto the config
+  /// loaded from the database; `copyWith` cannot set a nullable field to null.
+  AlertConfig withToken(String? token) {
+    return AlertConfig(
+      pollInterval: pollInterval,
+      exactAlarmsEnabled: exactAlarmsEnabled,
+      soundUri: soundUri,
+      vibrate: vibrate,
+      volumeBoost: volumeBoost,
+      pauseAllUntil: pauseAllUntil,
+      githubToken: token,
+      lastMonitorRunAt: lastMonitorRunAt,
     );
   }
 
@@ -57,6 +79,7 @@ class AlertConfig {
     bool? volumeBoost,
     DateTime? pauseAllUntil,
     String? githubToken,
+    DateTime? lastMonitorRunAt,
   }) {
     return AlertConfig(
       pollInterval: pollInterval ?? this.pollInterval,
@@ -66,6 +89,32 @@ class AlertConfig {
       volumeBoost: volumeBoost ?? this.volumeBoost,
       pauseAllUntil: pauseAllUntil ?? this.pauseAllUntil,
       githubToken: githubToken ?? this.githubToken,
+      lastMonitorRunAt: lastMonitorRunAt ?? this.lastMonitorRunAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AlertConfig &&
+          other.pollInterval == pollInterval &&
+          other.exactAlarmsEnabled == exactAlarmsEnabled &&
+          other.soundUri == soundUri &&
+          other.vibrate == vibrate &&
+          other.volumeBoost == volumeBoost &&
+          other.pauseAllUntil == pauseAllUntil &&
+          other.githubToken == githubToken &&
+          other.lastMonitorRunAt == lastMonitorRunAt;
+
+  @override
+  int get hashCode => Object.hash(
+    pollInterval,
+    exactAlarmsEnabled,
+    soundUri,
+    vibrate,
+    volumeBoost,
+    pauseAllUntil,
+    githubToken,
+    lastMonitorRunAt,
+  );
 }

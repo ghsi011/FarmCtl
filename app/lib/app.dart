@@ -7,17 +7,36 @@ import 'core/router/app_router.dart';
 class FarmCtlApp extends ConsumerWidget {
   const FarmCtlApp({super.key});
 
+  static const Color _seedColor = Color(0xFF2F8F5B);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+
+    return MaterialApp.router(
+      title: 'FarmCtl',
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('en')],
+      routerConfig: router,
+    );
+  }
+
+  static ThemeData _buildTheme(Brightness brightness) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF2F8F5B),
-      brightness: Brightness.light,
+      seedColor: _seedColor,
+      brightness: brightness,
     );
 
     final baseTheme = ThemeData(colorScheme: colorScheme, useMaterial3: true);
 
-    final theme = baseTheme.copyWith(
+    return baseTheme.copyWith(
       scaffoldBackgroundColor: colorScheme.surface,
       appBarTheme: baseTheme.appBarTheme.copyWith(
         backgroundColor: Colors.transparent,
@@ -109,18 +128,6 @@ class FarmCtlApp extends ConsumerWidget {
         labelStyle: baseTheme.textTheme.labelMedium,
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
-    );
-
-    return MaterialApp.router(
-      title: 'FarmCtl',
-      theme: theme,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('en')],
-      routerConfig: router,
     );
   }
 }

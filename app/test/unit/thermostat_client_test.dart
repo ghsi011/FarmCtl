@@ -44,17 +44,16 @@ void main() {
         return ResponseBody.fromString('not found', 404);
       });
 
-    final client = ThermostatHttpClient(dio: dio);
+    final fixedNow = DateTime.utc(2025, 6, 27, 12);
+    final client = ThermostatHttpClient(dio: dio, clock: () => fixedNow);
 
     final result = await client.fetchCurrent(
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     );
 
     expect(result.valueC, closeTo(12.5, 0.0001));
-    expect(
-      DateTime.now().difference(result.fetchedAt).inSeconds.abs(),
-      lessThan(5),
-    );
+    // Injected clock removes the previous wall-clock dependency.
+    expect(result.fetchedAt, fixedNow);
   });
 
   test('fetchCurrent throws on parse error (Gist API)', () async {
@@ -171,4 +170,224 @@ void main() {
     expect(samples.first.valueC, 10.5);
     expect(samples.last.revisionId, 'rev2');
   });
+
+  test('rejects an invalid Gist ID without hitting the network', () async {
+    var called = false;
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        called = true;
+        return ResponseBody.fromString('', 200);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.fetchHistory('not-a-gist-id'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.parseError,
+        ),
+      ),
+    );
+    expect(called, isFalse);
+  });
+
+  test('fetchHistory maps a non-200 commits response to httpError', () async {
+    // Without validateStatus this 500 would throw before reaching the status
+    // check and be relabelled networkError (M-4 regression guard).
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('{"message":"boom"}', 500);
+      });
+    final client = ThermostatHttpClient(dio: dio); // no token -> no anon path
+
+    await expectLater(
+      () => client.fetchHistory('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.httpError,
+        ),
+      ),
+    );
+  });
+
+  test('listCommits maps a 5xx response to httpError', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('{"message":"unavailable"}', 503);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.listCommits('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.httpError,
+        ),
+      ),
+    );
+  });
+
+  test('fetchCurrent maps malformed JSON on a 200 to parseError', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString('definitely not json', 200);
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    await expectLater(
+      () => client.fetchCurrent('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      throwsA(
+        isA<ThermostatFetchException>().having(
+          (error) => error.status,
+          'status',
+          ThermostatReadingStatus.parseError,
+        ),
+      ),
+    );
+  });
+
+  test('fetchHistory falls back to the anonymous client on a 403', () async {
+    final jsonHeaders = {
+      Headers.contentTypeHeader: [ContentType.json.mimeType],
+    };
+    // The authenticated client is rate-limited (403) on every request.
+    final authDio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"message":"API rate limit exceeded"}',
+          403,
+          headers: jsonHeaders,
+        );
+      });
+    // The anonymous client serves both the commit list and the revision body.
+    final anonDio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        if (options.path.endsWith('/commits')) {
+          return ResponseBody.fromString(
+            '[{"version":"rev1","committed_at":"2025-01-02T10:00:00Z"}]',
+            200,
+            headers: jsonHeaders,
+          );
+        }
+        if (options.path.contains('rev1')) {
+          return ResponseBody.fromString(
+            '{"files":{"thermostat.txt":{"truncated":false,"content":"Temperature: 10.5 C"}}}',
+            200,
+            headers: jsonHeaders,
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+
+    final client = ThermostatHttpClient(
+      dio: authDio,
+      dioNoAuth: anonDio,
+      githubToken: 'ghp_token',
+    );
+
+    final samples = await client.fetchHistory(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(samples, hasLength(1));
+    expect(samples.first.revisionId, 'rev1');
+    expect(samples.first.valueC, 10.5);
+  });
+
+  test(
+    'fetchHistory reports an anonymous-fallback failure as httpError',
+    () async {
+      // Authenticated request is rate-limited (403); the anonymous fallback then
+      // fails with a 5xx. The error must surface as httpError, not parseError.
+      final authDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"rate limited"}', 403);
+        });
+      final anonDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"server error"}', 500);
+        });
+      final client = ThermostatHttpClient(
+        dio: authDio,
+        dioNoAuth: anonDio,
+        githubToken: 'ghp_token',
+      );
+
+      await expectLater(
+        () => client.fetchHistory('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+        throwsA(
+          isA<ThermostatFetchException>().having(
+            (error) => error.status,
+            'status',
+            ThermostatReadingStatus.httpError,
+          ),
+        ),
+      );
+    },
+  );
+
+  test('selects the thermostat-named file over a generic .txt', () async {
+    // notes.txt (no temperature) is ordered BEFORE the real thermostat file;
+    // the thermostat-named file must still win.
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"files": {'
+          '"notes.txt": {"truncated": false, "content": "no temperature here"},'
+          '"thermostat.json": {"truncated": false, "content": "Temperature: 12.5 C"}'
+          '}}',
+          200,
+          headers: {
+            Headers.contentTypeHeader: [ContentType.json.mimeType],
+          },
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final result = await client.fetchCurrent(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(result.valueC, closeTo(12.5, 0.0001));
+  });
+
+  test(
+    'does not fall back to anonymous when allowAnonFallback is false',
+    () async {
+      var anonCalled = false;
+      final authDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"rate limited"}', 403);
+        });
+      final anonDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          anonCalled = true;
+          return ResponseBody.fromString('[]', 200);
+        });
+      // The token-validation client must surface the 403 rather than masking it
+      // with an anonymous request.
+      final client = ThermostatHttpClient(
+        dio: authDio,
+        dioNoAuth: anonDio,
+        githubToken: 'ghp_token',
+        allowAnonFallback: false,
+      );
+
+      await expectLater(
+        () => client.listCommits('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+        throwsA(
+          isA<ThermostatFetchException>().having(
+            (error) => error.status,
+            'status',
+            ThermostatReadingStatus.httpError,
+          ),
+        ),
+      );
+      expect(anonCalled, isFalse);
+    },
+  );
 }

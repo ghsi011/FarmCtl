@@ -2,23 +2,97 @@ import 'package:drift/drift.dart';
 
 import '../../thermostats/data/thermostat_database.dart';
 import '../models/alert_config.dart';
+import 'secure_token_store.dart';
 
 class AlertConfigRepository {
-  AlertConfigRepository(this._database, {DateTime Function()? clock})
-    : _clock = clock ?? _defaultClock;
+  AlertConfigRepository(
+    this._database, {
+    DateTime Function()? clock,
+    SecureTokenStore? tokenStore,
+  }) : _clock = clock ?? _defaultClock,
+       _tokenStore = tokenStore ?? FlutterSecureTokenStore();
 
   final ThermostatDatabase _database;
   final DateTime Function() _clock;
+  final SecureTokenStore _tokenStore;
 
   static DateTime _defaultClock() => DateTime.now().toUtc();
 
   Stream<AlertConfig> watchConfig() {
-    return _database.watchAlertConfig().map(AlertConfig.fromEntry);
+    // Read-only: overlay the token without writing, so the watch stream stays a
+    // pure read. Migration/scrub happens in loadConfig() and setGithubToken().
+    return _database.watchAlertConfig().asyncMap((entry) async {
+      final token = await _readToken(entry);
+      return AlertConfig.fromEntry(entry).withToken(token);
+    });
   }
 
   Future<AlertConfig> loadConfig() async {
     final entry = await _database.getAlertConfig();
-    return AlertConfig.fromEntry(entry);
+    final token = await _resolveToken(entry);
+    return AlertConfig.fromEntry(entry).withToken(token);
+  }
+
+  /// Read-only token resolution: prefer secure storage, falling back to the
+  /// legacy plaintext column. Does not write (no migration side effect).
+  Future<String?> _readToken(AlertConfigEntry entry) async {
+    try {
+      final secure = await _tokenStore.readToken();
+      if (secure != null) {
+        return secure;
+      }
+    } catch (_) {
+      // Secure storage unavailable — fall back to the database value.
+    }
+    return entry.githubToken;
+  }
+
+  /// Resolves the GitHub token from secure storage, migrating any legacy
+  /// plaintext token out of the database on first read. Falls back to the
+  /// database value if secure storage is unavailable so a transient failure
+  /// (e.g. before plugins are registered in a background isolate) never strips
+  /// authentication mid-run.
+  Future<String?> _resolveToken(AlertConfigEntry entry) async {
+    String? secure;
+    try {
+      secure = await _tokenStore.readToken();
+    } catch (_) {
+      return entry.githubToken;
+    }
+
+    final legacy = entry.githubToken;
+    if (secure != null) {
+      if (legacy != null && legacy.isNotEmpty) {
+        await _scrubLegacyToken();
+      }
+      return secure;
+    }
+
+    if (legacy != null && legacy.isNotEmpty) {
+      // Migrate the plaintext token into secure storage, but only scrub the
+      // plaintext copy once we've confirmed the write actually persisted — a
+      // silent secure-storage write failure must not lose the only copy of the
+      // token (which would force anonymous, rate-limited requests forever).
+      await _tokenStore.writeToken(legacy);
+      String? readBack;
+      try {
+        readBack = await _tokenStore.readToken();
+      } catch (_) {
+        readBack = null;
+      }
+      if (readBack == legacy) {
+        await _scrubLegacyToken();
+      }
+      return legacy;
+    }
+
+    return null;
+  }
+
+  Future<void> _scrubLegacyToken() async {
+    await _database.updateAlertConfig(
+      const AlertConfigEntriesCompanion(githubToken: Value(null)),
+    );
   }
 
   Future<void> setPollInterval(Duration interval) async {
@@ -66,8 +140,9 @@ class AlertConfigRepository {
   }
 
   Future<void> setGithubToken(String? token) async {
-    await _database.updateAlertConfig(
-      AlertConfigEntriesCompanion(githubToken: Value(token)),
-    );
+    await _tokenStore.writeToken(token);
+    // Scrub any legacy plaintext value and nudge the config stream to re-emit
+    // so listeners pick up the new token from secure storage.
+    await _scrubLegacyToken();
   }
 }

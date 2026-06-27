@@ -151,24 +151,29 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            SegmentedButton<ThermostatHistoryRange>(
-                              showSelectedIcon: false,
-                              segments: [
-                                for (final range
-                                    in ThermostatHistoryRange.values)
-                                  ButtonSegment(
-                                    value: range,
-                                    label: Text(range.label),
-                                    tooltip: range.description,
-                                  ),
-                              ],
-                              selected: {_range},
-                              onSelectionChanged: (selection) {
-                                if (selection.isEmpty) {
-                                  return;
-                                }
-                                setState(() => _range = selection.first);
-                              },
+                            // Scrolls horizontally so the six segments don't
+                            // overflow on narrow phones or at large text scales.
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SegmentedButton<ThermostatHistoryRange>(
+                                showSelectedIcon: false,
+                                segments: [
+                                  for (final range
+                                      in ThermostatHistoryRange.values)
+                                    ButtonSegment(
+                                      value: range,
+                                      label: Text(range.label),
+                                      tooltip: range.description,
+                                    ),
+                                ],
+                                selected: {_range},
+                                onSelectionChanged: (selection) {
+                                  if (selection.isEmpty) {
+                                    return;
+                                  }
+                                  setState(() => _range = selection.first);
+                                },
+                              ),
                             ),
                           ],
                         ),

@@ -22,8 +22,10 @@ final thermostatRepositoryProvider = Provider<ThermostatRepository>((ref) {
 });
 
 final _githubTokenProvider = StreamProvider<String?>((ref) {
-  final database = ref.watch(thermostatDatabaseProvider);
-  return database.watchAlertConfig().map((config) => config.githubToken);
+  // Resolve via the repository so the token comes from secure storage rather
+  // than the (now legacy) plaintext database column.
+  final repository = ref.watch(alertConfigRepositoryProvider);
+  return repository.watchConfig().map((config) => config.githubToken);
 });
 
 final thermostatNetworkProvider = Provider<ThermostatNetworkDataSource>((ref) {
@@ -100,18 +102,20 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
       _RefreshThrottleRegistry registry = ref.read(
         _refreshThrottleRegistryProvider,
       );
-      final now = DateTime.now().toUtc();
+      final now = ref.read(nowProvider)();
       final last = registry.lastRun[args.thermostatId];
       if (last != null && now.difference(last) < const Duration(seconds: 10)) {
         return;
       }
-      registry.lastRun[args.thermostatId] = now;
 
       final service = ref.watch(thermostatServiceProvider);
       await service.refreshHistory(
         args.thermostatId,
         prioritizeLastHour: args.prioritizeLastHour,
       );
+      // Stamp only after a successful refresh so a failed/cancelled one does not
+      // throttle the user's immediate retry for the next 10s.
+      registry.lastRun[args.thermostatId] = now;
     });
 
 enum OfflineStatus { online, degraded, offline, unknown }
@@ -123,7 +127,16 @@ final nowProvider = Provider<DateTime Function()>(
       () => DateTime.now().toUtc(),
 );
 
+/// Ticks periodically so [offlineStatusProvider] re-evaluates its wall-clock
+/// thresholds even when no thermostat rows change (otherwise a device that went
+/// offline could keep reporting "online" until the next DB write).
+final _offlineRefreshTickProvider = StreamProvider<int>((ref) {
+  return Stream<int>.periodic(const Duration(minutes: 1), (count) => count);
+});
+
 final offlineStatusProvider = Provider<OfflineStatus>((ref) {
+  // Re-run on each tick so stale time thresholds are recomputed.
+  ref.watch(_offlineRefreshTickProvider);
   final thermostatsAsync = ref.watch(thermostatsProvider);
   return thermostatsAsync.when(
     data: (thermostats) {

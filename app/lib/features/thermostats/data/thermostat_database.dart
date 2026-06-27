@@ -77,6 +77,8 @@ class AlertConfigEntries extends Table {
   DateTimeColumn get pauseAllUntil => dateTime().nullable()();
 
   TextColumn get githubToken => text().nullable()();
+
+  DateTimeColumn get lastMonitorRunAt => dateTime().nullable()();
 }
 
 @TableIndex(
@@ -109,7 +111,17 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final directory = await getApplicationDocumentsDirectory();
     final file = File(p.join(directory.path, 'thermostats.sqlite'));
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(
+      file,
+      setup: (db) {
+        // The foreground app and the background monitor isolate each open their
+        // own connection to this file. WAL lets a reader and a writer coexist,
+        // and a busy timeout makes a contended write wait for the other
+        // connection to commit instead of immediately raising SQLITE_BUSY.
+        db.execute('PRAGMA journal_mode = WAL;');
+        db.execute('PRAGMA busy_timeout = 5000;');
+      },
+    );
   });
 }
 
@@ -132,7 +144,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -141,33 +153,43 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     },
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
+        // createTable builds the table with its *current* columns, so the
+        // per-column upgrades below (v3/v4) must be skipped for installs coming
+        // from v1 to avoid duplicate-column errors.
         await m.createTable(thermostatStateEntries);
-      }
-      if (from < 3) {
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.statusMessage,
-        );
-      }
-      if (from < 4) {
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.lastAlarmAt,
-        );
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.snoozedUntil,
-        );
-        await m.addColumn(
-          thermostatStateEntries,
-          thermostatStateEntries.silenceUntilOk,
-        );
+      } else {
+        if (from < 3) {
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.statusMessage,
+          );
+        }
+        if (from < 4) {
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.lastAlarmAt,
+          );
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.snoozedUntil,
+          );
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.silenceUntilOk,
+          );
+        }
       }
       if (from < 5) {
         await m.createTable(temperatureReadings);
       }
       if (from < 6) {
         await m.addColumn(alertConfigEntries, alertConfigEntries.githubToken);
+      }
+      if (from < 7) {
+        await m.addColumn(
+          alertConfigEntries,
+          alertConfigEntries.lastMonitorRunAt,
+        );
       }
     },
   );
@@ -348,30 +370,44 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     return query.get();
   }
 
+  // The alert config is a singleton; pin it to one canonical row id so reads
+  // are deterministic and concurrent writers can't each insert a separate row.
+  static const int _alertConfigRowId = 1;
+
   Stream<AlertConfigEntry> watchAlertConfig() {
-    return (select(alertConfigEntries)..limit(1)).watchSingleOrNull().map(
-      (entry) => entry ?? _defaultAlertConfig(),
-    );
+    return (select(alertConfigEntries)
+          ..orderBy([(tbl) => OrderingTerm.asc(tbl.id)])
+          ..limit(1))
+        .watchSingleOrNull()
+        .map((entry) => entry ?? _defaultAlertConfig());
   }
 
   Future<AlertConfigEntry> getAlertConfig() async {
-    final entry = await (select(
-      alertConfigEntries,
-    )..limit(1)).getSingleOrNull();
+    final entry =
+        await (select(alertConfigEntries)
+              ..orderBy([(tbl) => OrderingTerm.asc(tbl.id)])
+              ..limit(1))
+            .getSingleOrNull();
     return entry ?? _defaultAlertConfig();
   }
 
   Future<void> updateAlertConfig(AlertConfigEntriesCompanion companion) async {
-    final existing = await (select(
-      alertConfigEntries,
-    )..limit(1)).getSingleOrNull();
-    if (existing == null) {
-      await into(alertConfigEntries).insert(companion);
-    } else {
-      await (update(
-        alertConfigEntries,
-      )..where((tbl) => tbl.id.equals(existing.id))).write(companion);
-    }
+    // Atomic upsert on the single canonical row. insertOnConflictUpdate avoids
+    // the old non-atomic check-then-insert, under which two connections (the UI
+    // isolate and a background monitor run) could both observe "no row" on a
+    // fresh install and each INSERT, producing duplicate rows and inconsistent
+    // reads.
+    await into(alertConfigEntries).insertOnConflictUpdate(
+      companion.copyWith(id: const Value(_alertConfigRowId)),
+    );
+  }
+
+  /// Records when the background monitor last started a run so overlapping
+  /// triggers (WorkManager + AlarmManager) can be debounced into a single run.
+  Future<void> setLastMonitorRunAt(DateTime value) async {
+    await updateAlertConfig(
+      AlertConfigEntriesCompanion(lastMonitorRunAt: Value(value)),
+    );
   }
 
   Future<int> pruneTemperatureReadingsBefore(DateTime cutoff) {
@@ -415,6 +451,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
       volumeBoost: false,
       pauseAllUntil: null,
       githubToken: null,
+      lastMonitorRunAt: null,
     );
   }
 }

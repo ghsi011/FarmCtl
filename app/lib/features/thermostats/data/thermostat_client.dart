@@ -22,9 +22,12 @@ abstract class ThermostatNetworkDataSource {
 class ThermostatHttpClient implements ThermostatNetworkDataSource {
   ThermostatHttpClient({
     Dio? dio,
+    Dio? dioNoAuth,
     String? githubToken,
     bool allowAnonFallback = true,
-  }) : _resolvedToken =
+    DateTime Function()? clock,
+  }) : _clock = clock ?? _defaultClock,
+       _resolvedToken =
            githubToken ??
            Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
            Platform.environment['GITHUB_TOKEN'],
@@ -35,7 +38,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
                  Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
                  Platform.environment['GITHUB_TOKEN'],
            ),
-       _dioNoAuth = _createDio(null),
+       _dioNoAuth = dioNoAuth ?? _createDio(null),
        _hasGithubToken = (() {
          final token =
              githubToken ??
@@ -50,8 +53,11 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   final String? _resolvedToken;
   final bool _hasGithubToken;
   final bool _allowAnonFallback;
+  final DateTime Function() _clock;
   static const int _maxHistoryCommits =
       60; // cap history requests to reduce API load
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
 
   static Dio _createDio([String? githubToken]) {
     final dio = Dio(
@@ -116,17 +122,13 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       );
       return ThermostatFetchSuccess(
         valueC: snapshot.value,
-        fetchedAt: DateTime.now().toUtc(),
+        fetchedAt: _clock(),
         etag: snapshot.etag,
       );
     } on ThermostatFetchException {
       rethrow;
     } on DioException catch (error) {
-      throw ThermostatFetchException(
-        status: ThermostatReadingStatus.networkError,
-        message: 'Failed to reach GitHub Gist API.',
-        cause: error,
-      );
+      throw _mapDioException(error, 'Failed to reach GitHub Gist API.');
     } catch (error) {
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.networkError,
@@ -151,6 +153,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (status) => status == null || status < 500,
           headers: _resolvedToken != null && _resolvedToken.isNotEmpty
               ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
               : null,
@@ -165,15 +168,22 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           'https://api.github.com/gists/$input/commits',
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (status) => status == null || status < 500,
             headers: const {
               HttpHeaders.acceptHeader: 'application/vnd.github+json',
             },
           ),
           queryParameters: {'per_page': _maxHistoryCommits},
         );
-        // Continue with anon response
+        if ((anon.statusCode ?? 0) != 200) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.httpError,
+            statusCode: anon.statusCode ?? 0,
+            message: 'Gist commits API failed with status ${anon.statusCode}.',
+          );
+        }
         final raw = anon.data ?? '[]';
-        final decoded = jsonDecode(raw) as List<dynamic>;
+        final decoded = _decodeJsonArray(raw);
         final samples = <ThermostatHistorySample>[];
         var processed = 0;
         for (final entry in decoded) {
@@ -223,7 +233,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       }
 
       final raw = response.data ?? '[]';
-      final decoded = jsonDecode(raw) as List<dynamic>;
+      final decoded = _decodeJsonArray(raw);
       final samples = <ThermostatHistorySample>[];
 
       var processed = 0;
@@ -266,11 +276,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     } on ThermostatFetchException {
       rethrow;
     } on DioException catch (error) {
-      throw ThermostatFetchException(
-        status: ThermostatReadingStatus.networkError,
-        message: 'Failed to fetch Gist history.',
-        cause: error,
-      );
+      throw _mapDioException(error, 'Failed to fetch Gist history.');
     } catch (error) {
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.networkError,
@@ -299,17 +305,19 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         'https://api.github.com/gists/$input/commits',
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (status) => status == null || status < 500,
           headers: _resolvedToken != null && _resolvedToken.isNotEmpty
               ? {HttpHeaders.authorizationHeader: 'token $_resolvedToken'}
               : null,
         ),
         queryParameters: {'page': page, 'per_page': perPage},
       );
-      if (response.statusCode == 403 && _hasGithubToken) {
+      if (response.statusCode == 403 && _hasGithubToken && _allowAnonFallback) {
         final anon = await _dioNoAuth.get<String>(
           'https://api.github.com/gists/$input/commits',
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (status) => status == null || status < 500,
             headers: const {
               HttpHeaders.acceptHeader: 'application/vnd.github+json',
             },
@@ -323,11 +331,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     } on ThermostatFetchException {
       rethrow;
     } on DioException catch (error) {
-      throw ThermostatFetchException(
-        status: ThermostatReadingStatus.networkError,
-        message: 'Failed to fetch Gist commit list.',
-        cause: error,
-      );
+      throw _mapDioException(error, 'Failed to fetch Gist commit list.');
     } catch (error) {
       throw ThermostatFetchException(
         status: ThermostatReadingStatus.networkError,
@@ -356,7 +360,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       );
     }
     final raw = response.data ?? '[]';
-    final decoded = jsonDecode(raw) as List<dynamic>;
+    final decoded = _decodeJsonArray(raw);
     final commits = <GistCommit>[];
     for (final entry in decoded) {
       if (entry is! Map<String, dynamic>) continue;
@@ -418,6 +422,63 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     return re.hasMatch(input);
   }
 
+  // Decode a GitHub response body, mapping malformed/unexpected JSON on an
+  // otherwise-successful (200) response to a parseError rather than letting the
+  // raw cast throw and be relabelled as a networkError by the outer catch.
+  List<dynamic> _decodeJsonArray(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded;
+      }
+    } on FormatException {
+      // fall through to the parse error below
+    }
+    throw const ThermostatFetchException(
+      status: ThermostatReadingStatus.parseError,
+      message: 'Gist API returned malformed JSON.',
+    );
+  }
+
+  Map<String, dynamic> _decodeJsonObject(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } on FormatException {
+      // fall through to the parse error below
+    }
+    throw const ThermostatFetchException(
+      status: ThermostatReadingStatus.parseError,
+      message: 'Gist API returned malformed JSON.',
+    );
+  }
+
+  // Maps a thrown Dio error. A badResponse carries an HTTP status (e.g. a 5xx
+  // that validateStatus lets throw so the retry interceptor can retry it, then
+  // gives up) -> httpError with the code; everything else (timeout, connection
+  // reset) -> networkError.
+  ThermostatFetchException _mapDioException(
+    DioException error,
+    String networkMessage,
+  ) {
+    final status = error.response?.statusCode;
+    if (error.type == DioExceptionType.badResponse && status != null) {
+      return ThermostatFetchException(
+        status: ThermostatReadingStatus.httpError,
+        statusCode: status,
+        message: 'Gist API failed with status $status.',
+        cause: error,
+      );
+    }
+    return ThermostatFetchException(
+      status: ThermostatReadingStatus.networkError,
+      message: networkMessage,
+      cause: error,
+    );
+  }
+
   Future<_SnapshotResult> _fetchSnapshot(String url) async {
     final authHeaders = <String, dynamic>{
       HttpHeaders.acceptHeader: 'application/vnd.github+json',
@@ -429,7 +490,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       url,
       options: Options(
         responseType: ResponseType.plain,
-        validateStatus: (_) => true,
+        validateStatus: (status) => status == null || status < 500,
         headers: authHeaders,
       ),
     );
@@ -442,7 +503,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
             HttpHeaders.acceptHeader: 'application/vnd.github+json',
             HttpHeaders.userAgentHeader: 'farmctl/0.1',
           },
-          validateStatus: (_) => true,
+          validateStatus: (status) => status == null || status < 500,
         ),
       );
       return _parseSnapshot(anon);
@@ -470,7 +531,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     }
 
     final raw = response.data ?? '';
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final decoded = _decodeJsonObject(raw);
     final files = (decoded['files'] as Map<String, dynamic>?) ?? {};
     if (files.isEmpty) {
       throw ThermostatFetchException(
@@ -511,15 +572,20 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   }
 
   MapEntry<String, dynamic> _selectFile(Map<String, dynamic> files) {
-    MapEntry<String, dynamic> chosen = files.entries.first;
+    // A thermostat-named file is authoritative; only if none exists do we fall
+    // back to a generic .txt, then to the first file. (Previously a generic
+    // .txt ordered before the thermostat file would win.)
     for (final entry in files.entries) {
-      final name = entry.key.toLowerCase();
-      if (name.contains('thermostat') || name.endsWith('.txt')) {
-        chosen = entry;
-        break;
+      if (entry.key.toLowerCase().contains('thermostat')) {
+        return entry;
       }
     }
-    return chosen;
+    for (final entry in files.entries) {
+      if (entry.key.toLowerCase().endsWith('.txt')) {
+        return entry;
+      }
+    }
+    return files.entries.first;
   }
 
   Future<String> _resolveFileContent(Map<String, dynamic> fileObj) async {
@@ -542,6 +608,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
         rawUrl,
         options: Options(
           responseType: ResponseType.plain,
+          validateStatus: (status) => status == null || status < 500,
           headers: {
             HttpHeaders.acceptHeader: 'text/plain',
             if (_resolvedToken != null && _resolvedToken.isNotEmpty)
@@ -549,16 +616,23 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
           },
         ),
       );
-      if ((rawResp.statusCode ?? 0) == 403 && _hasGithubToken) {
+      if ((rawResp.statusCode ?? 0) == 403 &&
+          _hasGithubToken &&
+          _allowAnonFallback) {
         final anon = await _dioNoAuth.get<String>(
           rawUrl,
           options: Options(
             responseType: ResponseType.plain,
+            validateStatus: (status) => status == null || status < 500,
             headers: const {HttpHeaders.acceptHeader: 'text/plain'},
           ),
         );
-        if ((anon.statusCode ?? 0) == 200) {
-          return anon.data ?? '';
+        if ((anon.statusCode ?? 0) != 200) {
+          throw ThermostatFetchException(
+            status: ThermostatReadingStatus.httpError,
+            statusCode: anon.statusCode ?? 0,
+            message: 'Raw fetch failed with status ${anon.statusCode}.',
+          );
         }
         return anon.data ?? '';
       }
@@ -571,11 +645,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       }
       return rawResp.data ?? '';
     } on DioException catch (error) {
-      throw ThermostatFetchException(
-        status: ThermostatReadingStatus.networkError,
-        message: 'Failed to fetch raw gist content.',
-        cause: error,
-      );
+      throw _mapDioException(error, 'Failed to fetch raw gist content.');
     }
   }
 }

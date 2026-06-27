@@ -5,6 +5,7 @@ import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import 'thermostat_database.dart';
+import 'thermostat_reading_utils.dart';
 
 final _uuid = const Uuid();
 const Duration _defaultRetentionMaxAge = Duration(days: 548);
@@ -173,6 +174,56 @@ class ThermostatRepository {
     );
   }
 
+  /// Atomically records an out-of-range reading and decides whether to raise a
+  /// fresh alarm.
+  ///
+  /// The decision and the `lastAlarmAt` write happen inside a single
+  /// transaction that re-reads the current state row, so a concurrent snooze /
+  /// silence / alarm write from another isolate cannot be lost and two
+  /// overlapping monitor runs cannot both fire (compare-and-set: only the run
+  /// that observes an eligible state advances `lastAlarmAt`). Returns whether
+  /// the caller should dispatch the alarm notification.
+  Future<bool> recordOutOfRangeAndShouldAlarm({
+    required String thermostatId,
+    required double valueC,
+    required DateTime fetchedAt,
+    String? etag,
+    required String message,
+    required DateTime now,
+    Duration rateLimit = kAlarmRateLimit,
+  }) async {
+    return _database.transaction(() async {
+      final entry = await _database.getThermostatState(thermostatId);
+      final previous = entry != null ? ThermostatState.fromEntry(entry) : null;
+
+      final fire = shouldTriggerAlarm(
+        previousState: previous,
+        now: now,
+        rateLimit: rateLimit,
+      );
+      final clearSnooze = fire && previous?.snoozedUntil != null;
+
+      await _database.upsertThermostatState(
+        ThermostatStateEntriesCompanion(
+          thermostatId: drift.Value(thermostatId),
+          lastStatus: drift.Value(ThermostatReadingStatus.outOfRange.name),
+          lastValueC: drift.Value(valueC),
+          lastFetchedAt: drift.Value(fetchedAt),
+          etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
+          statusMessage: drift.Value(message),
+          lastAlarmAt: fire ? drift.Value(now) : const drift.Value.absent(),
+          snoozedUntil: clearSnooze
+              ? const drift.Value(null)
+              : const drift.Value.absent(),
+          createdAt: const drift.Value.absent(),
+          updatedAt: drift.Value(DateTime.now().toUtc()),
+        ),
+      );
+
+      return fire;
+    });
+  }
+
   Future<void> updateSnoozedUntil(String thermostatId, DateTime? until) async {
     final now = DateTime.now().toUtc();
     await _database.upsertThermostatState(
@@ -215,7 +266,9 @@ class ThermostatRepository {
                   id: row.id,
                   thermostatId: row.thermostatId,
                   valueC: row.valueC,
-                  observedAt: row.observedAt,
+                  // Normalise to UTC; Drift stores datetimes in unix mode which
+                  // reads back in the local zone.
+                  observedAt: row.observedAt.toUtc(),
                   source: row.source,
                   sourceId: row.sourceId,
                 ),
@@ -302,20 +355,26 @@ class ThermostatRepository {
   }) async {
     final referenceTime = (now ?? DateTime.now()).toUtc();
 
-    if (maxAge > Duration.zero) {
-      final cutoff = referenceTime.subtract(maxAge);
-      await _database.pruneTemperatureReadingsBefore(cutoff);
-    }
+    // Run the age-based and per-thermostat caps in one transaction so a failure
+    // partway through cannot leave readings half-pruned.
+    await _database.transaction(() async {
+      if (maxAge > Duration.zero) {
+        final cutoff = referenceTime.subtract(maxAge);
+        await _database.pruneTemperatureReadingsBefore(cutoff);
+      }
 
-    final ids = thermostatId != null
-        ? <String>[thermostatId]
-        : (await _database.listThermostats()).map((entry) => entry.id).toList();
+      final ids = thermostatId != null
+          ? <String>[thermostatId]
+          : (await _database.listThermostats())
+                .map((entry) => entry.id)
+                .toList();
 
-    for (final id in ids) {
-      await _database.pruneTemperatureReadingsExceedingLimit(
-        id,
-        maxEntriesPerThermostat,
-      );
-    }
+      for (final id in ids) {
+        await _database.pruneTemperatureReadingsExceedingLimit(
+          id,
+          maxEntriesPerThermostat,
+        );
+      }
+    });
   }
 }

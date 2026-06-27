@@ -41,18 +41,24 @@ jobs:
         run: dart pub get
         working-directory: packages/farmctl_parsing
 
-      - name: Run Dart unit tests
-        run: dart test
+      - name: Run Dart unit tests with coverage
+        run: |
+          dart test --coverage=coverage
+          dart run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info --report-on=lib
         working-directory: packages/farmctl_parsing
+
+      # The parsing package holds the safety-critical temperature parser; keep it
+      # near-fully covered.
+      - name: Enforce parsing coverage threshold
+        run: bash tool/check_coverage.sh 85 packages/farmctl_parsing/coverage/lcov.info
 
       - name: Run Flutter tests with coverage
         run: flutter test --coverage
         working-directory: app
 
-      # Baseline as of this workflow: ~27% line coverage. The threshold is the
-      # floor (regression guard); raising it toward 85% is tracked in an issue.
+      # Floor / regression guard, ratcheted up as coverage improves (toward 85%).
       - name: Enforce coverage threshold
-        run: bash tool/check_coverage.sh 27
+        run: bash tool/check_coverage.sh 31
 
       - name: Assemble debug APK
         run: flutter build apk --debug
