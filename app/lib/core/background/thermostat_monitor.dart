@@ -674,6 +674,9 @@ Future<void> _initializeNotifications(
   await plugin.initialize(
     initializationSettings,
     onDidReceiveNotificationResponse: onDidReceiveNotificationResponse,
+    // Handles action buttons (snooze/silence) pressed while the app is
+    // terminated/background, in a dedicated isolate.
+    onDidReceiveBackgroundNotificationResponse: _handleNotificationResponse,
   );
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
@@ -740,7 +743,39 @@ Future<void> _showMonitoringActiveNotification(
   );
 }
 
+/// Routes a cold-launch alarm-notification tap to the alarm screen.
+///
+/// `onDidReceiveNotificationResponse` only fires while the Dart isolate is
+/// alive, so a tap that *launches* the app from a terminated state is delivered
+/// only via the launch details. Call this once during app startup.
+Future<void> handleNotificationLaunch() async {
+  if (!_supportsAlarmScheduling) {
+    return;
+  }
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    final details = await plugin.getNotificationAppLaunchDetails();
+    if (details == null || !details.didNotificationLaunchApp) {
+      return;
+    }
+    final response = details.notificationResponse;
+    if (response != null) {
+      // Same path as a live tap: body tap -> open the alarm screen, action
+      // button -> snooze/silence.
+      await _handleNotificationResponse(response);
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Failed to handle notification launch: $error');
+    debugPrint('$stackTrace');
+  }
+}
+
+@pragma('vm:entry-point')
 Future<void> _handleNotificationResponse(NotificationResponse response) async {
+  // May run in a background isolate (an action button pressed while the app is
+  // terminated), so ensure plugins/DB are available there. No-op in foreground.
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
   final payload = response.payload;
   if (payload == null || payload.isEmpty) {
     return;
@@ -792,7 +827,15 @@ void _navigateToAlarm(String thermostatId) {
   void attemptNavigation() {
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
-      GoRouter.of(context).push(AlarmRoute.pathFor(thermostatId));
+      final target = AlarmRoute.pathFor(thermostatId);
+      final router = GoRouter.of(context);
+      // Don't stack a duplicate alarm page if this thermostat's alarm is already
+      // on top (the ongoing notification is re-posted every cycle and may be
+      // re-tapped) — pushing again would also drop the wakelock early when the
+      // duplicate is popped.
+      if (router.routerDelegate.currentConfiguration.uri.path != target) {
+        router.push(target);
+      }
       return;
     }
     if (attempts++ >= maxAttempts) {

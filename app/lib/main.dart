@@ -13,4 +13,8 @@ Future<void> main() async {
     debugPrint('$stackTrace');
   }
   runApp(const ProviderScope(child: FarmCtlApp()));
+
+  // If the app was cold-launched by tapping an alarm notification, route to the
+  // alarm screen once the router is ready.
+  await handleNotificationLaunch();
 }
