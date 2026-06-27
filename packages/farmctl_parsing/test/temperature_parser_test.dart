@@ -30,6 +30,16 @@ void main() {
       // the genuine "7.7C" token at the end is the correct extraction.
       expect(parseCelsiusTemperature('ID: abc123Cdef 7.7C'), equals(7.7));
     });
+
+    test('parses negative readings at a valid boundary', () {
+      expect(parseCelsiusTemperature('-5C'), equals(-5.0));
+      expect(parseCelsiusTemperature('Outside: -5C'), equals(-5.0));
+      expect(parseCelsiusTemperature('temp:-5C'), equals(-5.0));
+    });
+
+    test('tolerates a space between the degree glyph and the unit', () {
+      expect(parseCelsiusTemperature('21.5° C'), equals(21.5));
+    });
   });
 
   group('parseCelsiusTemperature — fails closed on ambiguous input', () {
@@ -58,6 +68,13 @@ void main() {
     test('does not match a value glued to a trailing identifier', () {
       expect(parseCelsiusTemperature('7.7Cdef'), isNull);
       expect(parseCelsiusTemperature('25C3'), isNull);
+    });
+
+    test('does not drop a minus glued to a preceding word (no sign flip)', () {
+      // Regression: these previously parsed as +5.0, masking a sub-zero reading
+      // and skipping a cold-side alarm. Now they fail closed.
+      expect(parseCelsiusTemperature('Outside-5C'), isNull);
+      expect(parseCelsiusTemperature('temp-5C'), isNull);
     });
 
     test('does not match other units (Fahrenheit / Kelvin)', () {

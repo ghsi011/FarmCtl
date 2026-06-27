@@ -22,6 +22,9 @@ void main() {
       expect(parseCelsiusTemperature('1,234.5C'), isNull);
       expect(parseCelsiusTemperature('.5C'), isNull);
       expect(parseCelsiusTemperature('sensor id abc123Cdef 7.7C'), equals(7.7));
+      // A minus glued to a word must not be dropped into a positive value.
+      expect(parseCelsiusTemperature('Outside-5C'), isNull);
+      expect(parseCelsiusTemperature('temp:-5C'), equals(-5.0));
     });
   });
 }
