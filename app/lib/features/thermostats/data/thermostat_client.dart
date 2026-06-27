@@ -107,6 +107,14 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   bool get hasGithubToken => _hasGithubToken;
   String? get resolvedToken => _resolvedToken;
 
+  /// Closes the underlying Dio clients. Call this for short-lived clients (e.g.
+  /// the per-submit token-validation client) so their HttpClients/sockets are
+  /// released rather than left to idle-timeout.
+  void close() {
+    _dio.close(force: true);
+    _dioNoAuth.close(force: true);
+  }
+
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String gistId) async {
     try {

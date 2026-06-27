@@ -29,23 +29,21 @@ class ThermostatService {
       throw ThermostatValidationException(validation);
     }
 
-    final network = tokenOverride != null && tokenOverride.isNotEmpty
+    final overrideClient = tokenOverride != null && tokenOverride.isNotEmpty
         ? ThermostatHttpClient(
             githubToken: tokenOverride,
             allowAnonFallback: false,
           )
-        : _network;
-    final result = await network.fetchCurrent(draft.rawUrl.trim());
-    final saved = await _repository.create(draft);
-    await _repository.saveState(
-      thermostatId: saved.id,
-      status: ThermostatReadingStatus.ok,
-      valueC: result.valueC,
-      fetchedAt: result.fetchedAt,
-      etag: result.etag,
-      message: 'Fetched ${result.valueC.toStringAsFixed(2)}°C',
-    );
-    return saved;
+        : null;
+    final network = overrideClient ?? _network;
+    try {
+      final result = await network.fetchCurrent(draft.rawUrl.trim());
+      final saved = await _repository.create(draft);
+      await _saveTestedState(saved, result);
+      return saved;
+    } finally {
+      overrideClient?.close();
+    }
   }
 
   Future<Thermostat> updateAndTest(
@@ -58,23 +56,50 @@ class ThermostatService {
       throw ThermostatValidationException(validation);
     }
 
-    final network = tokenOverride != null && tokenOverride.isNotEmpty
+    final overrideClient = tokenOverride != null && tokenOverride.isNotEmpty
         ? ThermostatHttpClient(
             githubToken: tokenOverride,
             allowAnonFallback: false,
           )
-        : _network;
-    final result = await network.fetchCurrent(draft.rawUrl.trim());
-    final updated = await _repository.update(existing, draft);
+        : null;
+    final network = overrideClient ?? _network;
+    try {
+      final result = await network.fetchCurrent(draft.rawUrl.trim());
+      final updated = await _repository.update(existing, draft);
+      await _saveTestedState(updated, result);
+      return updated;
+    } finally {
+      overrideClient?.close();
+    }
+  }
+
+  /// Persists the result of a test fetch, evaluating the value against the
+  /// thermostat's (possibly just-changed) range so an active out-of-range
+  /// condition is not cleared to "ok" just because the user edited the
+  /// thermostat. Mirrors [refresh].
+  Future<void> _saveTestedState(
+    Thermostat thermostat,
+    ThermostatFetchSuccess result,
+  ) async {
+    final value = result.valueC;
+    final previousState = await _repository.loadState(thermostat.id);
+    final outOfRange = isThermostatReadingOutOfRange(
+      thermostat: thermostat,
+      currentValue: value,
+      previousState: previousState,
+    );
     await _repository.saveState(
-      thermostatId: updated.id,
-      status: ThermostatReadingStatus.ok,
-      valueC: result.valueC,
+      thermostatId: thermostat.id,
+      status: outOfRange
+          ? ThermostatReadingStatus.outOfRange
+          : ThermostatReadingStatus.ok,
+      valueC: value,
       fetchedAt: result.fetchedAt,
       etag: result.etag,
-      message: 'Fetched ${result.valueC.toStringAsFixed(2)}°C',
+      message: outOfRange
+          ? formatOutOfRangeThermostatMessage(thermostat, value)
+          : 'Fetched ${value.toStringAsFixed(2)}°C',
     );
-    return updated;
   }
 
   Future<ThermostatRefreshResult> refresh(Thermostat thermostat) async {

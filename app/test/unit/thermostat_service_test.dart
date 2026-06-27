@@ -139,6 +139,62 @@ void main() {
     expect(state.statusMessage, 'Fetched 9.00°C');
   });
 
+  test(
+    'updateAndTest keeps out-of-range when the new range excludes the value',
+    () async {
+      final created = await service.createAndTest(
+        ThermostatDraft(
+          name: 'Kiln',
+          rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          minC: 0,
+          maxC: 200,
+        ),
+      );
+      // 14.2 is within 0..200 -> ok after create.
+      expect(
+        (await repository.loadState(created.id))!.status,
+        ThermostatReadingStatus.ok,
+      );
+
+      // Editing to a range that excludes the (unchanged) reading must NOT clear
+      // the out-of-range condition to ok.
+      await service.updateAndTest(
+        created,
+        ThermostatDraft(
+          name: 'Kiln',
+          rawUrl: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          minC: 0,
+          maxC: 10,
+        ),
+      );
+
+      final state = await repository.loadState(created.id);
+      expect(state!.status, ThermostatReadingStatus.outOfRange);
+      expect(state.statusMessage, contains('Out of range'));
+    },
+  );
+
+  test(
+    'createAndTest persists out-of-range when the initial value violates the range',
+    () async {
+      network._result = ThermostatFetchSuccess(
+        valueC: 95.0,
+        fetchedAt: DateTime.utc(2025, 1, 1, 12),
+        etag: 'e',
+      );
+      final created = await service.createAndTest(
+        ThermostatDraft(
+          name: 'Furnace',
+          rawUrl: 'ffffffffffffffffffffffffffffffff',
+          minC: 0,
+          maxC: 40,
+        ),
+      );
+      final state = await repository.loadState(created.id);
+      expect(state!.status, ThermostatReadingStatus.outOfRange);
+    },
+  );
+
   test('createAndTest rethrows fetch errors', () async {
     network._exception = const ThermostatFetchException(
       status: ThermostatReadingStatus.networkError,
