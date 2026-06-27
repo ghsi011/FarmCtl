@@ -7,6 +7,8 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -53,13 +55,6 @@ jobs:
         run: flutter build apk --debug
         working-directory: app
 
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: farmctl-debug-apk
-          path: app/build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
-
       - name: Assemble release APK
         if: github.ref == 'refs/heads/master'
         run: flutter build apk --release
@@ -85,3 +80,5 @@ jobs:
           asset_path: app/build/app/outputs/flutter-apk/app-release.apk
           asset_name: farmctl-release-${{ github.run_number }}.apk
           asset_content_type: application/vnd.android.package-archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

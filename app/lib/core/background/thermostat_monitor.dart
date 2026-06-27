@@ -32,13 +32,11 @@ const AndroidNotificationChannel _monitoringChannel =
       importance: Importance.low,
     );
 
-const AndroidNotificationChannel _alarmChannel = AndroidNotificationChannel(
-  'farmctl_alarm',
-  'Thermostat alarms',
-  description: 'Alerts when a thermostat leaves the configured range.',
-  importance: Importance.max,
-  playSound: true,
-);
+const String _alarmChannelPrefix = 'farmctl_alarm';
+const String _alarmChannelName = 'Thermostat alarms';
+const String _alarmChannelDescription =
+    'Alerts when a thermostat leaves the configured range.';
+const String _defaultAlarmSoundUri = 'content://settings/system/alarm_alert';
 
 const int _monitoringNotificationId = 1001;
 const int _alarmNotificationBaseId = 4000;
@@ -128,10 +126,6 @@ const String _silenceActionId = 'alarm_silence_until_ok';
 
 Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   final notifications = FlutterLocalNotificationsPlugin();
-  await _initializeNotifications(
-    notifications,
-    onDidReceiveNotificationResponse: _handleNotificationResponse,
-  );
 
   AlertConfig? config;
   final database = ThermostatDatabase();
@@ -144,6 +138,12 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   } finally {
     await database.close();
   }
+
+  await _initializeNotifications(
+    notifications,
+    onDidReceiveNotificationResponse: _handleNotificationResponse,
+    config: config,
+  );
 
   final configuredInterval =
       pollFrequency ?? config?.pollInterval ?? const Duration(minutes: 5);
@@ -166,6 +166,24 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
         : config;
     await _updateAlarmSchedule(schedulingConfig);
   }
+
+  // Keep a persistent low-priority notification visible between runs so the
+  // user knows monitoring is active.
+  await _showMonitoringActiveNotification(notifications);
+}
+
+// Entry point used by the Android BootCompletedReceiver to restore scheduling
+// after device reboot or app update without launching the full UI.
+@pragma('vm:entry-point')
+Future<void> initializeMonitoringOnBoot() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
+  try {
+    await initializeBackgroundMonitoring();
+  } catch (error, stackTrace) {
+    debugPrint('Boot init failed: $error');
+    debugPrint('$stackTrace');
+  }
 }
 
 @pragma('vm:entry-point')
@@ -186,25 +204,44 @@ Future<void> _runMonitorTask() async {
   ui.DartPluginRegistrant.ensureInitialized();
 
   final notifications = FlutterLocalNotificationsPlugin();
-  await _initializeNotifications(notifications);
-  await _showMonitoringNotification(notifications);
 
   final database = ThermostatDatabase();
   AlertConfig? config;
   try {
-    final repository = ThermostatRepository(database);
     final entry = await database.getAlertConfig();
     config = AlertConfig.fromEntry(entry);
-    final network = ThermostatHttpClient(githubToken: config.githubToken);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to load alert config: $error');
+    debugPrint('$stackTrace');
+  }
+
+  await _initializeNotifications(notifications, config: config);
+  // Show a transient notification while the check is running.
+  await _showMonitoringNotification(notifications);
+
+  if (config == null) {
+    debugPrint('Alert config unavailable; skipping monitor run.');
+    await notifications.cancel(_monitoringNotificationId);
+    await database.close();
+    return;
+  }
+
+  try {
+    final repository = ThermostatRepository(database);
+    final alertConfig = config; // promote to non-null for closures
+    final network = ThermostatHttpClient(githubToken: alertConfig.githubToken);
     final service = ThermostatService(
       repository: repository,
       network: network,
-      tokenSupplier: () async => config!.githubToken,
+      tokenSupplier: () async => alertConfig.githubToken,
     );
     final runner = ThermostatMonitorRunner(
       repository: repository,
       network: network,
-      alarmDispatcher: NotificationAlarmDispatcher(notifications),
+      alarmDispatcher: NotificationAlarmDispatcher(
+        notifications,
+        config: alertConfig,
+      ),
     );
 
     final now = DateTime.now().toUtc();
@@ -235,13 +272,13 @@ Future<void> _runMonitorTask() async {
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');
   } finally {
-    await notifications.cancel(_monitoringNotificationId);
+    // Switch back to the persistent monitoring indicator when the run ends.
+    await _showMonitoringActiveNotification(notifications);
     await database.close();
   }
 
-  if (config != null) {
-    await _updateAlarmSchedule(config);
-  }
+  // config is non-null here
+  await _updateAlarmSchedule(config);
 }
 
 class ThermostatMonitorRunner {
@@ -379,6 +416,74 @@ class ThermostatMonitorRunner {
   }
 }
 
+String _alarmChannelIdForSound(String? soundUri) {
+  if (soundUri == null || soundUri.isEmpty) {
+    return '${_alarmChannelPrefix}_default';
+  }
+  final hash = soundUri.hashCode & 0x7fffffff;
+  return '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
+}
+
+AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
+  final target = (soundUri != null && soundUri.isNotEmpty)
+      ? soundUri
+      : _defaultAlarmSoundUri;
+  return UriAndroidNotificationSound(target);
+}
+
+AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
+  final channelId = _alarmChannelIdForSound(soundUri);
+  return AndroidNotificationChannel(
+    channelId,
+    _alarmChannelName,
+    description: _alarmChannelDescription,
+    importance: Importance.max,
+    playSound: true,
+    sound: _alarmNotificationSound(soundUri),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    enableVibration: true,
+  );
+}
+
+Future<NotificationDetails> _prepareAlarmNotificationDetails({
+  required FlutterLocalNotificationsPlugin plugin,
+  required AlertConfig config,
+  required bool autoCancel,
+  required bool ongoing,
+  required List<AndroidNotificationAction> actions,
+  bool fullScreenIntent = true,
+  String ticker = 'Thermostat alarm',
+}) async {
+  final androidPlugin = plugin
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
+  final channel = _buildAlarmChannel(config.soundUri);
+  await androidPlugin?.createNotificationChannel(channel);
+  final sound = _alarmNotificationSound(config.soundUri);
+
+  final androidDetails = AndroidNotificationDetails(
+    channel.id,
+    channel.name,
+    channelDescription: channel.description,
+    importance: Importance.max,
+    priority: Priority.high,
+    fullScreenIntent: fullScreenIntent,
+    category: AndroidNotificationCategory.alarm,
+    ticker: ticker,
+    autoCancel: autoCancel,
+    ongoing: ongoing,
+    enableVibration: config.vibrate,
+    playSound: true,
+    sound: sound,
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    channelAction: AndroidNotificationChannelAction.createIfNotExists,
+    actions: actions,
+  );
+
+  return NotificationDetails(android: androidDetails);
+}
+
 abstract class ThermostatAlarmDispatcher {
   Future<void> showAlarm({
     required Thermostat thermostat,
@@ -388,9 +493,13 @@ abstract class ThermostatAlarmDispatcher {
 }
 
 class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
-  NotificationAlarmDispatcher(this._notifications);
+  NotificationAlarmDispatcher(
+    this._notifications, {
+    required AlertConfig config,
+  }) : _config = config;
 
   final FlutterLocalNotificationsPlugin _notifications;
+  final AlertConfig _config;
 
   @override
   Future<void> showAlarm({
@@ -399,34 +508,25 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     required DateTime triggeredAt,
   }) async {
     final payload = jsonEncode({'thermostatId': thermostat.id});
+    final details = await _prepareAlarmNotificationDetails(
+      plugin: _notifications,
+      config: _config,
+      autoCancel: false,
+      ongoing: true,
+      actions: const [
+        AndroidNotificationAction(_snooze5ActionId, 'Snooze 5 min'),
+        AndroidNotificationAction(_snooze10ActionId, 'Snooze 10 min'),
+        AndroidNotificationAction(_snooze30ActionId, 'Snooze 30 min'),
+        AndroidNotificationAction(_silenceActionId, 'Silence until OK'),
+      ],
+    );
     await _notifications.show(
       _alarmNotificationId(thermostat.id),
       '${thermostat.name} out of range',
       'Current ${valueC.toStringAsFixed(2)}°C • '
           'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
           '${thermostat.maxC.toStringAsFixed(2)}°C',
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _alarmChannel.id,
-          _alarmChannel.name,
-          channelDescription: _alarmChannel.description,
-          importance: Importance.max,
-          priority: Priority.high,
-          fullScreenIntent: true,
-          category: AndroidNotificationCategory.alarm,
-          ticker: 'Thermostat alarm',
-          autoCancel: false,
-          ongoing: true,
-          enableVibration: true,
-          playSound: true,
-          actions: const [
-            AndroidNotificationAction(_snooze5ActionId, 'Snooze 5 min'),
-            AndroidNotificationAction(_snooze10ActionId, 'Snooze 10 min'),
-            AndroidNotificationAction(_snooze30ActionId, 'Snooze 30 min'),
-            AndroidNotificationAction(_silenceActionId, 'Silence until OK'),
-          ],
-        ),
-      ),
+      details,
       payload: payload,
     );
   }
@@ -441,30 +541,24 @@ Future<void> cancelAlarmNotification(String thermostatId) async {
   }
 }
 
-Future<void> showTestAlarmNotification({required dynamic config}) async {
+Future<void> showTestAlarmNotification({required AlertConfig config}) async {
   final plugin = FlutterLocalNotificationsPlugin();
-  await _initializeNotifications(plugin);
+  await _initializeNotifications(plugin, config: config);
+
+  final details = await _prepareAlarmNotificationDetails(
+    plugin: plugin,
+    config: config,
+    autoCancel: true,
+    ongoing: false,
+    actions: const [],
+    ticker: 'Test alarm',
+  );
 
   await plugin.show(
     999999,
     'Test Alarm',
     'This is a test alarm notification',
-    NotificationDetails(
-      android: AndroidNotificationDetails(
-        _alarmChannel.id,
-        _alarmChannel.name,
-        channelDescription: _alarmChannel.description,
-        importance: Importance.max,
-        priority: Priority.high,
-        fullScreenIntent: true,
-        category: AndroidNotificationCategory.alarm,
-        ticker: 'Test alarm',
-        autoCancel: true,
-        ongoing: false,
-        enableVibration: true,
-        playSound: true,
-      ),
-    ),
+    details,
   );
 }
 
@@ -479,6 +573,7 @@ typedef _NotificationResponseHandler =
 Future<void> _initializeNotifications(
   FlutterLocalNotificationsPlugin plugin, {
   _NotificationResponseHandler? onDidReceiveNotificationResponse,
+  AlertConfig? config,
 }) async {
   const initializationSettings = InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -492,7 +587,15 @@ Future<void> _initializeNotifications(
         AndroidFlutterLocalNotificationsPlugin
       >();
   await androidPlugin?.createNotificationChannel(_monitoringChannel);
-  await androidPlugin?.createNotificationChannel(_alarmChannel);
+  final soundUris = <String?>{null};
+  final customSound = config?.soundUri;
+  if (customSound != null && customSound.isNotEmpty) {
+    soundUris.add(customSound);
+  }
+  for (final soundUri in soundUris) {
+    final channel = _buildAlarmChannel(soundUri);
+    await androidPlugin?.createNotificationChannel(channel);
+  }
 }
 
 Future<void> _showMonitoringNotification(
@@ -510,6 +613,32 @@ Future<void> _showMonitoringNotification(
         importance: Importance.low,
         priority: Priority.low,
         ongoing: true,
+        showWhen: false,
+        playSound: false,
+        enableVibration: false,
+      ),
+    ),
+  );
+}
+
+Future<void> _showMonitoringActiveNotification(
+  FlutterLocalNotificationsPlugin plugin,
+) {
+  return plugin.show(
+    _monitoringNotificationId,
+    'FarmCtl monitoring',
+    'Monitoring active',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _monitoringChannel.id,
+        _monitoringChannel.name,
+        channelDescription: _monitoringChannel.description,
+        importance: Importance.low,
+        priority: Priority.low,
+        // Make this notification non-dismissible by swipe
+        autoCancel: false,
+        ongoing: true,
+        category: AndroidNotificationCategory.service,
         showWhen: false,
         playSound: false,
         enableVibration: false,

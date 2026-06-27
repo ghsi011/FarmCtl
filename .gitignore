@@ -34,5 +34,7 @@ windows/flutter/ephemeral/
 # Drift generated (if any outside committed g.darts)
 **/*.g.dart
 
+app/.flutter-plugins-dependencies
+
 # graphify knowledge-graph output (regenerable via /graphify; contains machine-specific paths)
 graphify-out/

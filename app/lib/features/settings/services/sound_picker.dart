@@ -1,5 +1,12 @@
 import 'package:flutter/services.dart';
 
+class SoundSelection {
+  const SoundSelection({this.uri, required this.useDefault});
+
+  final Uri? uri;
+  final bool useDefault;
+}
+
 class SoundPicker {
   SoundPicker({MethodChannel? channel})
     : _channel =
@@ -7,7 +14,7 @@ class SoundPicker {
 
   final MethodChannel _channel;
 
-  Future<Uri?> pickSound({Uri? initialUri}) async {
+  Future<SoundSelection?> pickSound({Uri? initialUri}) async {
     final arguments = <String, String>{
       if (initialUri != null) 'initialUri': initialUri.toString(),
     };
@@ -22,13 +29,22 @@ class SoundPicker {
     }
 
     if (result is String) {
-      return Uri.parse(result);
+      return SoundSelection(uri: Uri.parse(result), useDefault: false);
     }
 
     if (result is Map) {
+      final dynamic useDefaultValue = result['useDefault'];
+      if (useDefaultValue is bool && useDefaultValue) {
+        final dynamic uriValue = result['uri'];
+        if (uriValue is String && uriValue.isNotEmpty) {
+          return SoundSelection(uri: Uri.parse(uriValue), useDefault: true);
+        }
+        return const SoundSelection(uri: null, useDefault: true);
+      }
+
       final dynamic uriValue = result['uri'];
       if (uriValue is String && uriValue.isNotEmpty) {
-        return Uri.parse(uriValue);
+        return SoundSelection(uri: Uri.parse(uriValue), useDefault: false);
       }
     }
 

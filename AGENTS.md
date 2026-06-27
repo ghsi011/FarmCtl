@@ -47,6 +47,8 @@ Place any temporary research, clones, etc., in a **.gitignored subdirectory** of
 - Lint/analyze: `flutter analyze` (from `app/`)
 - Format: `dart format .` (run at repo root or within `app/`)
 - Codegen (when using Freezed/Drift): `dart run build_runner build --delete-conflicting-outputs`
+- **Always run** `dart run build_runner build --delete-conflicting-outputs` from `app/` before running
+  `flutter analyze` or any tests so generated types stay in sync.
 
 ## Coding Conventions
 - Follow `flutter_lints` plus project rules in `app/analysis_options.yaml` (notably `prefer_single_quotes: true`).
