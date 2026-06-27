@@ -330,4 +330,64 @@ void main() {
       );
     },
   );
+
+  test('selects the thermostat-named file over a generic .txt', () async {
+    // notes.txt (no temperature) is ordered BEFORE the real thermostat file;
+    // the thermostat-named file must still win.
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"files": {'
+          '"notes.txt": {"truncated": false, "content": "no temperature here"},'
+          '"thermostat.json": {"truncated": false, "content": "Temperature: 12.5 C"}'
+          '}}',
+          200,
+          headers: {
+            Headers.contentTypeHeader: [ContentType.json.mimeType],
+          },
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final result = await client.fetchCurrent(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(result.valueC, closeTo(12.5, 0.0001));
+  });
+
+  test(
+    'does not fall back to anonymous when allowAnonFallback is false',
+    () async {
+      var anonCalled = false;
+      final authDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString('{"message":"rate limited"}', 403);
+        });
+      final anonDio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          anonCalled = true;
+          return ResponseBody.fromString('[]', 200);
+        });
+      // The token-validation client must surface the 403 rather than masking it
+      // with an anonymous request.
+      final client = ThermostatHttpClient(
+        dio: authDio,
+        dioNoAuth: anonDio,
+        githubToken: 'ghp_token',
+        allowAnonFallback: false,
+      );
+
+      await expectLater(
+        () => client.listCommits('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+        throwsA(
+          isA<ThermostatFetchException>().having(
+            (error) => error.status,
+            'status',
+            ThermostatReadingStatus.httpError,
+          ),
+        ),
+      );
+      expect(anonCalled, isFalse);
+    },
+  );
 }
