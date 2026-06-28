@@ -42,7 +42,6 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
   Map<ThermostatValidationField, String> _fieldErrors = {};
   String? _submitError;
   bool _isSubmitting = false;
-  ThermostatDraft? _pendingDraft;
 
   @override
   void initState() {
@@ -67,21 +66,21 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    FocusScope.of(context).unfocus();
+  /// Validates the current field values and returns a draft, or null after
+  /// setting the relevant inline errors. Always reads the live controllers so a
+  /// later "save without testing" can't persist a stale snapshot.
+  ThermostatDraft? _validatedDraft() {
     setState(() {
       _fieldErrors = {};
       _rangeError = null;
-      _submitError = null;
     });
 
     if (!_formKey.currentState!.validate()) {
-      return;
+      return null;
     }
 
     final minValue = double.tryParse(_minController.text.trim());
     final maxValue = double.tryParse(_maxController.text.trim());
-
     if (minValue == null || maxValue == null) {
       setState(() {
         if (minValue == null) {
@@ -97,7 +96,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
           };
         }
       });
-      return;
+      return null;
     }
 
     final draft = ThermostatDraft(
@@ -119,12 +118,24 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
         }
         _fieldErrors = map;
       });
+      return null;
+    }
+    return draft;
+  }
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _submitError = null;
+    });
+
+    final draft = _validatedDraft();
+    if (draft == null) {
       return;
     }
 
     setState(() {
       _isSubmitting = true;
-      _pendingDraft = draft;
     });
 
     try {
@@ -170,9 +181,15 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
   }
 
   Future<void> _saveWithoutTest() async {
-    final draft = _pendingDraft;
     final handler = widget.onSaveWithoutTest;
-    if (draft == null || handler == null) {
+    if (handler == null) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    // Re-read and re-validate so an edit made after the failed test is saved,
+    // not the snapshot captured when the test ran.
+    final draft = _validatedDraft();
+    if (draft == null) {
       return;
     }
     setState(() {
@@ -200,9 +217,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
   Widget build(BuildContext context) {
     final isEditing = widget.initial != null;
     final canSaveWithoutTest =
-        _submitError != null &&
-        _pendingDraft != null &&
-        widget.onSaveWithoutTest != null;
+        _submitError != null && widget.onSaveWithoutTest != null;
     return AlertDialog(
       title: Text(isEditing ? 'Edit thermostat' : 'Add thermostat'),
       content: SingleChildScrollView(
@@ -250,40 +265,49 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      controller: _minController,
-                      decoration: InputDecoration(
-                        labelText: 'Min °C',
-                        helperText: 'e.g. 2',
-                        errorText: _fieldErrors[ThermostatValidationField.minC],
+                    child: Semantics(
+                      // The visible label "Min °C" is read as "Min degree C";
+                      // give screen readers the full spoken form.
+                      label: 'Minimum temperature in degrees Celsius',
+                      child: TextFormField(
+                        controller: _minController,
+                        decoration: InputDecoration(
+                          labelText: 'Min °C',
+                          helperText: 'e.g. 2',
+                          errorText:
+                              _fieldErrors[ThermostatValidationField.minC],
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        enabled: !_isSubmitting,
+                        validator: _numberValidator,
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      enabled: !_isSubmitting,
-                      validator: _numberValidator,
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: TextFormField(
-                      controller: _maxController,
-                      decoration: InputDecoration(
-                        labelText: 'Max °C',
-                        helperText: 'e.g. 30',
-                        // The cross-field "min must be < max" error is anchored
-                        // to this field rather than floating below the row.
-                        errorText:
-                            _fieldErrors[ThermostatValidationField.maxC] ??
-                            _rangeError,
+                    child: Semantics(
+                      label: 'Maximum temperature in degrees Celsius',
+                      child: TextFormField(
+                        controller: _maxController,
+                        decoration: InputDecoration(
+                          labelText: 'Max °C',
+                          helperText: 'e.g. 30',
+                          // The cross-field "min must be < max" error is anchored
+                          // to this field rather than floating below the row.
+                          errorText:
+                              _fieldErrors[ThermostatValidationField.maxC] ??
+                              _rangeError,
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        enabled: !_isSubmitting,
+                        validator: _numberValidator,
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      enabled: !_isSubmitting,
-                      validator: _numberValidator,
                     ),
                   ),
                 ],

@@ -230,31 +230,37 @@ class ThermostatCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _MetaChip(
-                      icon: Icons.straighten,
-                      label:
-                          '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
-                      supportingLabel: 'Target range',
-                    ),
-                    _MetaChip(
-                      icon: Icons.tag,
-                      label: thermostat.id,
-                      supportingLabel: 'Identifier',
-                    ),
-                    if (state?.statusMessage != null &&
-                        state!.statusMessage!.isNotEmpty)
+              // The chips (range, raw id, last message) and the status footer
+              // repeat what the card's Semantics `value` already announces, so
+              // exclude them to avoid a double read (and the raw id being spelled
+              // out letter by letter).
+              ExcludeSemantics(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
                       _MetaChip(
-                        icon: Icons.info_outline,
-                        label: state.statusMessage!,
-                        supportingLabel: 'Last message',
+                        icon: Icons.straighten,
+                        label:
+                            '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                        supportingLabel: 'Target range',
                       ),
-                  ],
+                      _MetaChip(
+                        icon: Icons.tag,
+                        label: thermostat.id,
+                        supportingLabel: 'Identifier',
+                      ),
+                      if (state?.statusMessage != null &&
+                          state!.statusMessage!.isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.info_outline,
+                          label: state.statusMessage!,
+                          supportingLabel: 'Last message',
+                        ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 16),

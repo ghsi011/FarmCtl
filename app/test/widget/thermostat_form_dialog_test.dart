@@ -194,6 +194,34 @@ void main() {
     expect(find.text('Test & Save'), findsNothing);
   });
 
+  testWidgets('save-without-testing persists edits made after the failure', (
+    tester,
+  ) async {
+    ThermostatDraft? savedWithoutTest;
+    await _openDialog(
+      tester,
+      onSubmit: (_) async => throw const ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'No signal.',
+      ),
+      onSaveWithoutTest: (draft) async {
+        savedWithoutTest = draft;
+        return _dummy();
+      },
+    );
+    await _fillValid(tester); // min 0
+    await tester.tap(find.text('Test & Save'));
+    await tester.pumpAndSettle();
+
+    // Correct the minimum AFTER the test failed, then save without testing.
+    await tester.enterText(find.byType(TextFormField).at(2), '5');
+    await tester.tap(find.text('Save without testing'));
+    await tester.pumpAndSettle();
+
+    // The current field value is saved, not the stale pre-failure snapshot.
+    expect(savedWithoutTest!.minC, 5);
+  });
+
   testWidgets('pre-fills the fields when editing', (tester) async {
     await _openDialog(
       tester,

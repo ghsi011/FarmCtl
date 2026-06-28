@@ -13,19 +13,14 @@ String humanizeError(Object? error) {
   if (has('timeout') || has('timed out')) {
     return 'The request timed out. Check your connection and try again.';
   }
-  if (has('socket') ||
-      has('connection') ||
-      has('network') ||
-      has('host lookup') ||
-      has('unreachable') ||
-      has('failed host')) {
-    return "Couldn't reach the server. Check your connection and try again.";
-  }
+  // Auth/rate-limit/status codes are checked before the broad connectivity
+  // needles so an HTTP error that merely echoes a "Connection:" header isn't
+  // mis-reported as offline.
   if (has('401') ||
       has('403') ||
       has('unauthor') ||
       has('forbidden') ||
-      has('credential')) {
+      has('bad credential')) {
     return 'Access was refused. Check your GitHub token in Settings.';
   }
   if (has('429') || has('rate limit')) {
@@ -37,7 +32,17 @@ String humanizeError(Object? error) {
   if (has('500') || has('502') || has('503') || has('server error')) {
     return 'The server had a problem. Please try again shortly.';
   }
-  if (has('format') || has('parse') || has('unexpected') || has('invalid')) {
+  if (has('socketexception') ||
+      has('connection refused') ||
+      has('connection closed') ||
+      has('connection error') ||
+      has('network') ||
+      has('host lookup') ||
+      has('unreachable') ||
+      has('failed host')) {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  if (has('formatexception') || has('parse') || has('unexpected format')) {
     return "The reading couldn't be read — the sensor may be reporting an unexpected format.";
   }
   return 'Something went wrong. Please try again.';

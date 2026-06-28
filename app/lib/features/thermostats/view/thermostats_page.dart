@@ -164,6 +164,9 @@ class ThermostatsPage extends ConsumerWidget {
       messenger.showSnackBar(
         SnackBar(
           content: const Text('Thermostat deleted'),
+          // Longer window than the 4s default: deletion drops reading history,
+          // so give the user time to notice and undo.
+          duration: const Duration(seconds: 8),
           action: SnackBarAction(
             label: 'Undo',
             onPressed: () async {

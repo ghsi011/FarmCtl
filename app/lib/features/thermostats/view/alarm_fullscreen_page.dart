@@ -179,11 +179,12 @@ class _AlarmContentState extends ConsumerState<_AlarmContent> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 24),
+                    // Decorative — the danger is already in the live-region
+                    // label above, so don't announce "Warning" separately.
                     Icon(
                       Icons.warning_amber_rounded,
                       size: 96,
                       color: colorScheme.error,
-                      semanticLabel: 'Warning',
                     ),
                     const SizedBox(height: 24),
                     Text(
