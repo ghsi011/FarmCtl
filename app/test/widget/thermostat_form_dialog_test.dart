@@ -24,6 +24,7 @@ Thermostat _dummy() {
 Future<void> _openDialog(
   WidgetTester tester, {
   required Future<Thermostat> Function(ThermostatDraft draft) onSubmit,
+  Future<Thermostat> Function(ThermostatDraft draft)? onSaveWithoutTest,
   Thermostat? initial,
 }) async {
   await tester.pumpWidget(
@@ -34,8 +35,11 @@ Future<void> _openDialog(
             child: TextButton(
               onPressed: () => showDialog<Thermostat>(
                 context: context,
-                builder: (_) =>
-                    ThermostatFormDialog(onSubmit: onSubmit, initial: initial),
+                builder: (_) => ThermostatFormDialog(
+                  onSubmit: onSubmit,
+                  onSaveWithoutTest: onSaveWithoutTest,
+                  initial: initial,
+                ),
               ),
               child: const Text('open'),
             ),
@@ -157,6 +161,39 @@ void main() {
     expect(find.text('Test & Save'), findsOneWidget); // still open
   });
 
+  testWidgets('offers "Save without testing" when the test fetch fails', (
+    tester,
+  ) async {
+    ThermostatDraft? savedWithoutTest;
+    await _openDialog(
+      tester,
+      onSubmit: (_) async => throw const ThermostatFetchException(
+        status: ThermostatReadingStatus.networkError,
+        message: 'No signal right now.',
+      ),
+      onSaveWithoutTest: (draft) async {
+        savedWithoutTest = draft;
+        return _dummy();
+      },
+    );
+    await _fillValid(tester);
+
+    await tester.tap(find.text('Test & Save'));
+    await tester.pumpAndSettle();
+
+    // The fetch error is shown with an escape hatch.
+    expect(find.text('No signal right now.'), findsOneWidget);
+    expect(find.text('Save without testing'), findsOneWidget);
+
+    await tester.tap(find.text('Save without testing'));
+    await tester.pumpAndSettle();
+
+    expect(savedWithoutTest, isNotNull);
+    expect(savedWithoutTest!.name, 'Barn');
+    // Dialog closed after saving.
+    expect(find.text('Test & Save'), findsNothing);
+  });
+
   testWidgets('pre-fills the fields when editing', (tester) async {
     await _openDialog(
       tester,
@@ -166,7 +203,8 @@ void main() {
 
     expect(find.text('Edit thermostat'), findsOneWidget);
     expect(find.text('Barn'), findsOneWidget);
-    expect(find.text('0.00'), findsOneWidget);
-    expect(find.text('20.00'), findsOneWidget);
+    // Integer bounds are shown without trailing zeros.
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('20'), findsOneWidget);
   });
 }

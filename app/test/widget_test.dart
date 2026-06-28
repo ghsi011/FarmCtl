@@ -1,16 +1,31 @@
 import 'package:drift/native.dart';
 import 'package:farmctl/app.dart';
+import 'package:farmctl/features/settings/models/alert_config.dart';
+import 'package:farmctl/features/settings/providers/settings_providers.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
 import 'package:farmctl/features/thermostats/providers/thermostat_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _defaultConfig = AlertConfig(
+  pollInterval: Duration(minutes: 5),
+  exactAlarmsEnabled: false,
+  soundUri: null,
+  vibrate: true,
+  volumeBoost: false,
+  pauseAllUntil: null,
+  githubToken: null,
+);
+
 Widget buildApp(ThermostatDatabase database) {
   return ProviderScope(
     overrides: [
       thermostatDatabaseProvider.overrideWithValue(database),
       thermostatsProvider.overrideWith((ref) => const Stream.empty()),
+      // Plain stream avoids a Drift watch-stream subscription (and its pending
+      // dispose timer) for the new pause banner on the thermostats page.
+      alertConfigProvider.overrideWith((ref) => Stream.value(_defaultConfig)),
     ],
     child: const FarmCtlApp(),
   );

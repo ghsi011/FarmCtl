@@ -58,9 +58,10 @@ void main() {
     await pumpPage(tester);
 
     expect(find.text('Greenhouse'), findsOneWidget);
-    expect(find.text('25.20°C'), findsOneWidget);
-    expect(find.text('Snooze 5 min'), findsOneWidget);
-    expect(find.text('Dismiss'), findsOneWidget);
+    expect(find.text('25.2°C'), findsOneWidget);
+    expect(find.text('Snooze 5 minutes'), findsOneWidget);
+    // "Acknowledge" stops the alarm but leaves monitoring armed.
+    expect(find.text('Acknowledge'), findsOneWidget);
   });
 
   testWidgets(
@@ -107,7 +108,7 @@ void main() {
     tester,
   ) async {
     await pumpStream(tester, Stream<ThermostatSummary?>.value(null));
-    expect(find.text('Thermostat not found.'), findsOneWidget);
+    expect(find.textContaining('Thermostat not found'), findsOneWidget);
   });
 
   testWidgets('shows an error message when the summary stream fails', (
@@ -117,7 +118,7 @@ void main() {
       tester,
       Stream<ThermostatSummary?>.error(Exception('boom')),
     );
-    expect(find.textContaining('Failed to load alarm details'), findsOneWidget);
+    expect(find.textContaining('Something went wrong'), findsOneWidget);
   });
 
   testWidgets('surfaces snooze and silence status details', (tester) async {
@@ -142,13 +143,13 @@ void main() {
 
     expect(find.textContaining('Snoozed until'), findsOneWidget);
     expect(
-      find.text('Silenced until reading returns to range.'),
+      find.text('Silenced until the reading returns to range.'),
       findsOneWidget,
     );
-    // The "Silence until OK" action is disabled while already silenced.
+    // The silence action is disabled while already silenced.
     final silenceButton = tester.widget<OutlinedButton>(
       find.ancestor(
-        of: find.text('Silence until OK'),
+        of: find.text('Silence until back in range'),
         matching: find.byType(OutlinedButton),
       ),
     );

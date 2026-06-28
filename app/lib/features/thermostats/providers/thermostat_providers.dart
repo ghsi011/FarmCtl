@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../data/thermostat_client.dart';
 import '../data/thermostat_database.dart';
@@ -62,6 +63,13 @@ final thermostatSummaryProvider =
       final repository = ref.watch(thermostatRepositoryProvider);
       return repository.watchThermostat(thermostatId);
     });
+
+/// The history time-range currently selected for a thermostat. Shared so the
+/// detail page and the full-screen chart stay in sync in both directions.
+final selectedHistoryRangeProvider =
+    StateProvider.family<ThermostatHistoryRange, String>(
+      (ref, thermostatId) => ThermostatHistoryRange.day,
+    );
 
 final thermostatHistoryProvider =
     StreamProvider.family<

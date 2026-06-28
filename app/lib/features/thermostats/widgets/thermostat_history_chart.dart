@@ -11,19 +11,26 @@ class ThermostatHistoryChart extends StatelessWidget {
   const ThermostatHistoryChart({
     required this.samples,
     required this.range,
+    this.minC,
+    this.maxC,
     this.expand = false,
     super.key,
   });
 
   final List<TemperatureSample> samples;
   final ThermostatHistoryRange range;
+
+  /// The configured safe range; when provided, the chart draws threshold lines
+  /// and a shaded safe-zone band so excursions are obvious at a glance.
+  final double? minC;
+  final double? maxC;
   final bool expand;
 
   @override
   Widget build(BuildContext context) {
     if (samples.isEmpty) {
       return SizedBox(
-        height: 180,
+        height: 240,
         child: Center(
           child: Text(
             'No history available for this range yet.',
@@ -51,9 +58,31 @@ class ThermostatHistoryChart extends StatelessWidget {
     // Render continuous line; do not break segments (avoid visual gaps)
     final segmentedSpots = <List<FlSpot>>[spots];
 
-    final minY = sorted.map((s) => s.valueC).reduce(min);
-    final maxY = sorted.map((s) => s.valueC).reduce(max);
-    final padding = max(0.5, (maxY - minY).abs() * 0.1);
+    final scheme = Theme.of(context).colorScheme;
+    final dataMin = sorted.map((s) => s.valueC).reduce(min);
+    final dataMax = sorted.map((s) => s.valueC).reduce(max);
+    final padding = max(0.5, (dataMax - dataMin).abs() * 0.1);
+    final dataSpan = max(dataMax - dataMin, 0.5);
+
+    // Pull the safe-range bounds into view when they're close enough to the
+    // data that the trace's relationship to them matters — a very wide
+    // configured range must not squash the trace flat.
+    final lo = minC;
+    final hi = maxC;
+    var viewMin = dataMin - padding;
+    var viewMax = dataMax + padding;
+    if (lo != null &&
+        lo >= dataMin - dataSpan * 1.5 &&
+        lo - padding < viewMin) {
+      viewMin = lo - padding;
+    }
+    if (hi != null &&
+        hi <= dataMax + dataSpan * 1.5 &&
+        hi + padding > viewMax) {
+      viewMax = hi + padding;
+    }
+    final yInterval = _suggestedYInterval(viewMin, viewMax);
+    final tickDecimals = yInterval < 1 ? 1 : 0;
 
     final minX = spots.first.x;
     final maxX = spots.last.x;
@@ -63,16 +92,48 @@ class ThermostatHistoryChart extends StatelessWidget {
     final semanticsValue =
         'From ${semanticsFormatter.format(sorted.first.observedAt.toLocal())} '
         'to ${semanticsFormatter.format(sorted.last.observedAt.toLocal())}. '
-        'Temperatures ranged from ${minY.toStringAsFixed(1)} to '
-        '${maxY.toStringAsFixed(1)} degrees Celsius.';
+        'Temperatures ranged from ${dataMin.toStringAsFixed(1)} to '
+        '${dataMax.toStringAsFixed(1)} degrees Celsius.'
+        '${lo != null && hi != null ? ' Safe range ${lo.toStringAsFixed(1)} to ${hi.toStringAsFixed(1)} degrees Celsius.' : ''}';
+
+    HorizontalLine boundLine(double y, String label) => HorizontalLine(
+      y: y,
+      color: scheme.error.withValues(alpha: 0.7),
+      strokeWidth: 1.5,
+      dashArray: const [6, 4],
+      label: HorizontalLineLabel(
+        show: true,
+        alignment: Alignment.topRight,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: scheme.error),
+        labelResolver: (_) => label,
+      ),
+    );
 
     final chart = LineChart(
       LineChartData(
         minX: minX,
         maxX: maxX == minX ? maxX + 1 : maxX,
-        minY: minY - padding,
-        maxY: maxY + padding,
+        minY: viewMin,
+        maxY: viewMax,
         clipData: const FlClipData.all(),
+        rangeAnnotations: RangeAnnotations(
+          horizontalRangeAnnotations: [
+            if (lo != null && hi != null)
+              HorizontalRangeAnnotation(
+                y1: lo,
+                y2: hi,
+                color: scheme.primary.withValues(alpha: 0.06),
+              ),
+          ],
+        ),
+        extraLinesData: ExtraLinesData(
+          horizontalLines: [
+            if (lo != null) boundLine(lo, 'Min'),
+            if (hi != null) boundLine(hi, 'Max'),
+          ],
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(
             sideTitles: SideTitles(showTitles: false),
@@ -81,12 +142,19 @@ class ThermostatHistoryChart extends StatelessWidget {
             sideTitles: SideTitles(showTitles: false),
           ),
           leftTitles: AxisTitles(
+            axisNameSize: 18,
+            axisNameWidget: Text(
+              '°C',
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 48,
-              interval: _suggestedYInterval(minY, maxY),
+              reservedSize: 40,
+              interval: yInterval,
               getTitlesWidget: (value, meta) => Text(
-                value.toStringAsFixed(2),
+                value.toStringAsFixed(tickDecimals),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -113,19 +181,22 @@ class ThermostatHistoryChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: _suggestedYInterval(minY, maxY),
+          horizontalInterval: yInterval,
         ),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) =>
-                Theme.of(context).colorScheme.surfaceContainerHighest,
+            getTooltipColor: (_) => scheme.surfaceContainerHighest,
             getTooltipItems: (touchedSpots) {
               final formatter = _detailedFormatterForRange(range);
+              final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w600,
+              );
               return touchedSpots.map((spot) {
                 final timestamp = base.add(Duration(seconds: spot.x.toInt()));
                 return LineTooltipItem(
-                  '${spot.y.toStringAsFixed(2)}°C\n${formatter.format(timestamp.toLocal())}',
-                  Theme.of(context).textTheme.bodyMedium!,
+                  '${spot.y.toStringAsFixed(1)}°C\n${formatter.format(timestamp.toLocal())}',
+                  style ?? const TextStyle(),
                 );
               }).toList();
             },

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/history_range.dart';
 import '../models/temperature_sample.dart';
 import '../providers/thermostat_providers.dart';
+import '../widgets/history_range_selector.dart';
 import '../widgets/thermostat_history_chart.dart';
+import '../../../core/format/error_messages.dart';
 
 class ThermostatHistoryFullscreenPage extends ConsumerStatefulWidget {
   const ThermostatHistoryFullscreenPage({
@@ -24,22 +25,23 @@ class ThermostatHistoryFullscreenPage extends ConsumerStatefulWidget {
 
 class _ThermostatHistoryFullscreenPageState
     extends ConsumerState<ThermostatHistoryFullscreenPage> {
-  late ThermostatHistoryRange _range;
-
   @override
   void initState() {
     super.initState();
-    _range = widget.initialRange;
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // Honour a deep-linked range without forcing device orientation — the
+    // chart is responsive in both portrait and landscape.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref
+              .read(selectedHistoryRangeProvider(widget.thermostatId).notifier)
+              .state =
+          widget.initialRange;
+    });
   }
 
-  @override
-  void dispose() {
-    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-    super.dispose();
+  void _setRange(ThermostatHistoryRange range) {
+    ref.read(selectedHistoryRangeProvider(widget.thermostatId).notifier).state =
+        range;
   }
 
   Future<void> _refreshHistory() async {
@@ -62,10 +64,11 @@ class _ThermostatHistoryFullscreenPageState
     final summaryAsync = ref.watch(
       thermostatSummaryProvider(widget.thermostatId),
     );
+    final range = ref.watch(selectedHistoryRangeProvider(widget.thermostatId));
     final historyAsync = ref.watch(
       thermostatHistoryProvider((
         thermostatId: widget.thermostatId,
-        range: _range,
+        range: range,
       )),
     );
     final refreshAsync = ref.watch(
@@ -75,7 +78,8 @@ class _ThermostatHistoryFullscreenPageState
       )),
     );
 
-    final thermostatName = summaryAsync.asData?.value?.thermostat.name;
+    final thermostat = summaryAsync.asData?.value?.thermostat;
+    final thermostatName = thermostat?.name;
     final orientation = MediaQuery.of(context).orientation;
 
     return Scaffold(
@@ -98,11 +102,11 @@ class _ThermostatHistoryFullscreenPageState
                 constraints: const BoxConstraints(maxWidth: 140),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<ThermostatHistoryRange>(
-                    value: _range,
+                    value: range,
                     isExpanded: true,
                     onChanged: (value) {
                       if (value != null) {
-                        setState(() => _range = value);
+                        _setRange(value);
                       }
                     },
                     items: [
@@ -134,8 +138,10 @@ class _ThermostatHistoryFullscreenPageState
           builder: (context, orientation) {
             final chart = _HistoryChartPane(
               historyAsync: historyAsync,
-              refreshAsync: refreshAsync,
-              range: _range,
+              range: range,
+              minC: thermostat?.minC,
+              maxC: thermostat?.maxC,
+              onRetry: _refreshHistory,
               fullBleed: orientation == Orientation.landscape,
             );
 
@@ -144,10 +150,9 @@ class _ThermostatHistoryFullscreenPageState
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Controls moved to AppBar in landscape to maximise chart space
-                    Expanded(child: chart),
-                  ],
+                  // Range control lives in the AppBar in landscape to maximise
+                  // chart space.
+                  children: [Expanded(child: chart)],
                 ),
               );
             }
@@ -155,12 +160,15 @@ class _ThermostatHistoryFullscreenPageState
             return Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _HistoryControls(
-                    range: _range,
-                    onRangeChanged: (range) {
-                      setState(() => _range = range);
-                    },
+                  HistoryRangeSelector(range: range, onChanged: _setRange),
+                  const SizedBox(height: 4),
+                  Text(
+                    range.description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Expanded(child: chart),
@@ -174,101 +182,39 @@ class _ThermostatHistoryFullscreenPageState
   }
 }
 
-// Legacy landscape controls removed; controls now live in the AppBar.
-
-class _HistoryControls extends StatelessWidget {
-  const _HistoryControls({required this.range, required this.onRangeChanged});
-
-  final ThermostatHistoryRange range;
-  final ValueChanged<ThermostatHistoryRange> onRangeChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    // Compact, single-row controls to maximise vertical space for the chart
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Range',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<ThermostatHistoryRange>(
-                  value: range,
-                  isExpanded: true,
-                  onChanged: (value) {
-                    if (value != null) {
-                      onRangeChanged(value);
-                    }
-                  },
-                  items: [
-                    for (final option in ThermostatHistoryRange.values)
-                      DropdownMenuItem(
-                        value: option,
-                        child: Text(option.label),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          range.description,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _HistoryChartPane extends StatelessWidget {
   const _HistoryChartPane({
     required this.historyAsync,
-    required this.refreshAsync,
     required this.range,
+    required this.minC,
+    required this.maxC,
+    required this.onRetry,
     this.fullBleed = false,
   });
 
   final AsyncValue<List<TemperatureSample>> historyAsync;
-  final AsyncValue<void> refreshAsync;
   final ThermostatHistoryRange range;
+  final double? minC;
+  final double? maxC;
+  final VoidCallback onRetry;
   final bool fullBleed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final chartContent = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (refreshAsync.isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: historyAsync.when(
-              data: (samples) => ThermostatHistoryChart(
-                samples: samples,
-                range: range,
-                expand: true,
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _HistoryErrorView(error: error),
-            ),
-          ),
+    final chartContent = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: historyAsync.when(
+        data: (samples) => ThermostatHistoryChart(
+          samples: samples,
+          range: range,
+          minC: minC,
+          maxC: maxC,
+          expand: true,
         ),
-      ],
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => _HistoryErrorView(error: error, onRetry: onRetry),
+      ),
     );
 
     if (fullBleed) {
@@ -289,9 +235,10 @@ class _HistoryChartPane extends StatelessWidget {
 }
 
 class _HistoryErrorView extends StatelessWidget {
-  const _HistoryErrorView({required this.error});
+  const _HistoryErrorView({required this.error, required this.onRetry});
 
   final Object error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -303,17 +250,23 @@ class _HistoryErrorView extends StatelessWidget {
           Icon(Icons.error_outline, size: 40, color: theme.colorScheme.error),
           const SizedBox(height: 12),
           Text(
-            'Failed to load history.',
+            'Failed to load history',
             style: theme.textTheme.titleMedium,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
-            '$error',
+            humanizeError(error),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
           ),
         ],
       ),

@@ -118,6 +118,24 @@ class ThermostatRepository {
     });
   }
 
+  /// Re-inserts a previously deleted thermostat with its original identity so a
+  /// delete can be undone. Reading history and last state are not restored.
+  Future<void> restore(Thermostat thermostat) async {
+    await _database.upsertThermostat(
+      ThermostatEntriesCompanion(
+        id: drift.Value(thermostat.id),
+        name: drift.Value(thermostat.name),
+        rawUrl: drift.Value(thermostat.rawUrl),
+        minC: drift.Value(thermostat.minC),
+        maxC: drift.Value(thermostat.maxC),
+        hysteresisEnabled: drift.Value(thermostat.hysteresisEnabled),
+        monitoringEnabled: drift.Value(thermostat.monitoringEnabled),
+        createdAt: drift.Value(thermostat.createdAt),
+        updatedAt: drift.Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   Future<ThermostatState?> loadState(String id) async {
     final entry = await _database.getThermostatState(id);
     if (entry == null) {
