@@ -7,6 +7,10 @@ import 'package:path_provider/path_provider.dart';
 
 part 'thermostat_database.g.dart';
 
+// Drift table definitions are declarative schema consumed by the code generator.
+// At runtime Drift uses the generated `$...Table` classes, so these column
+// getters are never executed — exclude them from coverage like generated code.
+// coverage:ignore-start
 class ThermostatEntries extends Table {
   TextColumn get id => text()();
 
@@ -106,6 +110,7 @@ class TemperatureReadings extends Table {
   @override
   Set<Column>? get primaryKey => {id};
 }
+// coverage:ignore-end
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {

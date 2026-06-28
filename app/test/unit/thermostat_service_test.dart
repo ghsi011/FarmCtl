@@ -19,8 +19,11 @@ class _FakeNetworkDataSource implements ThermostatNetworkDataSource {
   List<GistCommit> commits = const [];
   Map<String, double> revisionValues = const {};
 
+  int fetchCurrentCalls = 0;
+
   @override
   Future<ThermostatFetchSuccess> fetchCurrent(String url) async {
+    fetchCurrentCalls++;
     final otherError = _otherError;
     if (otherError != null) {
       throw otherError;
@@ -139,32 +142,45 @@ void main() {
     expect(state.statusMessage, 'Fetched 9.00°C');
   });
 
-  test('createAndTest rejects an invalid draft before any network call', () {
-    expect(
-      () => service.createAndTest(
-        ThermostatDraft(name: '', rawUrl: 'short', minC: 30, maxC: 10),
-      ),
-      throwsA(isA<ThermostatValidationException>()),
-    );
-  });
+  test(
+    'createAndTest rejects an invalid draft before any network call',
+    () async {
+      await expectLater(
+        service.createAndTest(
+          ThermostatDraft(name: '', rawUrl: 'short', minC: 30, maxC: 10),
+        ),
+        throwsA(isA<ThermostatValidationException>()),
+      );
+      // Validation runs first, so the network is never hit and nothing is saved.
+      expect(network.fetchCurrentCalls, 0);
+      expect(await repository.fetchThermostats(), isEmpty);
+    },
+  );
 
-  test('updateAndTest rejects an invalid draft', () async {
-    final created = await service.createAndTest(
-      ThermostatDraft(
-        name: 'Barn',
-        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        minC: 0,
-        maxC: 20,
-      ),
-    );
-    expect(
-      () => service.updateAndTest(
-        created,
-        ThermostatDraft(name: '', rawUrl: 'bad', minC: 5, maxC: 1),
-      ),
-      throwsA(isA<ThermostatValidationException>()),
-    );
-  });
+  test(
+    'updateAndTest rejects an invalid draft without touching the network',
+    () async {
+      final created = await service.createAndTest(
+        ThermostatDraft(
+          name: 'Barn',
+          rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          minC: 0,
+          maxC: 20,
+        ),
+      );
+      final callsAfterCreate = network.fetchCurrentCalls;
+
+      await expectLater(
+        service.updateAndTest(
+          created,
+          ThermostatDraft(name: '', rawUrl: 'bad', minC: 5, maxC: 1),
+        ),
+        throwsA(isA<ThermostatValidationException>()),
+      );
+      // The invalid update short-circuits before any further network call.
+      expect(network.fetchCurrentCalls, callsAfterCreate);
+    },
+  );
 
   test('createAndTest flags a reading above the configured range', () async {
     network._result = ThermostatFetchSuccess(

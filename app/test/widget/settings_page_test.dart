@@ -56,6 +56,15 @@ void main() {
     expect(find.text('Boost volume'), findsOneWidget);
     expect(find.text('Test alarm'), findsOneWidget);
     expect(find.text('API configuration'), findsOneWidget);
+
+    // With no active pause window, Resume is disabled.
+    final resume = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Resume monitoring'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(resume.onPressed, isNull);
   });
 
   testWidgets('reflects the poll interval and an enabled exact-alarm switch', (

@@ -74,11 +74,13 @@ void main() {
 
     final samples = await readHistory(container, ThermostatHistoryRange.all);
 
-    expect(samples, isNotEmpty);
-    expect(samples, everyElement(isA<TemperatureSample>()));
-    // Downsampling may bucket/average, but every emitted value must stay within
-    // the seeded range and rows are ordered oldest-first.
-    expect(samples.every((s) => s.valueC >= 10 && s.valueC <= 14), isTrue);
+    // The 'all' range buckets by 120 minutes from the first sample, so the
+    // 10:00/11:00 readings merge (avg 11, aggregated) and 12:00 stands alone.
+    expect(samples, hasLength(2));
+    expect(samples.first.valueC, 11);
+    expect(samples.first.source, 'aggregated');
+    expect(samples.last.valueC, 14);
+    expect(samples.last.source, 'revision');
     expect(samples.first.observedAt.isBefore(samples.last.observedAt), isTrue);
   });
 
@@ -92,9 +94,9 @@ void main() {
 
     final samples = await readHistory(container, ThermostatHistoryRange.hour);
 
-    // Only the within-the-hour reading survives the window filter.
-    expect(samples, isNotEmpty);
-    expect(samples.every((s) => s.observedAt.isAfter(DateTime(2001))), isTrue);
-    expect(samples.any((s) => s.valueC == 1), isFalse);
+    // Only the within-the-hour reading survives the window filter; the year-2000
+    // reading is dropped before downsampling.
+    expect(samples, hasLength(1));
+    expect(samples.single.valueC, 18);
   });
 }
