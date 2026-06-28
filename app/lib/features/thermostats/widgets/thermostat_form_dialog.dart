@@ -4,13 +4,32 @@ import '../data/thermostat_client.dart';
 import '../models/thermostat.dart';
 
 class ThermostatFormDialog extends StatefulWidget {
-  const ThermostatFormDialog({required this.onSubmit, this.initial, super.key});
+  const ThermostatFormDialog({
+    required this.onSubmit,
+    this.onSaveWithoutTest,
+    this.initial,
+    super.key,
+  });
 
+  /// Tests the sensor connection and then saves.
   final Future<Thermostat> Function(ThermostatDraft draft) onSubmit;
+
+  /// Saves the configuration without contacting the sensor. Offered as a
+  /// fallback when the connection test fails (e.g. patchy signal) so setup
+  /// isn't blocked by a transient network problem.
+  final Future<Thermostat> Function(ThermostatDraft draft)? onSaveWithoutTest;
+
   final Thermostat? initial;
 
   @override
   State<ThermostatFormDialog> createState() => _ThermostatFormDialogState();
+}
+
+String _formatBound(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+  return value.toString(); // keeps minimal decimals, e.g. 4.5 not 4.50
 }
 
 class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
@@ -31,10 +50,10 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     _nameController = TextEditingController(text: initial?.name ?? '');
     _urlController = TextEditingController(text: initial?.rawUrl ?? '');
     _minController = TextEditingController(
-      text: initial != null ? initial.minC.toStringAsFixed(2) : '',
+      text: initial != null ? _formatBound(initial.minC) : '',
     );
     _maxController = TextEditingController(
-      text: initial != null ? initial.maxC.toStringAsFixed(2) : '',
+      text: initial != null ? _formatBound(initial.maxC) : '',
     );
   }
 
@@ -47,21 +66,21 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    FocusScope.of(context).unfocus();
+  /// Validates the current field values and returns a draft, or null after
+  /// setting the relevant inline errors. Always reads the live controllers so a
+  /// later "save without testing" can't persist a stale snapshot.
+  ThermostatDraft? _validatedDraft() {
     setState(() {
       _fieldErrors = {};
       _rangeError = null;
-      _submitError = null;
     });
 
     if (!_formKey.currentState!.validate()) {
-      return;
+      return null;
     }
 
     final minValue = double.tryParse(_minController.text.trim());
     final maxValue = double.tryParse(_maxController.text.trim());
-
     if (minValue == null || maxValue == null) {
       setState(() {
         if (minValue == null) {
@@ -77,7 +96,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
           };
         }
       });
-      return;
+      return null;
     }
 
     final draft = ThermostatDraft(
@@ -99,6 +118,19 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
         }
         _fieldErrors = map;
       });
+      return null;
+    }
+    return draft;
+  }
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _submitError = null;
+    });
+
+    final draft = _validatedDraft();
+    if (draft == null) {
       return;
     }
 
@@ -142,7 +174,40 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
         return;
       }
       setState(() {
-        _submitError = 'Failed to save thermostat: $error';
+        _submitError = 'Could not save. Please try again.';
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  Future<void> _saveWithoutTest() async {
+    final handler = widget.onSaveWithoutTest;
+    if (handler == null) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    // Re-read and re-validate so an edit made after the failed test is saved,
+    // not the snapshot captured when the test ran.
+    final draft = _validatedDraft();
+    if (draft == null) {
+      return;
+    }
+    setState(() {
+      _isSubmitting = true;
+      _submitError = null;
+    });
+    try {
+      final saved = await handler(draft);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(saved);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _submitError = 'Could not save. Please try again.';
         _isSubmitting = false;
       });
     }
@@ -151,6 +216,8 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.initial != null;
+    final canSaveWithoutTest =
+        _submitError != null && widget.onSaveWithoutTest != null;
     return AlertDialog(
       title: Text(isEditing ? 'Edit thermostat' : 'Add thermostat'),
       content: SingleChildScrollView(
@@ -161,6 +228,7 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
             children: [
               TextFormField(
                 controller: _nameController,
+                maxLength: 40,
                 decoration: InputDecoration(
                   labelText: 'Name',
                   errorText: _fieldErrors[ThermostatValidationField.name],
@@ -194,46 +262,64 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
               ),
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      controller: _minController,
-                      decoration: InputDecoration(
-                        labelText: 'Min °C',
-                        errorText: _fieldErrors[ThermostatValidationField.minC],
+                    child: Semantics(
+                      // The visible label "Min °C" is read as "Min degree C";
+                      // give screen readers the full spoken form.
+                      label: 'Minimum temperature in degrees Celsius',
+                      child: TextFormField(
+                        controller: _minController,
+                        decoration: InputDecoration(
+                          labelText: 'Min °C',
+                          helperText: 'e.g. 2',
+                          errorText:
+                              _fieldErrors[ThermostatValidationField.minC],
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        enabled: !_isSubmitting,
+                        validator: _numberValidator,
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      enabled: !_isSubmitting,
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: TextFormField(
-                      controller: _maxController,
-                      decoration: InputDecoration(
-                        labelText: 'Max °C',
-                        errorText: _fieldErrors[ThermostatValidationField.maxC],
+                    child: Semantics(
+                      label: 'Maximum temperature in degrees Celsius',
+                      child: TextFormField(
+                        controller: _maxController,
+                        decoration: InputDecoration(
+                          labelText: 'Max °C',
+                          helperText: 'e.g. 30',
+                          // The cross-field "min must be < max" error is anchored
+                          // to this field rather than floating below the row.
+                          errorText:
+                              _fieldErrors[ThermostatValidationField.maxC] ??
+                              _rangeError,
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        enabled: !_isSubmitting,
+                        validator: _numberValidator,
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      enabled: !_isSubmitting,
                     ),
                   ),
                 ],
               ),
-              if (_rangeError != null) ...[
-                const SizedBox(height: 8),
+              if (_isSubmitting) ...[
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    _rangeError!,
+                    'Testing connection…',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -259,6 +345,11 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
+        if (canSaveWithoutTest)
+          TextButton(
+            onPressed: _isSubmitting ? null : _saveWithoutTest,
+            child: const Text('Save without testing'),
+          ),
         FilledButton(
           onPressed: _isSubmitting ? null : _submit,
           child: _isSubmitting
@@ -271,5 +362,16 @@ class _ThermostatFormDialogState extends State<ThermostatFormDialog> {
         ),
       ],
     );
+  }
+
+  String? _numberValidator(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'Enter a number.';
+    }
+    if (double.tryParse(trimmed) == null) {
+      return 'Enter a number.';
+    }
+    return null;
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/features/settings/data/alert_config_repository.dart';
 import 'package:farmctl/features/settings/data/secure_token_store.dart';
+import 'package:farmctl/features/settings/models/alert_config.dart';
 import 'package:farmctl/features/settings/providers/settings_providers.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_client.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
@@ -104,6 +105,20 @@ Future<ThermostatDatabase> _pumpPage(
             tokenStore: _NoopTokenStore(),
           ),
         ),
+        // Plain stream for the pause banner avoids a Drift watch-stream timer.
+        alertConfigProvider.overrideWith(
+          (ref) => Stream.value(
+            const AlertConfig(
+              pollInterval: Duration(minutes: 5),
+              exactAlarmsEnabled: false,
+              soundUri: null,
+              vibrate: true,
+              volumeBoost: false,
+              pauseAllUntil: null,
+              githubToken: null,
+            ),
+          ),
+        ),
         thermostatsProvider.overrideWith((ref) => Stream.value(rendered)),
         offlineStatusProvider.overrideWithValue(OfflineStatus.online),
       ],
@@ -119,7 +134,9 @@ void main() {
     final db = await _pumpPage(tester, rendered: const []);
     expect(find.byType(ThermostatCard), findsNothing);
 
-    await tester.tap(find.text('Add thermostat'));
+    await tester.tap(
+      find.widgetWithText(FloatingActionButton, 'Add thermostat'),
+    );
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).at(0), 'Greenhouse');
@@ -129,7 +146,7 @@ void main() {
     await tester.tap(find.text('Test & Save'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Thermostat added.'), findsOneWidget);
+    expect(find.text('Thermostat added'), findsOneWidget);
     expect(await db.listThermostats(), hasLength(1));
   });
 
@@ -158,7 +175,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Thermostat deleted.'), findsOneWidget);
+    expect(find.text('Thermostat deleted'), findsOneWidget);
     expect(await db.getThermostat('t1'), isNull);
   });
 
@@ -186,7 +203,7 @@ void main() {
     await tester.tap(find.text('Test & Save'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Thermostat updated.'), findsOneWidget);
+    expect(find.text('Thermostat updated'), findsOneWidget);
     expect((await db.getThermostat('t1'))?.name, 'Polytunnel');
   });
 

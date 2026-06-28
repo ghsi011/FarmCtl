@@ -7,6 +7,8 @@ import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_form_dialog.dart';
+import '../../../core/background/thermostat_monitor.dart';
+import '../../../core/format/error_messages.dart';
 import '../../../core/router/app_router.dart';
 import '../../settings/providers/settings_providers.dart';
 
@@ -26,6 +28,8 @@ class ThermostatsPage extends ConsumerWidget {
             tokenOverride: config.githubToken,
           );
         },
+        onSaveWithoutTest: (draft) =>
+            ref.read(thermostatRepositoryProvider).create(draft),
       ),
     );
 
@@ -35,7 +39,7 @@ class ThermostatsPage extends ConsumerWidget {
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Thermostat added.')));
+    ).showSnackBar(const SnackBar(content: Text('Thermostat added')));
   }
 
   Future<void> _editThermostat(
@@ -58,6 +62,8 @@ class ThermostatsPage extends ConsumerWidget {
             tokenOverride: config.githubToken,
           );
         },
+        onSaveWithoutTest: (draft) =>
+            ref.read(thermostatRepositoryProvider).update(thermostat, draft),
       ),
     );
 
@@ -67,7 +73,7 @@ class ThermostatsPage extends ConsumerWidget {
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Thermostat updated.')));
+    ).showSnackBar(const SnackBar(content: Text('Thermostat updated')));
   }
 
   Future<void> _refreshThermostat(
@@ -88,19 +94,22 @@ class ThermostatsPage extends ConsumerWidget {
         ThermostatReadingStatus.ok => false,
         _ => true,
       };
+      final scheme = Theme.of(context).colorScheme;
       messenger.showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+          backgroundColor: isError ? scheme.error : null,
         ),
       );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
+      final scheme = Theme.of(context).colorScheme;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to refresh ${summary.thermostat.name}: $error'),
+          content: Text('${summary.thermostat.name}: ${humanizeError(error)}'),
+          backgroundColor: scheme.error,
         ),
       );
     }
@@ -115,6 +124,7 @@ class ThermostatsPage extends ConsumerWidget {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
         return AlertDialog(
           title: const Text('Delete thermostat'),
           content: Text('Delete "${thermostat.name}"?'),
@@ -124,6 +134,10 @@ class ThermostatsPage extends ConsumerWidget {
               child: const Text('Cancel'),
             ),
             FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
+              ),
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Delete'),
             ),
@@ -141,97 +155,146 @@ class ThermostatsPage extends ConsumerWidget {
     }
 
     final repository = ref.read(thermostatRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await repository.delete(thermostat.id);
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Thermostat deleted.')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Thermostat deleted'),
+          // Longer window than the 4s default: deletion drops reading history,
+          // so give the user time to notice and undo.
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              // Restores the configuration (reading history is not recovered).
+              try {
+                await repository.restore(thermostat);
+              } catch (_) {
+                // If the restore fails the row simply stays deleted.
+              }
+            },
+          ),
+        ),
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete thermostat: $error')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
+  }
+
+  Future<void> _resumeMonitoring(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(alertConfigRepositoryProvider).clearPause();
+      await initializeBackgroundMonitoring();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Monitoring resumed')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(humanizeError(error))));
+    }
+  }
+
+  Future<void> _refreshAll(WidgetRef ref, List<ThermostatSummary> items) async {
+    final service = ref.read(thermostatServiceProvider);
+    for (final summary in items) {
+      try {
+        await service.refresh(summary.thermostat);
+      } catch (_) {
+        // Per-thermostat failures are reflected in each card's status; the
+        // pull-to-refresh gesture shouldn't fail wholesale on one bad sensor.
+      }
+    }
+  }
+
+  Widget _buildGrid(
+    BuildContext context,
+    WidgetRef ref,
+    List<ThermostatSummary> thermostats,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = switch (width) {
+          >= 1200 => 3,
+          >= 760 => 2,
+          _ => 1,
+        };
+        final bottomPadding = MediaQuery.of(context).padding.bottom;
+        final padding = EdgeInsets.fromLTRB(16, 16, 16, 24 + bottomPadding);
+
+        ThermostatCard buildCard(ThermostatSummary summary) => ThermostatCard(
+          summary: summary,
+          onEdit: () => _editThermostat(context, ref, summary),
+          onDelete: () => _deleteThermostat(context, ref, summary),
+          onRefresh: () => _refreshThermostat(context, ref, summary),
+          onTap: () => context.pushNamed(
+            ThermostatDetailRoute.name,
+            pathParameters: {'id': summary.thermostat.id},
+          ),
+        );
+
+        if (crossAxisCount == 1) {
+          return ListView.separated(
+            padding: padding,
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: thermostats.length,
+            separatorBuilder: (context, _) => const SizedBox(height: 18),
+            itemBuilder: (context, index) => buildCard(thermostats[index]),
+          );
+        }
+
+        const spacing = 18.0;
+        // Height is driven by content (not a fixed aspect ratio) so cards don't
+        // overflow at large text scales.
+        return GridView.builder(
+          padding: padding,
+          primary: false,
+          physics: const AlwaysScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: width / crossAxisCount,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            mainAxisExtent: 280,
+          ),
+          itemCount: thermostats.length,
+          itemBuilder: (context, index) => buildCard(thermostats[index]),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncThermostats = ref.watch(thermostatsProvider);
     final offlineStatus = ref.watch(offlineStatusProvider);
+    final config = ref.watch(alertConfigProvider).asData?.value;
+    final now = DateTime.now().toUtc();
+    final pausedUntil = (config != null && config.isPaused(now))
+        ? config.pauseAllUntil
+        : null;
 
     final content = asyncThermostats.when(
       data: (thermostats) {
         if (thermostats.isEmpty) {
-          return const _EmptyState();
+          return _EmptyState(onAdd: () => _createThermostat(context, ref));
         }
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final crossAxisCount = switch (width) {
-              >= 1200 => 3,
-              >= 760 => 2,
-              _ => 1,
-            };
-            final bottomPadding = MediaQuery.of(context).padding.bottom;
-            final padding = EdgeInsets.fromLTRB(16, 16, 16, 24 + bottomPadding);
-
-            if (crossAxisCount == 1) {
-              return ListView.separated(
-                padding: padding,
-                itemCount: thermostats.length,
-                separatorBuilder: (context, _) => const SizedBox(height: 18),
-                itemBuilder: (context, index) {
-                  final summary = thermostats[index];
-                  return ThermostatCard(
-                    summary: summary,
-                    onEdit: () => _editThermostat(context, ref, summary),
-                    onDelete: () => _deleteThermostat(context, ref, summary),
-                    onRefresh: () => _refreshThermostat(context, ref, summary),
-                    onTap: () => context.pushNamed(
-                      ThermostatDetailRoute.name,
-                      pathParameters: {'id': summary.thermostat.id},
-                    ),
-                  );
-                },
-              );
-            }
-
-            const spacing = 18.0;
-            return GridView.builder(
-              padding: padding,
-              primary: false,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: spacing,
-                crossAxisSpacing: spacing,
-                childAspectRatio: 0.94,
-              ),
-              itemCount: thermostats.length,
-              itemBuilder: (context, index) {
-                final summary = thermostats[index];
-                return ThermostatCard(
-                  summary: summary,
-                  onEdit: () => _editThermostat(context, ref, summary),
-                  onDelete: () => _deleteThermostat(context, ref, summary),
-                  onRefresh: () => _refreshThermostat(context, ref, summary),
-                  onTap: () => context.pushNamed(
-                    ThermostatDetailRoute.name,
-                    pathParameters: {'id': summary.thermostat.id},
-                  ),
-                );
-              },
-            );
-          },
+        return RefreshIndicator(
+          onRefresh: () => _refreshAll(ref, thermostats),
+          child: _buildGrid(context, ref, thermostats),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) => _ErrorState(error: error),
+      error: (error, stackTrace) => _ErrorState(
+        error: error,
+        onRetry: () => ref.invalidate(thermostatsProvider),
+      ),
     );
 
     final showOfflineBanner =
@@ -243,6 +306,20 @@ class ThermostatsPage extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: pausedUntil != null
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _PauseBanner(
+                        resumesAt: pausedUntil,
+                        onResume: () => _resumeMonitoring(context, ref),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
               switchInCurve: Curves.easeOut,
@@ -267,6 +344,75 @@ class ThermostatsPage extends ConsumerWidget {
   }
 }
 
+class _PauseBanner extends StatelessWidget {
+  const _PauseBanner({required this.resumesAt, required this.onResume});
+
+  final DateTime resumesAt;
+  final VoidCallback onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final resumeTime = MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(resumesAt.toLocal()));
+    final message = 'Alarms are paused until $resumeTime.';
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: 'Monitoring paused',
+      value: message,
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.pause_circle_outline,
+                color: colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Monitoring paused',
+                      style: textTheme.titleSmall?.copyWith(
+                        color: colorScheme.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: onResume,
+                style: TextButton.styleFrom(
+                  foregroundColor: colorScheme.onErrorContainer,
+                ),
+                child: const Text('Resume'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner({required this.status});
 
@@ -277,26 +423,33 @@ class _OfflineBanner extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final (title, message, icon) = switch (status) {
+    final (title, message, icon, avatarColor, onAvatarColor) = switch (status) {
       OfflineStatus.offline => (
         'Offline mode',
         'FarmCtl is showing the last known readings until the connection returns.',
         Icons.cloud_off,
+        colorScheme.errorContainer,
+        colorScheme.onErrorContainer,
       ),
       OfflineStatus.degraded => (
         'Connectivity issues',
         'Some thermostats are unreachable and recent values may be stale.',
         Icons.cloud_queue,
+        colorScheme.tertiaryContainer,
+        colorScheme.onTertiaryContainer,
       ),
       _ => (
         'Connectivity notice',
         'Network status is unavailable.',
         Icons.cloud_queue,
+        colorScheme.tertiaryContainer,
+        colorScheme.onTertiaryContainer,
       ),
     };
 
     return Semantics(
       container: true,
+      liveRegion: true,
       label: title,
       value: message,
       child: Card(
@@ -308,8 +461,8 @@ class _OfflineBanner extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor: colorScheme.primaryContainer,
-                foregroundColor: colorScheme.onPrimaryContainer,
+                backgroundColor: avatarColor,
+                foregroundColor: onAvatarColor,
                 child: Icon(icon),
               ),
               const SizedBox(width: 16),
@@ -342,7 +495,9 @@ class _OfflineBanner extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.onAdd});
+
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -366,6 +521,12 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: textTheme.bodyMedium,
             ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: const Text('Add thermostat'),
+            ),
           ],
         ),
       ),
@@ -374,9 +535,10 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.error});
+  const _ErrorState({required this.error, required this.onRetry});
 
   final Object error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -390,14 +552,20 @@ class _ErrorState extends StatelessWidget {
             Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 12),
             Text(
-              'Failed to load thermostats.',
+              'Failed to load thermostats',
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             Text(
-              '$error',
+              humanizeError(error),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
             ),
           ],
         ),

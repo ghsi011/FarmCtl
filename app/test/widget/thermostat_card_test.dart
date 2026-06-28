@@ -94,8 +94,10 @@ void main() {
 
     expect(find.text('--°C'), findsOneWidget);
     expect(find.text('Awaiting first reading'), findsOneWidget);
-    expect(find.text('No successful readings yet.'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.textContaining('No successful readings'), findsOneWidget);
+    // Neutral, non-alarm status glyph while awaiting data.
+    expect(find.byIcon(Icons.hourglass_empty), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
   });
 
   testWidgets('shows the alert treatment when out of range', (tester) async {
@@ -109,27 +111,31 @@ void main() {
       ),
     );
 
-    expect(find.byIcon(Icons.warning_rounded), findsOneWidget);
+    // Out-of-range is the loud danger state with its own filled warning glyph.
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsNothing);
     expect(find.textContaining('Out of range'), findsWidgets);
   });
 
-  testWidgets('every error status renders as an alert', (tester) async {
-    for (final status in const [
-      ThermostatReadingStatus.networkError,
-      ThermostatReadingStatus.httpError,
-      ThermostatReadingStatus.parseError,
-      ThermostatReadingStatus.unknown,
-    ]) {
+  testWidgets('each status renders a distinct, non-ok glyph', (tester) async {
+    const expectedIcon = <ThermostatReadingStatus, IconData>{
+      ThermostatReadingStatus.networkError: Icons.cloud_off,
+      ThermostatReadingStatus.httpError: Icons.error_outline,
+      ThermostatReadingStatus.parseError: Icons.error_outline,
+      ThermostatReadingStatus.unknown: Icons.help_outline,
+    };
+    for (final entry in expectedIcon.entries) {
       await _pump(
         tester,
-        _summary(status: status, value: 12.0, fetchedAt: recent),
+        _summary(status: entry.key, value: 12.0, fetchedAt: recent),
       );
       expect(
-        find.byIcon(Icons.warning_rounded),
+        find.byIcon(entry.value),
         findsOneWidget,
-        reason: '$status should be an alert',
+        reason: '${entry.key} should show ${entry.value}',
       );
+      // A connectivity/server problem must NOT look like a healthy reading.
+      expect(find.byIcon(Icons.check_circle), findsNothing);
     }
   });
 

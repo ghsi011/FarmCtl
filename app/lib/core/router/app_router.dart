@@ -14,6 +14,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: ThermostatsRoute.path,
+    errorBuilder: (context, state) => const _RouteNotFoundPage(),
     routes: [
       GoRoute(
         path: AlarmRoute.path,
@@ -141,16 +142,11 @@ class ThermostatsRoute {
 class ThermostatDetailRoute {
   static const name = 'thermostat-detail';
   static const path = 'detail/:id';
-
-  static String pathFor(String thermostatId) => 'detail/$thermostatId';
 }
 
 class ThermostatHistoryFullscreenRoute {
   static const name = 'thermostat-history-fullscreen';
   static const path = 'history';
-
-  static String pathFor(String thermostatId) =>
-      '${ThermostatDetailRoute.pathFor(thermostatId)}/$path';
 }
 
 class SettingsRoute {
@@ -163,4 +159,52 @@ class AlarmRoute {
   static const path = '/alarm/:id';
 
   static String pathFor(String thermostatId) => '/alarm/$thermostatId';
+}
+
+/// Branded fallback for an unknown or malformed deep link (e.g. a stale
+/// notification payload) so the user lands somewhere recoverable.
+class _RouteNotFoundPage extends StatelessWidget {
+  const _RouteNotFoundPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Page not found')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.help_outline,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "This screen isn't available",
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The link may be outdated or the item was removed.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () => context.goNamed(ThermostatsRoute.name),
+                icon: const Icon(Icons.home_outlined),
+                label: const Text('Go to Thermostats'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

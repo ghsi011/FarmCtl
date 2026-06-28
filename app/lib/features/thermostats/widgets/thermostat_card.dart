@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/format/relative_time.dart';
+import '../../../core/format/semantics_text.dart';
 import '../models/thermostat_state.dart';
+import '../models/thermostat_status_presentation.dart';
 
 class ThermostatCard extends StatelessWidget {
   const ThermostatCard({
@@ -35,29 +38,37 @@ class ThermostatCard extends StatelessWidget {
         ? 'Current temperature'
         : 'Awaiting first reading';
 
-    final statusPresentation = _describeStatus(state);
-    final isAlert = statusPresentation.isError;
-    final highlightColor = isAlert
+    final statusPresentation = ThermostatStatusPresentation.fromState(state);
+    // Only an out-of-range *temperature* turns the hero panel red. Connectivity
+    // problems leave it neutral — the shown value is the last known-good one.
+    final isDanger = statusPresentation.isDanger;
+    final highlightColor = isDanger
         ? colorScheme.errorContainer
         : colorScheme.primaryContainer;
-    final highlightOnColor = isAlert
+    final highlightOnColor = isDanger
         ? colorScheme.onErrorContainer
         : colorScheme.onPrimaryContainer;
 
+    final now = DateTime.now().toUtc();
+    final lastFetchedAt = state?.lastFetchedAt;
+    final isStale =
+        lastFetchedAt != null &&
+        now.difference(lastFetchedAt) > const Duration(minutes: 30);
+
+    // Spoken status uses the short label word (not the detail line) so the
+    // temperature isn't read twice at two precisions.
     final semanticsValue = [
-      if (hasTemperature)
-        'Current ${_normalizeForSemantics(temperatureLabel)}.',
-      _normalizeForSemantics(statusPresentation.text),
+      if (hasTemperature) spokenText('Current $temperatureLabel.'),
+      'Status: ${statusPresentation.label}.',
       'Target range ${thermostat.minC.toStringAsFixed(1)} to '
           '${thermostat.maxC.toStringAsFixed(1)} degrees Celsius.',
     ].join(' ');
 
     return Semantics(
       container: true,
-      button: onTap != null,
+      explicitChildNodes: true,
       label: 'Thermostat ${thermostat.name}',
       value: semanticsValue,
-      hint: onTap != null ? 'Tap to open thermostat details.' : null,
       child: Card(
         child: InkWell(
           onTap: onTap,
@@ -176,12 +187,12 @@ class ThermostatCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (state?.lastFetchedAt != null)
+                        if (lastFetchedAt != null)
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                'Last update',
+                                isStale ? 'Last update (stale)' : 'Last update',
                                 style: textTheme.labelMedium?.copyWith(
                                   color: highlightOnColor.withValues(
                                     alpha: 0.72,
@@ -189,16 +200,27 @@ class ThermostatCard extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                _formatRelativeDuration(
-                                  DateTime.now().toUtc().difference(
-                                    state!.lastFetchedAt!,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isStale) ...[
+                                    Icon(
+                                      Icons.schedule,
+                                      size: 14,
+                                      color: highlightOnColor,
+                                    ),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Text(
+                                    formatRelativeDuration(
+                                      now.difference(lastFetchedAt),
+                                    ),
+                                    style: textTheme.bodyMedium?.copyWith(
+                                      color: highlightOnColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: highlightOnColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                ],
                               ),
                             ],
                           ),
@@ -208,31 +230,37 @@ class ThermostatCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _MetaChip(
-                      icon: Icons.straighten,
-                      label:
-                          '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
-                      supportingLabel: 'Target range',
-                    ),
-                    _MetaChip(
-                      icon: Icons.tag,
-                      label: thermostat.id,
-                      supportingLabel: 'Identifier',
-                    ),
-                    if (state?.statusMessage != null &&
-                        state!.statusMessage!.isNotEmpty)
+              // The chips (range, raw id, last message) and the status footer
+              // repeat what the card's Semantics `value` already announces, so
+              // exclude them to avoid a double read (and the raw id being spelled
+              // out letter by letter).
+              ExcludeSemantics(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
                       _MetaChip(
-                        icon: Icons.info_outline,
-                        label: state.statusMessage!,
-                        supportingLabel: 'Last message',
+                        icon: Icons.straighten,
+                        label:
+                            '${thermostat.minC.toStringAsFixed(1)}°C – ${thermostat.maxC.toStringAsFixed(1)}°C',
+                        supportingLabel: 'Target range',
                       ),
-                  ],
+                      _MetaChip(
+                        icon: Icons.tag,
+                        label: thermostat.id,
+                        supportingLabel: 'Identifier',
+                      ),
+                      if (state?.statusMessage != null &&
+                          state!.statusMessage!.isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.info_outline,
+                          label: state.statusMessage!,
+                          supportingLabel: 'Last message',
+                        ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -243,22 +271,29 @@ class ThermostatCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      statusPresentation.isError
-                          ? Icons.warning_rounded
-                          : Icons.check_circle,
+                      statusPresentation.icon,
                       size: 20,
-                      color: statusPresentation.isError
-                          ? colorScheme.error
-                          : colorScheme.primary,
+                      color: statusPresentation.color(colorScheme),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        statusPresentation.text,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: statusPresentation.isError
-                              ? colorScheme.error
-                              : colorScheme.onSurfaceVariant,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: statusPresentation.label,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: statusPresentation.color(colorScheme),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            TextSpan(
+                              text: '  ${statusPresentation.detail}',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -331,106 +366,4 @@ class _MetaChip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _StatusPresentation {
-  const _StatusPresentation({required this.text, required this.isError});
-
-  final String text;
-  final bool isError;
-}
-
-_StatusPresentation _describeStatus(ThermostatState? state) {
-  if (state == null || state.lastFetchedAt == null) {
-    return const _StatusPresentation(
-      text: 'No successful readings yet.',
-      isError: false,
-    );
-  }
-
-  final fetchedAt = state.lastFetchedAt!;
-  final value = state.lastValueC;
-  final status = state.status;
-  final message = state.statusMessage;
-  final now = DateTime.now().toUtc();
-  final difference = now.difference(fetchedAt);
-  final relative = _formatRelativeDuration(difference);
-
-  switch (status) {
-    case ThermostatReadingStatus.ok:
-      final base = value != null
-          ? '${value.toStringAsFixed(2)}°C • Updated $relative'
-          : 'Updated $relative';
-      final text = message != null && message.isNotEmpty
-          ? '$message • Updated $relative'
-          : base;
-      return _StatusPresentation(text: text, isError: false);
-    case ThermostatReadingStatus.networkError:
-      final base = (message != null && message.isNotEmpty)
-          ? message
-          : 'Last attempt failed: network error';
-      return _StatusPresentation(
-        text: '$base • Checked $relative',
-        isError: true,
-      );
-    case ThermostatReadingStatus.outOfRange:
-      final base = (message != null && message.isNotEmpty)
-          ? message
-          : 'Temperature outside configured range';
-      final text = value != null
-          ? '$base (${value.toStringAsFixed(2)}°C) • Updated $relative'
-          : '$base • Updated $relative';
-      return _StatusPresentation(text: text, isError: true);
-    case ThermostatReadingStatus.httpError:
-      final base = (message != null && message.isNotEmpty)
-          ? message
-          : 'Last attempt failed: server error';
-      return _StatusPresentation(
-        text: '$base • Checked $relative',
-        isError: true,
-      );
-    case ThermostatReadingStatus.parseError:
-      final base = (message != null && message.isNotEmpty)
-          ? message
-          : 'Last attempt failed: invalid payload';
-      return _StatusPresentation(
-        text: '$base • Checked $relative',
-        isError: true,
-      );
-    case ThermostatReadingStatus.unknown:
-      final text = (message != null && message.isNotEmpty)
-          ? '$message • Checked $relative'
-          : 'Last seen $relative';
-      return _StatusPresentation(text: text, isError: true);
-  }
-}
-
-String _formatRelativeDuration(Duration difference) {
-  final seconds = difference.inSeconds.abs();
-  if (seconds < 60) {
-    return 'just now';
-  }
-  final minutes = difference.inMinutes;
-  if (minutes.abs() < 60) {
-    final value = minutes.abs();
-    final unit = value == 1 ? 'min' : 'mins';
-    return '$value $unit ago';
-  }
-  final hours = difference.inHours;
-  if (hours.abs() < 24) {
-    final value = hours.abs();
-    final unit = value == 1 ? 'hour' : 'hours';
-    return '$value $unit ago';
-  }
-  final days = difference.inDays;
-  final unit = days.abs() == 1 ? 'day' : 'days';
-  return '${days.abs()} $unit ago';
-}
-
-String _normalizeForSemantics(String input) {
-  return input
-      .replaceAll('°C', ' degrees Celsius')
-      .replaceAll('•', '.')
-      .replaceAll('  ', ' ')
-      .trim();
 }

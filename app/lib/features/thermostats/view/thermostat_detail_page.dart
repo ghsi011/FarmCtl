@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/history_range.dart';
 import '../providers/thermostat_providers.dart';
+import '../widgets/history_range_selector.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_history_chart.dart';
+import '../../../core/format/error_messages.dart';
 import '../../../core/router/app_router.dart';
 
 class ThermostatDetailPage extends ConsumerStatefulWidget {
@@ -19,17 +20,25 @@ class ThermostatDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
-  ThermostatHistoryRange _range = ThermostatHistoryRange.day;
+  void _refreshHistory() {
+    ref.invalidate(
+      thermostatHistoryRefreshProvider((
+        thermostatId: widget.thermostatId,
+        prioritizeLastHour: true,
+      )),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final summaryAsync = ref.watch(
       thermostatSummaryProvider(widget.thermostatId),
     );
+    final range = ref.watch(selectedHistoryRangeProvider(widget.thermostatId));
     final historyAsync = ref.watch(
       thermostatHistoryProvider((
         thermostatId: widget.thermostatId,
-        range: _range,
+        range: range,
       )),
     );
     final refreshAsync = ref.watch(
@@ -40,37 +49,35 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
     );
 
     final title = summaryAsync.asData?.value?.thermostat.name ?? 'Thermostat';
+    // A missing thermostat (deleted/removed) has data that is explicitly null.
+    final isMissing = summaryAsync.hasValue && summaryAsync.value == null;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
-          IconButton(
-            onPressed: refreshAsync.isLoading
-                ? null
-                : () {
-                    ref.invalidate(
-                      thermostatHistoryRefreshProvider((
-                        thermostatId: widget.thermostatId,
-                        prioritizeLastHour: true,
-                      )),
-                    );
-                  },
-            icon: refreshAsync.isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: 'Refresh history',
-          ),
+          if (!isMissing)
+            IconButton(
+              onPressed: refreshAsync.isLoading ? null : _refreshHistory,
+              icon: refreshAsync.isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh history',
+            ),
         ],
       ),
       body: summaryAsync.when(
         data: (summary) {
           if (summary == null) {
-            return const _DetailNotFound();
+            return _DetailNotFound(
+              onBack: () => context.canPop()
+                  ? context.pop()
+                  : context.goNamed(ThermostatsRoute.name),
+            );
           }
           return RefreshIndicator(
             onRefresh: () async {
@@ -144,55 +151,46 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
                                       pathParameters: {
                                         'id': widget.thermostatId,
                                       },
-                                      queryParameters: {'range': _range.name},
+                                      queryParameters: {'range': range.name},
                                     );
                                   },
                                 ),
                               ],
                             ),
                             const SizedBox(height: 16),
-                            // Scrolls horizontally so the six segments don't
-                            // overflow on narrow phones or at large text scales.
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SegmentedButton<ThermostatHistoryRange>(
-                                showSelectedIcon: false,
-                                segments: [
-                                  for (final range
-                                      in ThermostatHistoryRange.values)
-                                    ButtonSegment(
-                                      value: range,
-                                      label: Text(range.label),
-                                      tooltip: range.description,
-                                    ),
-                                ],
-                                selected: {_range},
-                                onSelectionChanged: (selection) {
-                                  if (selection.isEmpty) {
-                                    return;
-                                  }
-                                  setState(() => _range = selection.first);
-                                },
-                              ),
+                            HistoryRangeSelector(
+                              range: range,
+                              onChanged: (value) =>
+                                  ref
+                                          .read(
+                                            selectedHistoryRangeProvider(
+                                              widget.thermostatId,
+                                            ).notifier,
+                                          )
+                                          .state =
+                                      value,
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 12),
-                      if (refreshAsync.isLoading)
-                        const LinearProgressIndicator(minHeight: 2),
                       Padding(
                         padding: const EdgeInsets.all(20),
                         child: historyAsync.when(
                           data: (samples) => ThermostatHistoryChart(
                             samples: samples,
-                            range: _range,
+                            range: range,
+                            minC: summary.thermostat.minC,
+                            maxC: summary.thermostat.maxC,
                           ),
                           loading: () => const SizedBox(
-                            height: 180,
+                            height: 240,
                             child: Center(child: CircularProgressIndicator()),
                           ),
-                          error: (error, _) => _HistoryError(error: error),
+                          error: (error, _) => _HistoryError(
+                            error: error,
+                            onRetry: _refreshHistory,
+                          ),
                         ),
                       ),
                     ],
@@ -229,12 +227,12 @@ class _DetailError extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Failed to load thermostat.',
+              'Failed to load thermostat',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             Text(
-              '$error',
+              humanizeError(error),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -248,7 +246,9 @@ class _DetailError extends StatelessWidget {
 }
 
 class _DetailNotFound extends StatelessWidget {
-  const _DetailNotFound();
+  const _DetailNotFound({required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +265,7 @@ class _DetailNotFound extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Thermostat not found.',
+              'Thermostat not found',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
@@ -276,6 +276,12 @@ class _DetailNotFound extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to thermostats'),
+            ),
           ],
         ),
       ),
@@ -284,9 +290,10 @@ class _DetailNotFound extends StatelessWidget {
 }
 
 class _HistoryError extends StatelessWidget {
-  const _HistoryError({required this.error});
+  const _HistoryError({required this.error, required this.onRetry});
 
   final Object error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -296,16 +303,22 @@ class _HistoryError extends StatelessWidget {
         Icon(Icons.history, color: Theme.of(context).colorScheme.error),
         const SizedBox(height: 8),
         Text(
-          'Unable to load history.',
+          'Unable to load history',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 4),
         Text(
-          '$error',
+          humanizeError(error),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Retry'),
         ),
       ],
     );

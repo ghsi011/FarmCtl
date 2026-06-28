@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/background/thermostat_monitor.dart';
+import '../../../core/format/error_messages.dart';
 import '../models/alert_config.dart';
 import '../providers/settings_providers.dart';
 import '../services/sound_picker.dart';
@@ -88,24 +89,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await initializeBackgroundMonitoring(
         pollFrequency: Duration(minutes: minutes),
       );
+      if (!mounted) return;
       final config = ref.read(alertConfigProvider).asData?.value;
-      if (config != null &&
+      final delayed =
+          config != null &&
           !config.exactAlarmsEnabled &&
-          minutes < _workManagerFloorMinutes &&
-          mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Intervals under 15 minutes may be delayed unless exact alarms are allowed.',
-            ),
+          minutes < _workManagerFloorMinutes;
+      final suffix = delayed
+          ? ' (about every 15 min without exact alarms)'
+          : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Checking every $minutes minute${minutes == 1 ? '' : 's'}$suffix',
           ),
-        );
-      }
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update poll interval: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     } finally {
       if (mounted) {
         setState(() {
@@ -147,9 +151,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update exact alarms: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -235,9 +239,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ref.read(alertConfigRepositoryProvider).setVibrate(value);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update vibrate setting: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -246,9 +250,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ref.read(alertConfigRepositoryProvider).setVolumeBoost(value);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update volume boost: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -257,15 +261,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ref.read(alertConfigRepositoryProvider).pauseFor(duration);
       await initializeBackgroundMonitoring();
       if (!mounted) return;
-      final formatted = _formatDuration(duration);
+      final resumeTime = MaterialLocalizations.of(
+        context,
+      ).formatTimeOfDay(TimeOfDay.fromDateTime(DateTime.now().add(duration)));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Monitoring paused for $formatted')),
+        SnackBar(content: Text('Monitoring paused until $resumeTime')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pause monitoring: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -279,9 +285,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ).showSnackBar(const SnackBar(content: Text('Monitoring resumed')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to resume monitoring: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -356,7 +362,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update sound: $error')));
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -388,18 +394,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update sound: $error')));
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
   Future<void> _testAlarm(AlertConfig config) async {
     try {
       await showTestAlarmNotification(config: config);
-    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to trigger test alarm: $error')),
+        const SnackBar(
+          content: Text('Test alarm sent — check your notifications'),
+        ),
       );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -414,7 +426,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to export logs: $error')));
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -433,13 +445,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save GitHub token: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
   Future<void> _testGithubToken() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Testing GitHub token…')),
+    );
     try {
       final config = await ref.read(alertConfigRepositoryProvider).loadConfig();
       final client = ThermostatHttpClient(githubToken: config.githubToken);
@@ -450,14 +466,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         client.close();
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to test GitHub token: $error')),
-      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 }
@@ -574,6 +590,8 @@ class _SettingsContentState extends State<_SettingsContent> {
                     divisions: 29,
                     value: sliderValue,
                     label: '${sliderValue.round()} min',
+                    semanticFormatterCallback: (value) =>
+                        '${value.round()} minutes',
                     onChanged: widget.onPollIntervalChanged,
                     onChangeEnd: widget.onPollIntervalChangeEnd,
                   ),
@@ -581,6 +599,30 @@ class _SettingsContentState extends State<_SettingsContent> {
                     '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
                     style: theme.textTheme.bodySmall,
                   ),
+                  if (sliderValue.round() < 15 &&
+                      !widget.config.exactAlarmsEnabled) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: theme.colorScheme.tertiary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Without exact alarms, checks actually run about '
+                            'every 15 minutes.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.tertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const Divider(),
                   const SizedBox(height: 20),
@@ -595,7 +637,7 @@ class _SettingsContentState extends State<_SettingsContent> {
                     onChanged: widget.onExactAlarmsChanged,
                     title: const Text('Allow exact alarms'),
                     subtitle: const Text(
-                      'FarmCtl may request the schedule exact alarm permission.',
+                      'Lets FarmCtl ask for permission to schedule precise alarms.',
                     ),
                     contentPadding: EdgeInsets.zero,
                     secondary: const Icon(Icons.alarm_on),
@@ -723,7 +765,9 @@ class _SettingsContentState extends State<_SettingsContent> {
                   const _SettingsTileHeader(
                     title: 'GitHub personal access token',
                     subtitle:
-                        'Optional token to increase API rate limits (60 → 5,000 requests/hour).',
+                        'Optional — most setups work without one. Add a token '
+                        'only if monitoring fails with rate-limit errors; it '
+                        'raises the GitHub limit from 60 to 5,000 requests/hour.',
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -767,7 +811,9 @@ class _SettingsContentState extends State<_SettingsContent> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Stored securely on-device and used only for GitHub API requests.',
+                    'Stored securely on-device and used only for GitHub API '
+                    'requests. Press Save to apply changes. Create a token at '
+                    'github.com/settings/tokens (no scopes required).',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -992,15 +1038,15 @@ class _ErrorContent extends StatelessWidget {
 String _formatDuration(Duration duration) {
   final hours = duration.inHours;
   final minutes = duration.inMinutes.remainder(60);
-  if (hours > 0 && minutes > 0) {
-    return '$hours h $minutes m';
-  }
+  final parts = <String>[];
   if (hours > 0) {
-    return '$hours hour${hours == 1 ? '' : 's'}';
+    parts.add('$hours hour${hours == 1 ? '' : 's'}');
   }
-  final mins = duration.inMinutes;
-  if (mins >= 1) {
-    return '$mins minute${mins == 1 ? '' : 's'}';
+  if (minutes > 0) {
+    parts.add('$minutes minute${minutes == 1 ? '' : 's'}');
+  }
+  if (parts.isNotEmpty) {
+    return parts.join(' ');
   }
   final seconds = duration.inSeconds;
   return '$seconds second${seconds == 1 ? '' : 's'}';

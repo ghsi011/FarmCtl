@@ -105,7 +105,7 @@ void main() {
   ) async {
     await _pump(tester, summary: null);
 
-    expect(find.text('Thermostat not found.'), findsOneWidget);
+    expect(find.text('Thermostat not found'), findsOneWidget);
     expect(find.byType(ThermostatCard), findsNothing);
   });
 
@@ -118,7 +118,7 @@ void main() {
       history: Stream<List<TemperatureSample>>.error(Exception('boom')),
     );
 
-    expect(find.text('Unable to load history.'), findsOneWidget);
+    expect(find.text('Unable to load history'), findsOneWidget);
   });
 
   testWidgets('switches the range and refreshes history', (tester) async {
