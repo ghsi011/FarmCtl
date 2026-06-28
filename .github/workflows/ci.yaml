@@ -56,9 +56,10 @@ jobs:
         run: flutter test --coverage
         working-directory: app
 
-      # Floor / regression guard, ratcheted up as coverage improves (toward 85%).
+      # Floor / regression guard (hand-written code only; generated *.g.dart /
+      # *.freezed.dart are excluded). Ratcheted up as coverage improves.
       - name: Enforce coverage threshold
-        run: bash tool/check_coverage.sh 31
+        run: bash tool/check_coverage.sh 60
 
       - name: Assemble debug APK
         run: flutter build apk --debug

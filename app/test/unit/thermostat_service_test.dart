@@ -195,6 +195,47 @@ void main() {
     },
   );
 
+  test('updateAndTest clears silence/snooze when back in range', () async {
+    final created = await service.createAndTest(
+      ThermostatDraft(
+        name: 'Vent',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+    // The thermostat is currently out of range, silenced and snoozed.
+    await repository.saveState(
+      thermostatId: created.id,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: 30,
+      fetchedAt: DateTime.utc(2025, 1, 1, 9),
+      etag: 'old',
+      message: 'Out of range',
+      setSilenceUntilOk: true,
+      silenceUntilOk: true,
+      setSnoozedUntil: true,
+      snoozedUntil: DateTime.utc(2025, 1, 1, 10),
+    );
+
+    // Edit it; the test fetch (14.2) is back inside the range.
+    await service.updateAndTest(
+      created,
+      ThermostatDraft(
+        name: 'Vent',
+        rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        minC: 10,
+        maxC: 20,
+      ),
+    );
+
+    final state = await repository.loadState(created.id);
+    expect(state!.status, ThermostatReadingStatus.ok);
+    // Suppression must be cleared so a future out-of-range still alarms.
+    expect(state.silenceUntilOk, isFalse);
+    expect(state.snoozedUntil, isNull);
+  });
+
   test('createAndTest rethrows fetch errors', () async {
     network._exception = const ThermostatFetchException(
       status: ThermostatReadingStatus.networkError,

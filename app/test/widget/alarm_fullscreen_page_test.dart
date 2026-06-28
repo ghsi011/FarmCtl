@@ -81,4 +81,77 @@ void main() {
       );
     },
   );
+
+  Future<void> pumpStream(
+    WidgetTester tester,
+    Stream<ThermostatSummary?> stream,
+  ) async {
+    tester.view.physicalSize = const Size(420, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          thermostatSummaryProvider(thermostatId).overrideWith((ref) => stream),
+        ],
+        child: const MaterialApp(
+          home: AlarmFullScreenPage(thermostatId: thermostatId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('shows a missing-thermostat message when the summary is null', (
+    tester,
+  ) async {
+    await pumpStream(tester, Stream<ThermostatSummary?>.value(null));
+    expect(find.text('Thermostat not found.'), findsOneWidget);
+  });
+
+  testWidgets('shows an error message when the summary stream fails', (
+    tester,
+  ) async {
+    await pumpStream(
+      tester,
+      Stream<ThermostatSummary?>.error(Exception('boom')),
+    );
+    expect(find.textContaining('Failed to load alarm details'), findsOneWidget);
+  });
+
+  testWidgets('surfaces snooze and silence status details', (tester) async {
+    final base = buildSummary();
+    final state = base.state!;
+    final snoozed = ThermostatSummary(
+      thermostat: base.thermostat,
+      state: ThermostatState(
+        thermostatId: state.thermostatId,
+        status: state.status,
+        lastValueC: state.lastValueC,
+        lastFetchedAt: state.lastFetchedAt,
+        statusMessage: state.statusMessage,
+        snoozedUntil: DateTime.utc(2030, 1, 1, 12),
+        silenceUntilOk: true,
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+      ),
+    );
+
+    await pumpStream(tester, Stream<ThermostatSummary?>.value(snoozed));
+
+    expect(find.textContaining('Snoozed until'), findsOneWidget);
+    expect(
+      find.text('Silenced until reading returns to range.'),
+      findsOneWidget,
+    );
+    // The "Silence until OK" action is disabled while already silenced.
+    final silenceButton = tester.widget<OutlinedButton>(
+      find.ancestor(
+        of: find.text('Silence until OK'),
+        matching: find.byType(OutlinedButton),
+      ),
+    );
+    expect(silenceButton.onPressed, isNull);
+  });
 }

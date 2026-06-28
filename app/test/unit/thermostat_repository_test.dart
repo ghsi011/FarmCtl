@@ -400,4 +400,51 @@ void main() {
       expect(state.lastAlarmAt, isNull);
     },
   );
+
+  test('findById, reading-time bounds and known revision ids', () async {
+    final thermostat = await repository.create(
+      ThermostatDraft(
+        name: 'History',
+        rawUrl: '77777777777777777777777777777777',
+        minC: 0,
+        maxC: 30,
+      ),
+    );
+
+    expect((await repository.findById(thermostat.id))?.id, thermostat.id);
+    expect(await repository.findById('does-not-exist'), isNull);
+
+    // No readings yet.
+    expect(await repository.getOldestReadingTime(thermostat.id), isNull);
+    expect(await repository.getNewestReadingTime(thermostat.id), isNull);
+    expect(await repository.listKnownRevisionIds(thermostat.id), isEmpty);
+
+    await repository.upsertHistory(
+      thermostatId: thermostat.id,
+      samples: [
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'r1',
+          valueC: 10,
+          observedAt: DateTime.utc(2025, 1, 1, 10),
+        ),
+        TemperatureSample.revision(
+          thermostatId: thermostat.id,
+          revisionId: 'r2',
+          valueC: 11,
+          observedAt: DateTime.utc(2025, 1, 1, 12),
+        ),
+      ],
+    );
+
+    final oldest = await repository.getOldestReadingTime(thermostat.id);
+    final newest = await repository.getNewestReadingTime(thermostat.id);
+    expect(oldest, isNotNull);
+    expect(newest, isNotNull);
+    expect(newest!.isAfter(oldest!), isTrue);
+    expect(
+      await repository.listKnownRevisionIds(thermostat.id),
+      containsAll(<String>['r1', 'r2']),
+    );
+  });
 }

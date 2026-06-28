@@ -467,4 +467,51 @@ void main() {
     expect(state.snoozedUntil, isNull);
     expect(alarms.triggered, contains('${thermostat.id}::4.0'));
   });
+
+  test(
+    'run does not poll or alarm a thermostat with monitoring disabled',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Disabled',
+          rawUrl: '99999999999999999999999999999999',
+          minC: 0,
+          maxC: 20,
+        ),
+      );
+      // Turn monitoring off for this thermostat.
+      await database.upsertThermostat(
+        ThermostatEntriesCompanion(
+          id: drift.Value(thermostat.id),
+          name: drift.Value(thermostat.name),
+          rawUrl: drift.Value(thermostat.rawUrl),
+          minC: drift.Value(thermostat.minC),
+          maxC: drift.Value(thermostat.maxC),
+          monitoringEnabled: const drift.Value(false),
+          createdAt: drift.Value(thermostat.createdAt),
+          updatedAt: drift.Value(thermostat.updatedAt),
+        ),
+      );
+
+      // An out-of-range value that WOULD alarm if the thermostat were monitored.
+      network._result = ThermostatFetchSuccess(
+        valueC: 99,
+        fetchedAt: DateTime.utc(2025, 1, 1, 12),
+        etag: 'etag-disabled',
+      );
+
+      final runner = ThermostatMonitorRunner(
+        repository: repository,
+        network: network,
+        alarmDispatcher: alarms,
+        clock: () => DateTime.utc(2025, 1, 1, 12),
+      );
+
+      await runner.run();
+
+      // It is skipped entirely: no reading is fetched/persisted and no alarm fires.
+      expect(await repository.loadState(thermostat.id), isNull);
+      expect(alarms.triggered, isEmpty);
+    },
+  );
 }

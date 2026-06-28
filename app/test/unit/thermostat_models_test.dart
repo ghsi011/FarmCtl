@@ -95,5 +95,24 @@ void main() {
       // copyWith cannot clear a nullable; withToken can.
       expect(base.withToken('ghp_x').withToken(null).githubToken, isNull);
     });
+
+    test('isPaused / remainingPause reflect the pause window', () {
+      final now = DateTime.utc(2025, 1, 1, 12);
+
+      expect(base.isPaused(now), isFalse);
+      expect(base.remainingPause(now), isNull);
+
+      final paused = base.copyWith(
+        pauseAllUntil: now.add(const Duration(hours: 2)),
+      );
+      expect(paused.isPaused(now), isTrue);
+      expect(paused.remainingPause(now), const Duration(hours: 2));
+
+      final expired = base.copyWith(
+        pauseAllUntil: now.subtract(const Duration(minutes: 1)),
+      );
+      expect(expired.isPaused(now), isFalse);
+      expect(expired.remainingPause(now), isNull);
+    });
   });
 }
