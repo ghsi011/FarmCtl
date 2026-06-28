@@ -142,8 +142,10 @@ void main() {
 
   test('upgrades v7 -> v8, consolidating duplicate alert_config rows', () async {
     final db = openDb();
-    // Simulate the pre-fix duplicate-row state: id=1 with defaults (no token),
-    // id=2 with a token and a custom poll interval. Then rewind to v7.
+    // Simulate the pre-fix duplicate-row state. id=1 is the LIVE row the app
+    // reads/writes (poll=5, exact alarms off, token already migrated to secure
+    // storage so the plaintext column is null); id=2 is a frozen leftover that
+    // still holds an old plaintext token and stale settings. Then rewind to v7.
     await db.customStatement(
       'INSERT INTO alert_config_entries '
       '(id, poll_interval_min, exact_alarms_enabled, sound_uri, vibrate, '
@@ -159,14 +161,17 @@ void main() {
     await db.customStatement('PRAGMA user_version = 7');
     await db.close();
 
-    // Re-open: onUpgrade(7 -> 8) collapses to a single row, keeping the
-    // token-bearing one (so its plaintext token can still be migrated).
+    // Re-open: onUpgrade(7 -> 8) collapses to a single row, keeping the LIVE
+    // (lowest-id) row's settings and merging the duplicate's token forward.
     final upgraded = openDb();
     final rows = await upgraded.select(upgraded.alertConfigEntries).get();
     expect(rows, hasLength(1));
     final config = await upgraded.getAlertConfig();
+    // Live settings survive (NOT the stale id=2 values 9 / true)...
+    expect(config.pollIntervalMin, 5);
+    expect(config.exactAlarmsEnabled, isFalse);
+    // ...and the only token (from the duplicate) is forward-filled.
     expect(config.githubToken, 'ghp_seed');
-    expect(config.pollIntervalMin, 9);
     await upgraded.close();
   });
 }
