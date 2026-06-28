@@ -120,4 +120,42 @@ void main() {
 
     expect(find.text('Unable to load history.'), findsOneWidget);
   });
+
+  testWidgets('switches the range and refreshes history', (tester) async {
+    tester.view.physicalSize = const Size(420, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var refreshCount = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          // Override the whole families so any selected range/refresh resolves.
+          thermostatSummaryProvider.overrideWith(
+            (ref, id) => Stream.value(_summary()),
+          ),
+          thermostatHistoryProvider.overrideWith(
+            (ref, args) => Stream.value(_samples()),
+          ),
+          thermostatHistoryRefreshProvider.overrideWith((ref, args) async {
+            refreshCount++;
+          }),
+        ],
+        child: const MaterialApp(home: ThermostatDetailPage(thermostatId: _id)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(refreshCount, 1);
+
+    // Switch from the default range to the 7-day range.
+    await tester.tap(find.text('7D'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ThermostatHistoryChart), findsOneWidget);
+
+    // Trigger the app-bar refresh action; it re-runs the refresh provider.
+    await tester.tap(find.byTooltip('Refresh history'));
+    await tester.pumpAndSettle();
+    expect(refreshCount, greaterThan(1));
+  });
 }

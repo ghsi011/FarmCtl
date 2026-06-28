@@ -139,6 +139,53 @@ void main() {
     expect(state.statusMessage, 'Fetched 9.00°C');
   });
 
+  test('createAndTest rejects an invalid draft before any network call', () {
+    expect(
+      () => service.createAndTest(
+        ThermostatDraft(name: '', rawUrl: 'short', minC: 30, maxC: 10),
+      ),
+      throwsA(isA<ThermostatValidationException>()),
+    );
+  });
+
+  test('updateAndTest rejects an invalid draft', () async {
+    final created = await service.createAndTest(
+      ThermostatDraft(
+        name: 'Barn',
+        rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        minC: 0,
+        maxC: 20,
+      ),
+    );
+    expect(
+      () => service.updateAndTest(
+        created,
+        ThermostatDraft(name: '', rawUrl: 'bad', minC: 5, maxC: 1),
+      ),
+      throwsA(isA<ThermostatValidationException>()),
+    );
+  });
+
+  test('createAndTest flags a reading above the configured range', () async {
+    network._result = ThermostatFetchSuccess(
+      valueC: 99.0,
+      fetchedAt: DateTime.utc(2025, 1, 1, 12),
+      etag: 'hot',
+    );
+    final created = await service.createAndTest(
+      ThermostatDraft(
+        name: 'Freezer',
+        rawUrl: 'ffffffffffffffffffffffffffffffff',
+        minC: -20,
+        maxC: 0,
+      ),
+    );
+
+    final state = await repository.loadState(created.id);
+    expect(state!.status, ThermostatReadingStatus.outOfRange);
+    expect(state.lastValueC, 99.0);
+  });
+
   test(
     'updateAndTest keeps out-of-range when the new range excludes the value',
     () async {

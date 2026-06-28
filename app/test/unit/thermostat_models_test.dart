@@ -40,6 +40,41 @@ void main() {
     expect(state() == state(value: 13.0), isFalse);
   });
 
+  test('ThermostatState.copyWith overrides only the given fields', () {
+    final original = state();
+    final copy = original.copyWith(
+      status: ThermostatReadingStatus.outOfRange,
+      lastValueC: 25.0,
+      silenceUntilOk: true,
+    );
+
+    expect(copy.status, ThermostatReadingStatus.outOfRange);
+    expect(copy.lastValueC, 25.0);
+    expect(copy.silenceUntilOk, isTrue);
+    // Untouched fields are preserved from the original.
+    expect(copy.thermostatId, original.thermostatId);
+    expect(copy.createdAt, original.createdAt);
+  });
+
+  test('ThermostatReadingStatusX.fromName maps names and unknowns', () {
+    expect(
+      ThermostatReadingStatusX.fromName('outOfRange'),
+      ThermostatReadingStatus.outOfRange,
+    );
+    expect(
+      ThermostatReadingStatusX.fromName(null),
+      ThermostatReadingStatus.unknown,
+    );
+    expect(
+      ThermostatReadingStatusX.fromName(''),
+      ThermostatReadingStatus.unknown,
+    );
+    expect(
+      ThermostatReadingStatusX.fromName('not-a-real-status'),
+      ThermostatReadingStatus.unknown,
+    );
+  });
+
   test('ThermostatSummary has value equality', () {
     final a = ThermostatSummary(thermostat: thermostat(), state: state());
     final b = ThermostatSummary(thermostat: thermostat(), state: state());
