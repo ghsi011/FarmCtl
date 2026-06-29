@@ -7,6 +7,7 @@ import '../data/thermostat_repository.dart';
 import '../data/thermostat_service.dart';
 import '../models/history_range.dart';
 import '../models/temperature_sample.dart';
+import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import '../utils/thermostat_history_downsampler.dart';
 import '../../settings/providers/settings_providers.dart';
@@ -124,6 +125,38 @@ final thermostatHistoryRefreshProvider = FutureProvider.autoDispose
       // Stamp only after a successful refresh so a failed/cancelled one does not
       // throttle the user's immediate retry for the next 10s.
       registry.lastRun[args.thermostatId] = now;
+    });
+
+/// Signature for refreshing a single thermostat's current reading.
+typedef ThermostatRefreshAction = Future<void> Function(Thermostat thermostat);
+
+/// Re-fetches the current reading for every [thermostats] entry, swallowing
+/// per-thermostat failures so one unreachable sensor doesn't abort the batch
+/// (each card surfaces its own error status). Shared by pull-to-refresh and the
+/// automatic foreground refresh so the two paths stay in lock-step.
+Future<void> refreshAllThermostats(
+  List<ThermostatSummary> thermostats,
+  ThermostatRefreshAction refresh,
+) async {
+  for (final summary in thermostats) {
+    try {
+      await refresh(summary.thermostat);
+    } catch (_) {
+      // Surfaced per-card; keep going so one bad sensor can't abort the sweep.
+    }
+  }
+}
+
+/// Sweeps the current reading for the supplied thermostats via the live
+/// [ThermostatService]. Exposed as a provider so foreground callers (the
+/// on-resume refresher) get a single overridable seam in tests.
+final thermostatBatchRefreshProvider =
+    Provider<Future<void> Function(List<ThermostatSummary>)>((ref) {
+      final service = ref.watch(thermostatServiceProvider);
+      return (thermostats) => refreshAllThermostats(
+        thermostats,
+        (thermostat) => service.refresh(thermostat),
+      );
     });
 
 enum OfflineStatus { online, degraded, offline, unknown }
