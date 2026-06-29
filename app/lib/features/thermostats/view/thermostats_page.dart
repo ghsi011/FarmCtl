@@ -203,14 +203,10 @@ class ThermostatsPage extends ConsumerWidget {
 
   Future<void> _refreshAll(WidgetRef ref, List<ThermostatSummary> items) async {
     final service = ref.read(thermostatServiceProvider);
-    for (final summary in items) {
-      try {
-        await service.refresh(summary.thermostat);
-      } catch (_) {
-        // Per-thermostat failures are reflected in each card's status; the
-        // pull-to-refresh gesture shouldn't fail wholesale on one bad sensor.
-      }
-    }
+    await refreshAllThermostats(
+      items,
+      (thermostat) => service.refresh(thermostat),
+    );
   }
 
   Widget _buildGrid(

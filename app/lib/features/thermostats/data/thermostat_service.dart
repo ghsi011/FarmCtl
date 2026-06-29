@@ -1,5 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import '../../../core/background/thermostat_monitor.dart'
+    show cancelAlarmNotification;
 import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
@@ -116,6 +118,9 @@ class ThermostatService {
       setSilenceUntilOk: previousState?.silenceUntilOk == true,
       silenceUntilOk: false,
     );
+    // Editing a thermostat to an in-range value should also drop any alarm
+    // notification left over from a prior out-of-range condition.
+    await cancelAlarmNotification(thermostat.id);
   }
 
   Future<ThermostatRefreshResult> refresh(Thermostat thermostat) async {
@@ -163,6 +168,11 @@ class ThermostatService {
         setSilenceUntilOk: hadSilence,
         silenceUntilOk: false,
       );
+      // Mirror the background monitor's OK path: an in-range reading clears any
+      // alarm notification still showing for this thermostat. Without this, a
+      // foreground refresh (e.g. on app open after recovery) would mark the card
+      // OK while leaving the ongoing alarm up until the next background tick.
+      await cancelAlarmNotification(thermostat.id);
       return ThermostatRefreshResult(
         status: ThermostatReadingStatus.ok,
         message: message,

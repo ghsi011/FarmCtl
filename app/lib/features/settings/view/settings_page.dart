@@ -42,6 +42,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onExactAlarmsChanged: (value) {
               _setExactAlarmsEnabled(value);
             },
+            onRequestBatteryExemption: _requestIgnoreBatteryOptimizations,
             onVibrateChanged: (value) {
               _setVibrateEnabled(value);
             },
@@ -154,6 +155,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
+    }
+  }
+
+  /// Requests the OS exemption from battery optimisation (Doze / app standby),
+  /// which is what lets the WorkManager + AlarmManager checks keep firing while
+  /// the app is in the background instead of being deferred for hours.
+  Future<void> _requestIgnoreBatteryOptimizations() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      var status = await Permission.ignoreBatteryOptimizations.status;
+      if (status.isGranted) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Background activity is already allowed.'),
+          ),
+        );
+        return;
+      }
+
+      status = await Permission.ignoreBatteryOptimizations.request();
+      if (!mounted) return;
+
+      if (status.isGranted) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Background activity allowed. Monitoring can run reliably while '
+              'the app is closed.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Background activity not allowed. Checks may be delayed by battery '
+            'optimisation.',
+          ),
+          action: SnackBarAction(
+            label: 'Open settings',
+            onPressed: openAppSettings,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
   }
 
@@ -485,6 +540,7 @@ class _SettingsContent extends StatefulWidget {
     required this.onPollIntervalChanged,
     required this.onPollIntervalChangeEnd,
     required this.onExactAlarmsChanged,
+    required this.onRequestBatteryExemption,
     required this.onVibrateChanged,
     required this.onVolumeBoostChanged,
     required this.onPauseFor,
@@ -502,6 +558,7 @@ class _SettingsContent extends StatefulWidget {
   final ValueChanged<double> onPollIntervalChanged;
   final ValueChanged<double> onPollIntervalChangeEnd;
   final ValueChanged<bool> onExactAlarmsChanged;
+  final Future<void> Function() onRequestBatteryExemption;
   final ValueChanged<bool> onVibrateChanged;
   final ValueChanged<bool> onVolumeBoostChanged;
   final ValueChanged<Duration> onPauseFor;
@@ -642,6 +699,21 @@ class _SettingsContentState extends State<_SettingsContent> {
                     contentPadding: EdgeInsets.zero,
                     secondary: const Icon(Icons.alarm_on),
                   ),
+                  if (!kIsWeb && Platform.isAndroid) ...[
+                    const SizedBox(height: 20),
+                    const Divider(),
+                    const SizedBox(height: 20),
+                    const _SettingsTileHeader(
+                      title: 'Background activity',
+                      subtitle:
+                          'Exempt FarmCtl from battery optimisation so checks '
+                          'keep running while the app is closed.',
+                    ),
+                    const SizedBox(height: 12),
+                    _BatteryOptimizationTile(
+                      onRequest: widget.onRequestBatteryExemption,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -975,6 +1047,79 @@ class _SettingsTileHeader extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Shows whether FarmCtl is currently exempt from battery optimisation and lets
+/// the user request the exemption. Loads its own live status so it reflects the
+/// grant immediately after the system dialog returns. Only rendered on Android.
+class _BatteryOptimizationTile extends StatefulWidget {
+  const _BatteryOptimizationTile({required this.onRequest});
+
+  final Future<void> Function() onRequest;
+
+  @override
+  State<_BatteryOptimizationTile> createState() =>
+      _BatteryOptimizationTileState();
+}
+
+class _BatteryOptimizationTileState extends State<_BatteryOptimizationTile> {
+  bool? _granted;
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    // Re-read on resume so the tile reflects a grant made from the system
+    // Settings app (via the "Open settings" fallback) once the user returns.
+    _lifecycleListener = AppLifecycleListener(onResume: _loadStatus);
+    _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStatus() async {
+    final status = await Permission.ignoreBatteryOptimizations.status;
+    if (mounted) {
+      setState(() => _granted = status.isGranted);
+    }
+  }
+
+  Future<void> _handleRequest() async {
+    await widget.onRequest();
+    // Re-read so the tile reflects the new state once the system dialog closes.
+    await _loadStatus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_granted == true) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.check_circle, color: theme.colorScheme.primary),
+        title: const Text('Background activity allowed'),
+        subtitle: const Text('FarmCtl is exempt from battery optimisation.'),
+      );
+    }
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.battery_saver),
+      title: const Text('Allow background activity'),
+      subtitle: const Text(
+        'Recommended so background checks are not delayed while the app is '
+        'closed.',
+      ),
+      trailing: FilledButton.tonal(
+        onPressed: _handleRequest,
+        child: const Text('Allow'),
+      ),
     );
   }
 }
