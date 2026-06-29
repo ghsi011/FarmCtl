@@ -62,7 +62,7 @@ class _ForegroundRefresherState extends ConsumerState<ForegroundRefresher> {
     if (_refreshing) {
       return;
     }
-    final thermostats = ref.read(thermostatsProvider).valueOrNull;
+    final thermostats = ref.read(thermostatsProvider).asData?.value;
     if (thermostats == null || thermostats.isEmpty) {
       return;
     }
@@ -91,7 +91,7 @@ class _ForegroundRefresherState extends ConsumerState<ForegroundRefresher> {
       if (_initialRefreshDone) {
         return;
       }
-      final thermostats = next.valueOrNull;
+      final thermostats = next.asData?.value;
       if (thermostats != null && thermostats.isNotEmpty) {
         _initialRefreshDone = true;
         _refreshAll();
