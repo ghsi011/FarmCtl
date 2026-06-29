@@ -1066,11 +1066,21 @@ class _BatteryOptimizationTile extends StatefulWidget {
 
 class _BatteryOptimizationTileState extends State<_BatteryOptimizationTile> {
   bool? _granted;
+  late final AppLifecycleListener _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
+    // Re-read on resume so the tile reflects a grant made from the system
+    // Settings app (via the "Open settings" fallback) once the user returns.
+    _lifecycleListener = AppLifecycleListener(onResume: _loadStatus);
     _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStatus() async {

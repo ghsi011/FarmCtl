@@ -35,19 +35,23 @@ class _ForegroundRefresherState extends ConsumerState<ForegroundRefresher> {
   late final AppLifecycleListener _lifecycleListener;
   DateTime? _lastRefreshAt;
   bool _refreshing = false;
-  bool _initialRefreshDone = false;
+  // A launch/resume wants a refresh, but the thermostat list may not have
+  // resolved yet. We latch the intent here and let the `ref.listen` in build
+  // fulfil it once data arrives, so a launch/resume during a loading window is
+  // never silently dropped. Cleared once a refresh actually runs (or is
+  // satisfied by the throttle).
+  bool _refreshPending = false;
 
   @override
   void initState() {
     super.initState();
-    _lifecycleListener = AppLifecycleListener(onResume: _refreshAll);
-    // Cold launch: the thermostat list is usually still loading on the first
-    // frame, so the real kick happens from the `ref.listen` in build once data
-    // arrives. This post-frame attempt covers the case where rows are already
-    // cached and resolve synchronously.
+    _lifecycleListener = AppLifecycleListener(onResume: _requestRefresh);
+    // Cold launch: the list is usually still loading on the first frame, so this
+    // marks the intent and the `ref.listen` below runs it once data arrives. If
+    // rows are already cached it refreshes synchronously here.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _refreshAll();
+        _requestRefresh();
       }
     });
   }
@@ -58,21 +62,32 @@ class _ForegroundRefresherState extends ConsumerState<ForegroundRefresher> {
     super.dispose();
   }
 
+  /// Marks a refresh as wanted and attempts it immediately. If the thermostat
+  /// list hasn't resolved yet the request stays pending (see [_refreshPending]).
+  void _requestRefresh() {
+    _refreshPending = true;
+    _refreshAll();
+  }
+
   Future<void> _refreshAll() async {
     if (_refreshing) {
       return;
     }
     final thermostats = ref.read(thermostatsProvider).asData?.value;
     if (thermostats == null || thermostats.isEmpty) {
+      // No data to refresh yet; keep the request pending for the listener.
       return;
     }
 
     final now = ref.read(nowProvider)();
     final last = _lastRefreshAt;
     if (last != null && now.difference(last) < widget.minInterval) {
+      // Refreshed recently enough; the request is considered satisfied.
+      _refreshPending = false;
       return;
     }
 
+    _refreshPending = false;
     _refreshing = true;
     _lastRefreshAt = now;
     try {
@@ -84,16 +99,11 @@ class _ForegroundRefresherState extends ConsumerState<ForegroundRefresher> {
 
   @override
   Widget build(BuildContext context) {
-    // Cold launch: kick a refresh the first time the list resolves to a
-    // non-empty value, then leave subsequent refreshes to the lifecycle resume
-    // handler so we don't re-fetch on every DB write.
+    // Fulfil a pending launch/resume refresh the moment the list resolves to a
+    // non-empty value. Gated on `_refreshPending` so we don't re-fetch on every
+    // DB write — only when a launch/resume is actually waiting on data.
     ref.listen(thermostatsProvider, (_, next) {
-      if (_initialRefreshDone) {
-        return;
-      }
-      final thermostats = next.asData?.value;
-      if (thermostats != null && thermostats.isNotEmpty) {
-        _initialRefreshDone = true;
+      if (_refreshPending && (next.asData?.value.isNotEmpty ?? false)) {
         _refreshAll();
       }
     });
