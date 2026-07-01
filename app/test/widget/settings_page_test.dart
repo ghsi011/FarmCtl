@@ -8,14 +8,12 @@ import 'package:farmctl/features/settings/view/settings_page.dart';
 
 AlertConfig _config({
   Duration interval = const Duration(minutes: 5),
-  bool exact = false,
   String? sound,
   DateTime? pauseUntil,
   String? token,
 }) {
   return AlertConfig(
     pollInterval: interval,
-    exactAlarmsEnabled: exact,
     soundUri: sound,
     vibrate: true,
     volumeBoost: false,
@@ -48,7 +46,6 @@ void main() {
 
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Poll interval'), findsOneWidget);
-    expect(find.text('Allow exact alarms'), findsOneWidget);
     expect(find.text('Pause monitoring'), findsOneWidget);
     expect(find.text('Resume monitoring'), findsOneWidget);
     expect(find.text('Alarm sound'), findsOneWidget);
@@ -67,22 +64,10 @@ void main() {
     expect(resume.onPressed, isNull);
   });
 
-  testWidgets('reflects the poll interval and an enabled exact-alarm switch', (
-    tester,
-  ) async {
-    await _pumpData(
-      tester,
-      _config(interval: const Duration(minutes: 12), exact: true),
-    );
+  testWidgets('reflects the configured poll interval', (tester) async {
+    await _pumpData(tester, _config(interval: const Duration(minutes: 12)));
 
     expect(find.text('12 minutes'), findsOneWidget);
-    final exactSwitch = tester.widget<SwitchListTile>(
-      find.ancestor(
-        of: find.text('Allow exact alarms'),
-        matching: find.byType(SwitchListTile),
-      ),
-    );
-    expect(exactSwitch.value, isTrue);
   });
 
   testWidgets('enables Resume only while a pause window is active', (

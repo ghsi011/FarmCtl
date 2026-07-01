@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:workmanager/workmanager.dart';
@@ -21,17 +22,16 @@ import '../../features/thermostats/models/thermostat_state.dart';
 import '../router/app_router.dart';
 import '../router/router_keys.dart';
 
-const String thermostatMonitorTask = 'thermostat_monitor_task';
-const String thermostatMonitorUniqueName = 'thermostat_monitor_periodic';
+// WorkManager now only restarts the foreground service if it's dead — it
+// never performs the monitor run itself (see `_runWatchdogTask`).
+const String thermostatWatchdogTask = 'thermostat_watchdog_task';
+const String thermostatWatchdogUniqueName = 'thermostat_monitor_periodic';
 
-const AndroidNotificationChannel _monitoringChannel =
-    AndroidNotificationChannel(
-      'farmctl_monitoring',
-      'Thermostat monitoring',
-      description:
-          'Shows when FarmCtl is checking thermostats in the background.',
-      importance: Importance.low,
-    );
+const String _monitoringChannelId = 'farmctl_monitoring';
+const String _monitoringChannelName = 'Thermostat monitoring';
+const String _monitoringChannelDescription =
+    'Shows when FarmCtl is checking thermostats in the background.';
+const int _foregroundServiceId = 256;
 
 const String _alarmChannelPrefix = 'farmctl_alarm';
 const String _alarmChannelName = 'Thermostat alarms';
@@ -39,142 +39,132 @@ const String _alarmChannelDescription =
     'Alerts when a thermostat leaves the configured range.';
 const String _defaultAlarmSoundUri = 'content://settings/system/alarm_alert';
 
-const int _monitoringNotificationId = 1001;
 const int _alarmNotificationBaseId = 4000;
-const Duration _minimumFrequency = Duration(minutes: 15);
-const int _alarmRequestId = 5001;
 
-// Collapses the near-simultaneous WorkManager + AlarmManager fires (which land
-// within a few seconds of each other) into a single monitor run. Kept short so
-// it stays below both the 60s+ gap between legitimate consecutive runs AND the
-// WorkManager retry backoff — otherwise a failed run's own retry could be
-// debounced away (the run-start stamp is written before the run and persists on
-// failure).
+// WorkManager can't run more often than every 15 minutes; the watchdog only
+// needs to notice a dead foreground service, not track the user's poll
+// interval, so it always uses the platform floor.
+const Duration _watchdogFrequency = Duration(minutes: 15);
+
+// Secondary safety net behind the in-isolate `_monitorRunInProgress` lock (see
+// below): collapses a near-simultaneous onStart + onRepeatEvent fire into a
+// single monitor run if they ever reach the DB check before the lock is set.
+// Kept well short of the 60s+ gap between legitimate consecutive runs.
 const Duration _monitorRunDebounce = Duration(seconds: 10);
 
-// Used to keep the one-shot alarm chain alive when the real config can't be
-// loaded (e.g. a transient DB/secure-storage failure), so polling doesn't
-// silently drop to the WorkManager floor.
-const AlertConfig _fallbackConfig = AlertConfig(
-  pollInterval: Duration(minutes: 5),
-  exactAlarmsEnabled: false,
-  soundUri: null,
-  vibrate: true,
-  volumeBoost: false,
-  pauseAllUntil: null,
-  githubToken: null,
-);
+bool get _supportsForegroundService => !kIsWeb && Platform.isAndroid;
 
-bool _alarmManagerInitialized = false;
+/// Converts [pollInterval] to milliseconds for the foreground service's
+/// `onRepeatEvent` cadence, clamped to a defensive floor so a corrupt/zero
+/// config value can't spin the repeat loop unreasonably fast. Pure for
+/// testability.
+int pollIntervalMillis(
+  Duration pollInterval, {
+  Duration minimum = const Duration(seconds: 30),
+}) {
+  final effective = pollInterval < minimum ? minimum : pollInterval;
+  return effective.inMilliseconds;
+}
 
-bool get _supportsAlarmScheduling => !kIsWeb && Platform.isAndroid;
+ForegroundTaskOptions _foregroundTaskOptions(Duration pollInterval) {
+  return ForegroundTaskOptions(
+    eventAction: ForegroundTaskEventAction.repeat(
+      pollIntervalMillis(pollInterval),
+    ),
+    autoRunOnBoot: true,
+    autoRunOnMyPackageReplaced: true,
+    allowWakeLock: true,
+  );
+}
 
-Future<void> _ensureAlarmManagerInitialized() async {
-  if (!_supportsAlarmScheduling) {
-    return;
+/// Starts (or reconfigures) the foreground service that drives every monitor
+/// run. Unlike the old WorkManager+AlarmManager pair, a live foreground
+/// service is exempt from Doze/App Standby deferral, so this is the single
+/// source of truth for polling cadence — no exact-alarm permission needed.
+///
+/// Returns whether the service is confirmed running/updated, so a caller like
+/// the watchdog can propagate a failure instead of reporting success for a
+/// service that never actually started.
+Future<bool> _ensureForegroundServiceRunning(Duration pollInterval) async {
+  if (!_supportsForegroundService) {
+    return true;
   }
-  if (_alarmManagerInitialized) {
-    return;
-  }
+
   try {
-    final initialized = await AndroidAlarmManager.initialize();
-    if (initialized) {
-      _alarmManagerInitialized = true;
-    } else {
-      debugPrint('AndroidAlarmManager.initialize returned false');
+    final running = await FlutterForegroundTask.isRunningService;
+    if (running) {
+      final result = await FlutterForegroundTask.updateService(
+        foregroundTaskOptions: _foregroundTaskOptions(pollInterval),
+      );
+      if (result is ServiceRequestFailure) {
+        debugPrint('Failed to update monitoring service: ${result.error}');
+        return false;
+      }
+      return true;
     }
+
+    // init() populates isolate-local static config that startService() reads
+    // (updateService() doesn't need it — it's a self-contained call), so it
+    // only needs to run on this, the cold-start, path.
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: _monitoringChannelId,
+        channelName: _monitoringChannelName,
+        channelDescription: _monitoringChannelDescription,
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: false,
+        playSound: false,
+      ),
+      foregroundTaskOptions: _foregroundTaskOptions(pollInterval),
+    );
+
+    final result = await FlutterForegroundTask.startService(
+      serviceId: _foregroundServiceId,
+      serviceTypes: const [ForegroundServiceTypes.specialUse],
+      notificationTitle: 'FarmCtl monitoring',
+      notificationText: 'Monitoring active',
+      callback: thermostatForegroundTaskCallback,
+    );
+    if (result is ServiceRequestFailure) {
+      debugPrint('Failed to start monitoring service: ${result.error}');
+      return false;
+    }
+    return true;
   } catch (error, stackTrace) {
-    debugPrint('Failed to initialize AndroidAlarmManager: $error');
-    debugPrint('$stackTrace');
-  }
-}
-
-/// The next time (UTC) the monitor should run: `now + pollInterval`, deferred to
-/// the end of an active pause. Returns null when the interval is non-positive
-/// (monitoring effectively off). Pure so the polling cadence is unit-testable.
-DateTime? nextMonitorRunUtc(AlertConfig config, DateTime nowUtc) {
-  final interval = config.pollInterval;
-  if (interval <= Duration.zero) {
-    return null;
-  }
-
-  var target = nowUtc.add(interval);
-  final pauseUntil = config.pauseAllUntil;
-  if (pauseUntil != null && pauseUntil.isAfter(target)) {
-    target = pauseUntil;
-  }
-
-  return target;
-}
-
-/// The effective WorkManager periodic frequency: the configured interval clamped
-/// up to the 15-minute platform minimum. Pure for testability.
-Duration effectiveMonitorFrequency(Duration configuredInterval) {
-  return configuredInterval < _minimumFrequency
-      ? _minimumFrequency
-      : configuredInterval;
-}
-
-DateTime? _computeNextAlarmTime(AlertConfig config, DateTime nowUtc) {
-  return nextMonitorRunUtc(config, nowUtc)?.toLocal();
-}
-
-Future<void> _updateAlarmSchedule(AlertConfig config, {DateTime? now}) async {
-  if (!_supportsAlarmScheduling) {
-    return;
-  }
-
-  await _ensureAlarmManagerInitialized();
-  if (!_alarmManagerInitialized) {
-    return;
-  }
-
-  final nowUtc = (now ?? DateTime.now()).toUtc();
-  final nextRun = _computeNextAlarmTime(config, nowUtc);
-  if (nextRun == null) {
-    await AndroidAlarmManager.cancel(_alarmRequestId);
-    return;
-  }
-
-  final useExact = config.exactAlarmsEnabled;
-  var scheduled = await _scheduleMonitorOneShot(nextRun, exact: useExact);
-  if (!scheduled && useExact) {
-    // Exact scheduling throws if SCHEDULE_EXACT_ALARM was revoked since the user
-    // enabled it. Downgrade to a flexible alarm so checks keep happening rather
-    // than silently breaking the one-shot chain.
-    debugPrint(
-      'Exact alarm scheduling failed; falling back to a flexible alarm.',
-    );
-    scheduled = await _scheduleMonitorOneShot(nextRun, exact: false);
-  }
-  if (!scheduled) {
-    debugPrint('Unable to schedule the next monitor alarm.');
-  }
-}
-
-Future<bool> _scheduleMonitorOneShot(
-  DateTime nextRun, {
-  required bool exact,
-}) async {
-  try {
-    // oneShotAt returns false if scheduling was refused without throwing; honour
-    // it so the exact -> flexible downgrade still triggers in that case.
-    return await AndroidAlarmManager.oneShotAt(
-      nextRun,
-      _alarmRequestId,
-      thermostatAlarmCallback,
-      allowWhileIdle: true,
-      exact: exact,
-      wakeup: true,
-      rescheduleOnReboot: true,
-    );
-  } catch (error, stackTrace) {
-    debugPrint(
-      'Failed to schedule ${exact ? 'exact' : 'flexible'} alarm: $error',
-    );
+    debugPrint('Failed to ensure monitoring service is running: $error');
     debugPrint('$stackTrace');
     return false;
   }
+}
+
+/// Entry point run in the foreground service's own isolate; must be a
+/// top-level function per the flutter_foreground_task contract.
+@pragma('vm:entry-point')
+void thermostatForegroundTaskCallback() {
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
+  FlutterForegroundTask.setTaskHandler(_ThermostatMonitorTaskHandler());
+}
+
+class _ThermostatMonitorTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // Check immediately on start (fresh install, reboot, or a watchdog
+    // restart) rather than waiting a full poll interval for the first read.
+    unawaited(_runMonitorTask());
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {
+    unawaited(_runMonitorTask());
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
 }
 
 const String _snooze5ActionId = 'alarm_snooze_5';
@@ -219,27 +209,21 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
 
   final configuredInterval =
       pollFrequency ?? config?.pollInterval ?? const Duration(minutes: 5);
-  final effectiveFrequency = effectiveMonitorFrequency(configuredInterval);
 
+  // The foreground service is the single source of truth for polling cadence.
+  await _ensureForegroundServiceRunning(configuredInterval);
+
+  // WorkManager is demoted to a watchdog: it only restarts the foreground
+  // service if the OS killed the whole app process, never runs the monitor
+  // itself, so it can't double-poll alongside the live service.
   await Workmanager().initialize(thermostatMonitorCallbackDispatcher);
   await Workmanager().registerPeriodicTask(
-    thermostatMonitorUniqueName,
-    thermostatMonitorTask,
-    frequency: effectiveFrequency,
+    thermostatWatchdogUniqueName,
+    thermostatWatchdogTask,
+    frequency: _watchdogFrequency,
     existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     constraints: Constraints(networkType: NetworkType.connected),
   );
-
-  if (config != null) {
-    final schedulingConfig = pollFrequency != null
-        ? config.copyWith(pollInterval: pollFrequency)
-        : config;
-    await _updateAlarmSchedule(schedulingConfig);
-  }
-
-  // Keep a persistent low-priority notification visible between runs so the
-  // user knows monitoring is active.
-  await _showMonitoringActiveNotification(notifications);
 }
 
 // Entry point used by the Android BootCompletedReceiver to restore scheduling
@@ -261,13 +245,53 @@ void thermostatMonitorCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     // Returning false on failure lets WorkManager retry with backoff instead of
     // waiting a full period after a transient error.
-    return _runMonitorTask();
+    return _runWatchdogTask();
   });
 }
 
-@pragma('vm:entry-point')
-Future<void> thermostatAlarmCallback() async {
-  await _runMonitorTask();
+/// Restarts the foreground service if it isn't running. Does not fetch or
+/// write thermostat data itself — the live service already handles that.
+///
+/// Not redundant with the plugin's own `allowAutoRestart`/`autoRunOnBoot`:
+/// those recover from the OS killing the *service* (or a device reboot), but
+/// not from an OEM battery manager killing the whole app *process* outside
+/// of a device reboot — which is the actual Pixel 9 failure mode this file
+/// was reworked for. WorkManager's periodic work is OS-scheduled
+/// (JobScheduler-backed) independent of the app process being alive, so it
+/// still fires and can relaunch a fresh process. (A user-initiated "Force
+/// stop" is the one thing nothing here can survive — Android deliberately
+/// suspends all of an app's scheduled work, including WorkManager, until the
+/// user manually reopens it.)
+Future<bool> _runWatchdogTask() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ui.DartPluginRegistrant.ensureInitialized();
+
+  if (!_supportsForegroundService) {
+    return true;
+  }
+
+  try {
+    if (await FlutterForegroundTask.isRunningService) {
+      return true;
+    }
+
+    debugPrint('Watchdog: monitoring service is not running; restarting.');
+    final database = ThermostatDatabase();
+    AlertConfig? config;
+    try {
+      config = await AlertConfigRepository(database).loadConfig();
+    } finally {
+      await database.close();
+    }
+
+    // Propagate a failed restart so WorkManager retries with backoff instead
+    // of waiting the full 15-minute watchdog period while monitoring is dead.
+    return await _ensureForegroundServiceRunning(config.pollInterval);
+  } catch (error, stackTrace) {
+    debugPrint('Watchdog failed to restart monitoring service: $error');
+    debugPrint('$stackTrace');
+    return false;
+  }
 }
 
 /// Whether a monitor run that observed [lastRunStartedAt] should be skipped
@@ -284,7 +308,29 @@ bool shouldSkipMonitorRun({
   return elapsed >= Duration.zero && elapsed < debounce;
 }
 
+// Guards against onStart and onRepeatEvent (the only two callers, both in the
+// foreground service's own isolate) interleaving at an `await` inside a run:
+// the DB-backed shouldSkipMonitorRun check is check-then-write across two
+// separate awaits, so two calls that both reach it before either has written
+// lastMonitorRunAt would both proceed. This flag's check-and-set is
+// synchronous (no await in between), so within a single isolate it can't race
+// the same way.
+bool _monitorRunInProgress = false;
+
 Future<bool> _runMonitorTask() async {
+  if (_monitorRunInProgress) {
+    debugPrint('Skipping monitor run; one is already in progress.');
+    return true;
+  }
+  _monitorRunInProgress = true;
+  try {
+    return await _runMonitorTaskLocked();
+  } finally {
+    _monitorRunInProgress = false;
+  }
+}
+
+Future<bool> _runMonitorTaskLocked() async {
   WidgetsFlutterBinding.ensureInitialized();
   ui.DartPluginRegistrant.ensureInitialized();
 
@@ -304,24 +350,18 @@ Future<bool> _runMonitorTask() async {
   if (config == null) {
     debugPrint('Alert config unavailable; skipping monitor run.');
     await database.close();
-    // Keep the one-shot alarm chain alive at a safe default cadence so polling
-    // doesn't silently drop to the WorkManager floor while the config is
-    // transiently unreadable.
-    await _updateAlarmSchedule(_fallbackConfig);
-    // Treat a failed config load as a failure so WorkManager retries.
     return false;
   }
 
   final now = DateTime.now().toUtc();
 
-  // Debounce the overlapping WorkManager + AlarmManager triggers into a single
+  // Debounce the overlapping onStart + onRepeatEvent triggers into a single
   // run rather than fetching and writing the same rows twice.
   if (shouldSkipMonitorRun(
     lastRunStartedAt: config.lastMonitorRunAt,
     now: now,
   )) {
     debugPrint('Skipping monitor run; another run started recently.');
-    await _updateAlarmSchedule(config, now: now);
     await database.close();
     return true;
   }
@@ -334,12 +374,6 @@ Future<bool> _runMonitorTask() async {
     debugPrint('$stackTrace');
   }
 
-  // Show a transient notification while the check is running.
-  await _showMonitoringNotification(notifications);
-
-  // Reschedule from the freshest config so a pollInterval / pause change made
-  // during this (possibly multi-second) run is honored by the next wakeup.
-  var scheduleConfig = config;
   var success = true;
   try {
     final alertConfig = config; // promote to non-null for closures
@@ -371,23 +405,14 @@ Future<bool> _runMonitorTask() async {
       debugPrint('Retention pruning failed in background: $error');
       debugPrint('$stackTrace');
     }
-
-    try {
-      scheduleConfig = AlertConfig.fromEntry(await database.getAlertConfig());
-    } catch (_) {
-      // Keep the run-start config if the re-read fails.
-    }
   } catch (error, stackTrace) {
     success = false;
     debugPrint('Thermostat monitor failed: $error');
     debugPrint('$stackTrace');
   } finally {
-    // Switch back to the persistent monitoring indicator when the run ends.
-    await _showMonitoringActiveNotification(notifications);
     await database.close();
   }
 
-  await _updateAlarmSchedule(scheduleConfig, now: now);
   return success;
 }
 
@@ -716,7 +741,9 @@ Future<void> _initializeNotifications(
       .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin
       >();
-  await androidPlugin?.createNotificationChannel(_monitoringChannel);
+  // The persistent "monitoring active" notification/channel is owned by the
+  // foreground service (flutter_foreground_task) now; only the alarm channels
+  // are created here.
   final soundUris = <String?>{null};
   final customSound = config?.soundUri;
   if (customSound != null && customSound.isNotEmpty) {
@@ -728,62 +755,13 @@ Future<void> _initializeNotifications(
   }
 }
 
-Future<void> _showMonitoringNotification(
-  FlutterLocalNotificationsPlugin plugin,
-) {
-  return plugin.show(
-    _monitoringNotificationId,
-    'FarmCtl monitoring',
-    'Checking thermostats…',
-    NotificationDetails(
-      android: AndroidNotificationDetails(
-        _monitoringChannel.id,
-        _monitoringChannel.name,
-        channelDescription: _monitoringChannel.description,
-        importance: Importance.low,
-        priority: Priority.low,
-        ongoing: true,
-        showWhen: false,
-        playSound: false,
-        enableVibration: false,
-      ),
-    ),
-  );
-}
-
-Future<void> _showMonitoringActiveNotification(
-  FlutterLocalNotificationsPlugin plugin,
-) {
-  return plugin.show(
-    _monitoringNotificationId,
-    'FarmCtl monitoring',
-    'Monitoring active',
-    NotificationDetails(
-      android: AndroidNotificationDetails(
-        _monitoringChannel.id,
-        _monitoringChannel.name,
-        channelDescription: _monitoringChannel.description,
-        importance: Importance.low,
-        priority: Priority.low,
-        // Make this notification non-dismissible by swipe
-        autoCancel: false,
-        ongoing: true,
-        category: AndroidNotificationCategory.service,
-        showWhen: false,
-        playSound: false,
-        enableVibration: false,
-      ),
-    ),
-  );
-}
-
 /// Routes a cold-launch alarm-notification tap to the alarm screen.
 ///
 /// `onDidReceiveNotificationResponse` only fires while the Dart isolate is
 /// alive, so a tap that *launches* the app from a terminated state is delivered
 /// only via the launch details. Call this once during app startup.
 Future<void> handleNotificationLaunch() async {
-  if (!_supportsAlarmScheduling) {
+  if (!_supportsForegroundService) {
     return;
   }
   try {

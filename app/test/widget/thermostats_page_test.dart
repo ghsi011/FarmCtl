@@ -12,7 +12,6 @@ import 'package:farmctl/features/thermostats/widgets/thermostat_card.dart';
 
 const _defaultConfig = AlertConfig(
   pollInterval: Duration(minutes: 5),
-  exactAlarmsEnabled: false,
   soundUri: null,
   vibrate: true,
   volumeBoost: false,
@@ -154,7 +153,6 @@ void main() {
       thermostats: Stream.value([_summary('t1', 'Greenhouse')]),
       config: AlertConfig(
         pollInterval: const Duration(minutes: 5),
-        exactAlarmsEnabled: false,
         soundUri: null,
         vibrate: true,
         volumeBoost: false,

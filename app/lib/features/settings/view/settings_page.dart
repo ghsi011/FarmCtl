@@ -22,7 +22,6 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  static const int _workManagerFloorMinutes = 15;
   double? _pollIntervalOverride;
 
   @override
@@ -38,9 +37,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPollIntervalChanged: _handlePollIntervalChanged,
             onPollIntervalChangeEnd: (value) {
               _commitPollInterval(value);
-            },
-            onExactAlarmsChanged: (value) {
-              _setExactAlarmsEnabled(value);
             },
             onRequestBatteryExemption: _requestIgnoreBatteryOptimizations,
             onVibrateChanged: (value) {
@@ -91,18 +87,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         pollFrequency: Duration(minutes: minutes),
       );
       if (!mounted) return;
-      final config = ref.read(alertConfigProvider).asData?.value;
-      final delayed =
-          config != null &&
-          !config.exactAlarmsEnabled &&
-          minutes < _workManagerFloorMinutes;
-      final suffix = delayed
-          ? ' (about every 15 min without exact alarms)'
-          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Checking every $minutes minute${minutes == 1 ? '' : 's'}$suffix',
+            'Checking every $minutes minute${minutes == 1 ? '' : 's'}',
           ),
         ),
       );
@@ -120,47 +108,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  Future<void> _setExactAlarmsEnabled(bool value) async {
-    final repository = ref.read(alertConfigRepositoryProvider);
-    try {
-      if (value) {
-        final granted = await _ensureExactAlarmPermission();
-        if (!granted) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Exact alarm permission is required to enable precise scheduling.',
-              ),
-            ),
-          );
-          return;
-        }
-      }
-
-      await repository.setExactAlarmsEnabled(value);
-      await initializeBackgroundMonitoring();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            value
-                ? 'Exact alarms enabled. Monitoring will use precise scheduling.'
-                : 'Exact alarms disabled. Monitoring falls back to flexible scheduling.',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
-    }
-  }
-
-  /// Requests the OS exemption from battery optimisation (Doze / app standby),
-  /// which is what lets the WorkManager + AlarmManager checks keep firing while
-  /// the app is in the background instead of being deferred for hours.
+  /// Requests the OS exemption from battery optimisation (Doze / app standby).
+  /// The foreground service is itself exempt from deferral while running, but
+  /// this still helps the OS start/keep it alive promptly (e.g. after boot).
   Future<void> _requestIgnoreBatteryOptimizations() async {
     if (kIsWeb || !Platform.isAndroid) {
       return;
@@ -210,83 +160,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(humanizeError(error))));
     }
-  }
-
-  Future<bool> _ensureExactAlarmPermission() async {
-    if (kIsWeb || !Platform.isAndroid) {
-      return true;
-    }
-
-    var status = await Permission.scheduleExactAlarm.status;
-    if (status.isGranted) {
-      return true;
-    }
-
-    if (!mounted) {
-      return false;
-    }
-
-    final shouldRequest =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Allow exact alarms'),
-            content: const Text(
-              'FarmCtl needs the exact alarm permission to wake reliably when the device is idle.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Not now'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Continue'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (!shouldRequest) {
-      return false;
-    }
-
-    status = await Permission.scheduleExactAlarm.request();
-    if (status.isGranted) {
-      return true;
-    }
-
-    if (!mounted) {
-      return false;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enable exact alarms'),
-        content: const Text(
-          'Open system settings and enable "Allow exact alarms" for FarmCtl to improve scheduling reliability.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-          if (status.isPermanentlyDenied || status.isRestricted)
-            TextButton(
-              onPressed: () async {
-                final navigator = Navigator.of(context);
-                await openAppSettings();
-                navigator.pop();
-              },
-              child: const Text('Open settings'),
-            ),
-        ],
-      ),
-    );
-
-    return false;
   }
 
   Future<void> _setVibrateEnabled(bool value) async {
@@ -539,7 +412,6 @@ class _SettingsContent extends StatefulWidget {
     required this.pollIntervalOverride,
     required this.onPollIntervalChanged,
     required this.onPollIntervalChangeEnd,
-    required this.onExactAlarmsChanged,
     required this.onRequestBatteryExemption,
     required this.onVibrateChanged,
     required this.onVolumeBoostChanged,
@@ -557,7 +429,6 @@ class _SettingsContent extends StatefulWidget {
   final double? pollIntervalOverride;
   final ValueChanged<double> onPollIntervalChanged;
   final ValueChanged<double> onPollIntervalChangeEnd;
-  final ValueChanged<bool> onExactAlarmsChanged;
   final Future<void> Function() onRequestBatteryExemption;
   final ValueChanged<bool> onVibrateChanged;
   final ValueChanged<bool> onVolumeBoostChanged;
@@ -655,49 +526,6 @@ class _SettingsContentState extends State<_SettingsContent> {
                   Text(
                     '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
                     style: theme.textTheme.bodySmall,
-                  ),
-                  if (sliderValue.round() < 15 &&
-                      !widget.config.exactAlarmsEnabled) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: theme.colorScheme.tertiary,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Without exact alarms, checks actually run about '
-                            'every 15 minutes.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.tertiary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 20),
-                  const _SettingsTileHeader(
-                    title: 'Exact alarms',
-                    subtitle:
-                        'Improve reliability on Android 12+ by requesting the exact alarm permission.',
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile.adaptive(
-                    value: widget.config.exactAlarmsEnabled,
-                    onChanged: widget.onExactAlarmsChanged,
-                    title: const Text('Allow exact alarms'),
-                    subtitle: const Text(
-                      'Lets FarmCtl ask for permission to schedule precise alarms.',
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.alarm_on),
                   ),
                   if (!kIsWeb && Platform.isAndroid) ...[
                     const SizedBox(height: 20),

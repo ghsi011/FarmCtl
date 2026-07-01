@@ -110,7 +110,6 @@ void main() {
   group('AlertConfig', () {
     const base = AlertConfig(
       pollInterval: Duration(minutes: 5),
-      exactAlarmsEnabled: false,
       soundUri: null,
       vibrate: true,
       volumeBoost: false,

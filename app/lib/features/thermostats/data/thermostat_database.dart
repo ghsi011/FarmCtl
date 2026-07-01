@@ -69,9 +69,6 @@ class AlertConfigEntries extends Table {
 
   IntColumn get pollIntervalMin => integer().withDefault(const Constant(5))();
 
-  BoolColumn get exactAlarmsEnabled =>
-      boolean().withDefault(const Constant(false))();
-
   TextColumn get soundUri => text().nullable()();
 
   BoolColumn get vibrate => boolean().withDefault(const Constant(true))();
@@ -149,7 +146,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -217,6 +214,12 @@ class ThermostatDatabase extends _$ThermostatDatabase {
           WHERE id <> (SELECT MIN(id) FROM alert_config_entries)
         ''');
         await customStatement('UPDATE alert_config_entries SET id = 1');
+      }
+      if (from < 9) {
+        // The AlarmManager exact-alarm scheduling path was removed in favour
+        // of a foreground service, which polls reliably without needing this
+        // permission; the column it configured is now unused.
+        await m.dropColumn(alertConfigEntries, 'exact_alarms_enabled');
       }
     },
   );
@@ -430,7 +433,8 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   }
 
   /// Records when the background monitor last started a run so overlapping
-  /// triggers (WorkManager + AlarmManager) can be debounced into a single run.
+  /// triggers (the foreground service and the WorkManager watchdog) can be
+  /// debounced into a single run.
   Future<void> setLastMonitorRunAt(DateTime value) async {
     await updateAlertConfig(
       AlertConfigEntriesCompanion(lastMonitorRunAt: Value(value)),
@@ -472,7 +476,6 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     return AlertConfigEntry(
       id: 1,
       pollIntervalMin: 5,
-      exactAlarmsEnabled: false,
       soundUri: null,
       vibrate: true,
       volumeBoost: false,

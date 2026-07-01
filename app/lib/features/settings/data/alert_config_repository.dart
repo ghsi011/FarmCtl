@@ -102,12 +102,6 @@ class AlertConfigRepository {
     );
   }
 
-  Future<void> setExactAlarmsEnabled(bool enabled) async {
-    await _database.updateAlertConfig(
-      AlertConfigEntriesCompanion(exactAlarmsEnabled: Value(enabled)),
-    );
-  }
-
   Future<void> setSoundUri(String? uri) async {
     await _database.updateAlertConfig(
       AlertConfigEntriesCompanion(soundUri: Value(uri)),

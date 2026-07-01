@@ -110,7 +110,6 @@ Future<ThermostatDatabase> _pumpPage(
           (ref) => Stream.value(
             const AlertConfig(
               pollInterval: Duration(minutes: 5),
-              exactAlarmsEnabled: false,
               soundUri: null,
               vibrate: true,
               volumeBoost: false,

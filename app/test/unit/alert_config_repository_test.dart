@@ -49,7 +49,6 @@ void main() {
     final config = await repository.loadConfig();
 
     expect(config.pollInterval, const Duration(minutes: 5));
-    expect(config.exactAlarmsEnabled, isFalse);
     expect(config.soundUri, isNull);
     expect(config.vibrate, isTrue);
     expect(config.volumeBoost, isFalse);
@@ -138,7 +137,7 @@ void main() {
       const AlertConfigEntriesCompanion(pollIntervalMin: Value(9)),
     );
     await database.updateAlertConfig(
-      const AlertConfigEntriesCompanion(exactAlarmsEnabled: Value(true)),
+      const AlertConfigEntriesCompanion(vibrate: Value(false)),
     );
     await database.setLastMonitorRunAt(DateTime.utc(2025, 6, 27, 12));
 
@@ -146,7 +145,7 @@ void main() {
     expect(rows, hasLength(1));
     final cfg = await database.getAlertConfig();
     expect(cfg.pollIntervalMin, 9);
-    expect(cfg.exactAlarmsEnabled, isTrue);
+    expect(cfg.vibrate, isFalse);
     expect(cfg.lastMonitorRunAt, isNotNull);
   });
 
