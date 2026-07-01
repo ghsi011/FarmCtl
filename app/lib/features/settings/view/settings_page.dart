@@ -9,6 +9,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/background/thermostat_monitor.dart';
 import '../../../core/format/error_messages.dart';
+import '../../../core/format/relative_time.dart';
+import '../../../core/permissions/notification_permission.dart';
 import '../models/alert_config.dart';
 import '../providers/settings_providers.dart';
 import '../services/sound_picker.dart';
@@ -527,6 +529,23 @@ class _SettingsContentState extends State<_SettingsContent> {
                     '${sliderValue.round()} minute${sliderValue.round() == 1 ? '' : 's'}',
                     style: theme.textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 12),
+                  _LastCheckRow(
+                    lastRunAt: widget.config.lastMonitorRunAt,
+                    pollInterval: widget.config.pollInterval,
+                    now: now,
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  const _SettingsTileHeader(
+                    title: 'Alarm notifications',
+                    subtitle:
+                        'Alarms are delivered as notifications; when '
+                        'notifications are turned off, no alarm can reach you.',
+                  ),
+                  const SizedBox(height: 12),
+                  const _NotificationPermissionTile(),
                   if (!kIsWeb && Platform.isAndroid) ...[
                     const SizedBox(height: 20),
                     const Divider(),
@@ -876,6 +895,105 @@ class _SettingsTileHeader extends StatelessWidget {
         ],
       ],
     );
+  }
+}
+
+/// When the background monitor last started a run, as relative time ('2 mins
+/// ago') or 'Never' when it has not run yet. Rendered in an error style once
+/// the reading is older than twice the poll interval — at that point a check
+/// has been missed and alarm delivery can no longer be trusted.
+class _LastCheckRow extends StatelessWidget {
+  const _LastCheckRow({
+    required this.lastRunAt,
+    required this.pollInterval,
+    required this.now,
+  });
+
+  final DateTime? lastRunAt;
+  final Duration pollInterval;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final last = lastRunAt;
+    final stale = last != null && now.difference(last) > pollInterval * 2;
+    final value = last == null
+        ? 'Never'
+        : formatRelativeDuration(now.difference(last));
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        stale ? Icons.warning_amber : Icons.schedule,
+        color: stale ? theme.colorScheme.error : null,
+      ),
+      title: const Text('Last check'),
+      subtitle: stale
+          ? Text(
+              'Overdue — checks may be delayed or blocked.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            )
+          : null,
+      trailing: Text(
+        value,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: stale
+              ? theme.colorScheme.error
+              : theme.colorScheme.onSurfaceVariant,
+          fontWeight: stale ? FontWeight.w600 : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Reflects the notification-permission state surfaced by
+/// [notificationPermissionStatusProvider]: alarms are delivered as
+/// notifications, so a denied permission means every alarm is silently
+/// suppressed. Offers the same "Open settings" escape hatch as the banner on
+/// the thermostats page.
+class _NotificationPermissionTile extends ConsumerWidget {
+  const _NotificationPermissionTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final status = ref
+        .watch(notificationPermissionStatusProvider)
+        .asData
+        ?.value;
+
+    return switch (status) {
+      AlarmNotificationPermission.denied => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.notifications_off, color: theme.colorScheme.error),
+        title: const Text('Notifications are turned off'),
+        subtitle: const Text(
+          'Alarms are blocked until notifications are allowed.',
+        ),
+        trailing: FilledButton.tonal(
+          onPressed: () {
+            ref.read(notificationPermissionCheckerProvider).openSettings();
+          },
+          child: const Text('Open settings'),
+        ),
+      ),
+      AlarmNotificationPermission.granted => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.check_circle, color: theme.colorScheme.primary),
+        title: const Text('Notifications allowed'),
+        subtitle: const Text('Alarm notifications can reach you.'),
+      ),
+      // Still loading, or the status could not be read.
+      _ => const ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.notifications_none),
+        title: Text('Notification status unavailable'),
+      ),
+    };
   }
 }
 
