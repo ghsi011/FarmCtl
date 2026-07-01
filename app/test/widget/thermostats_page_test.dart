@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import 'package:farmctl/core/permissions/notification_permission.dart';
 import 'package:farmctl/features/settings/models/alert_config.dart';
 import 'package:farmctl/features/settings/providers/settings_providers.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
@@ -49,6 +51,10 @@ Future<void> _pump(
   required Stream<List<ThermostatSummary>> thermostats,
   OfflineStatus offline = OfflineStatus.online,
   AlertConfig config = _defaultConfig,
+  // Pinned permission state; pass null to let the real status provider run
+  // against [permissionChecker] (exercises the resume-driven refresh).
+  AlarmNotificationPermission? permission = AlarmNotificationPermission.granted,
+  NotificationPermissionChecker? permissionChecker,
 }) async {
   // Narrow, tall surface so the layout uses the single-column scrolling list
   // (the wide multi-column grid constrains card height and overflows in tests).
@@ -66,10 +72,36 @@ Future<void> _pump(
         // Plain stream avoids a Drift watch-stream pending timer for the pause
         // banner.
         alertConfigProvider.overrideWith((ref) => Stream.value(config)),
+        if (permissionChecker != null)
+          notificationPermissionCheckerProvider.overrideWithValue(
+            permissionChecker,
+          ),
+        if (permission != null)
+          notificationPermissionStatusProvider.overrideWith(
+            (ref) async => permission,
+          ),
       ],
       child: const MaterialApp(home: ThermostatsPage()),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+/// Drives a background→foreground cycle, traversing adjacent lifecycle states
+/// as AppLifecycleListener requires (it asserts on non-adjacent transitions).
+Future<void> _resume(WidgetTester tester) async {
+  const sequence = [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+    AppLifecycleState.hidden,
+    AppLifecycleState.inactive,
+    AppLifecycleState.resumed,
+  ];
+  for (final state in sequence) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+    await tester.pump();
+  }
   await tester.pumpAndSettle();
 }
 
@@ -173,4 +205,97 @@ void main() {
 
     expect(find.text('Monitoring paused'), findsNothing);
   });
+
+  testWidgets('shows the alarms-blocked banner when notifications are denied', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      thermostats: Stream.value([_summary('t1', 'Greenhouse')]),
+      permission: AlarmNotificationPermission.denied,
+    );
+
+    expect(
+      find.text('Alarms are blocked — notifications are turned off'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextButton, 'Open settings'), findsOneWidget);
+  });
+
+  testWidgets(
+    'hides the alarms-blocked banner when notifications are granted',
+    (tester) async {
+      await _pump(
+        tester,
+        thermostats: Stream.value([_summary('t1', 'Greenhouse')]),
+      );
+
+      expect(
+        find.text('Alarms are blocked — notifications are turned off'),
+        findsNothing,
+      );
+      expect(find.text('Open settings'), findsNothing);
+    },
+  );
+
+  testWidgets('Open settings on the blocked banner opens the OS settings', (
+    tester,
+  ) async {
+    var opened = 0;
+    final checker = NotificationPermissionChecker(
+      isAndroid: true,
+      readStatus: () async => PermissionStatus.permanentlyDenied,
+      openSettings: () async {
+        opened += 1;
+        return true;
+      },
+    );
+
+    await _pump(
+      tester,
+      thermostats: Stream.value([_summary('t1', 'Greenhouse')]),
+      permission: AlarmNotificationPermission.denied,
+      permissionChecker: checker,
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Open settings'));
+    await tester.pump();
+
+    expect(opened, 1);
+  });
+
+  testWidgets(
+    'clears the blocked banner when permission is granted while backgrounded',
+    (tester) async {
+      var osStatus = PermissionStatus.permanentlyDenied;
+      final checker = NotificationPermissionChecker(
+        isAndroid: true,
+        readStatus: () async => osStatus,
+        openSettings: () async => true,
+      );
+
+      // permission: null → the real status provider runs against the fake
+      // checker, including its resume-driven re-read.
+      await _pump(
+        tester,
+        thermostats: Stream.value([_summary('t1', 'Greenhouse')]),
+        permission: null,
+        permissionChecker: checker,
+      );
+      expect(
+        find.text('Alarms are blocked — notifications are turned off'),
+        findsOneWidget,
+      );
+
+      // User re-enables notifications in system settings and comes back.
+      osStatus = PermissionStatus.granted;
+      await _resume(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.text('Alarms are blocked — notifications are turned off'),
+        findsNothing,
+      );
+    },
+  );
 }

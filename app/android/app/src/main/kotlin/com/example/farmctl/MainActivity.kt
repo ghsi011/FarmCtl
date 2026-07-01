@@ -6,8 +6,10 @@ import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -15,11 +17,95 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
   companion object {
     private const val CHANNEL = "com.example.farmctl/sound_picker"
+    private const val ALARM_SCREEN_CHANNEL = "com.example.farmctl/alarm_screen"
     private const val REQUEST_CODE_PICK_SOUND = 0xFA10
     private const val TAG = "SoundPicker"
+
+    // Action set by flutter_local_notifications on the launch intent it uses
+    // for both the notification's fullScreenIntent and body taps. The only
+    // notifications this app posts through that plugin are thermostat alarms,
+    // so this action reliably identifies an alarm launch.
+    private const val ALARM_NOTIFICATION_ACTION = "SELECT_NOTIFICATION"
   }
 
   private var pendingResult: MethodChannel.Result? = null
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    applyAlarmLockScreenFlags(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    applyAlarmLockScreenFlags(intent)
+  }
+
+  /**
+   * Shows this activity over the keyguard and turns the screen on, but only
+   * when the activity was launched by an alarm notification (its full-screen
+   * intent firing on a locked device, or the user tapping it). For every other
+   * launch the flags are cleared, so the app is never exposed over the lock
+   * screen during normal use.
+   */
+  @Suppress("DEPRECATION")
+  private fun applyAlarmLockScreenFlags(intent: Intent?) {
+    // A relaunch from recents after process death redelivers the original
+    // alarm intent with FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY set; treat it as
+    // a normal launch so an already-handled alarm cannot re-expose the app
+    // over the lock screen. This mirrors flutter_local_notifications' own
+    // launchedActivityFromHistory filter, keeping Kotlin and Dart aligned.
+    // PendingIntent-driven alarm launches (full-screen intent, notification
+    // tap) never carry this flag.
+    val isAlarmLaunch = intent?.action == ALARM_NOTIFICATION_ACTION &&
+      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(isAlarmLaunch)
+      setTurnScreenOn(isAlarmLaunch)
+    } else {
+      // API 26: setShowWhenLocked/setTurnScreenOn require O_MR1 (27), so fall
+      // back to the window flags they replaced.
+      val lockScreenFlags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+      if (isAlarmLaunch) {
+        window.addFlags(lockScreenFlags)
+      } else {
+        window.clearFlags(lockScreenFlags)
+      }
+    }
+  }
+
+  /**
+   * Drops the lock-screen exposure once the alarm has been dealt with. Called
+   * over [ALARM_SCREEN_CHANNEL] when the Flutter alarm page is dismissed
+   * (acknowledged, snoozed, or silenced). Deliberately NOT called from
+   * onPause/onStop — those fire when the keyguard engages, which would defeat
+   * the full-screen alarm itself.
+   */
+  @Suppress("DEPRECATION")
+  private fun clearAlarmLockScreenFlags() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(false)
+      setTurnScreenOn(false)
+    } else {
+      window.clearFlags(
+        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+          WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+      )
+    }
+    // Neutralize the stored launch intent so in-process activity recreation
+    // (a config change) does not re-apply the flags via onCreate for an alarm
+    // that was already handled. History relaunches after process death are
+    // covered by the FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY filter in
+    // applyAlarmLockScreenFlags. Safe with respect to
+    // flutter_local_notifications: getNotificationAppLaunchDetails() inspects
+    // this intent's action, but the app queries it exactly once during startup
+    // (handleNotificationLaunch in main.dart) — always before the alarm page
+    // can be dismissed and this method invoked.
+    intent?.takeIf { it.action == ALARM_NOTIFICATION_ACTION }?.let { launchIntent ->
+      launchIntent.action = Intent.ACTION_MAIN
+      setIntent(launchIntent)
+    }
+  }
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -28,6 +114,16 @@ class MainActivity : FlutterActivity() {
         when (call.method) {
           "pickSound" -> handlePickSound(call.argument("initialUri"), result)
           "releasePersistablePermission" -> handleReleasePermission(call.argument("uri"), result)
+          else -> result.notImplemented()
+        }
+      }
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_SCREEN_CHANNEL)
+      .setMethodCallHandler { call, result ->
+        when (call.method) {
+          "clearAlarmLockScreenFlags" -> {
+            clearAlarmLockScreenFlags()
+            result.success(null)
+          }
           else -> result.notImplemented()
         }
       }

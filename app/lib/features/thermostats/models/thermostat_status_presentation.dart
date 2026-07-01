@@ -118,6 +118,27 @@ class ThermostatStatusPresentation {
           icon: Icons.warning_amber_rounded,
           severity: ThermostatStatusSeverity.danger,
         );
+      case ThermostatReadingStatus.stale:
+        // Data age (when the sensor last pushed), not fetch age — the fetches
+        // keep succeeding while the sensor is silent, so `Updated $relative`
+        // would misleadingly stay fresh.
+        final dataUpdatedAt = state.dataUpdatedAt;
+        final dataRelative = dataUpdatedAt != null
+            ? formatRelativeDuration(reference.difference(dataUpdatedAt))
+            : relative;
+        final base = (message != null && message.isNotEmpty)
+            ? message
+            : 'No new data from the sensor';
+        final detail = value != null
+            ? '$base • Last value ${value.toStringAsFixed(2)}°C • '
+                  'Data $dataRelative'
+            : '$base • Data $dataRelative';
+        return ThermostatStatusPresentation(
+          label: 'Stale data',
+          detail: detail,
+          icon: Icons.sensors_off,
+          severity: ThermostatStatusSeverity.warning,
+        );
       case ThermostatReadingStatus.networkError:
         final base = (message != null && message.isNotEmpty)
             ? message

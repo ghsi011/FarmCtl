@@ -55,6 +55,7 @@ class _FakeNetwork implements ThermostatNetworkDataSource {
 
 class _RecordingAlarmDispatcher implements ThermostatAlarmDispatcher {
   final List<String> triggered = [];
+  final List<String> staleTriggered = [];
 
   @override
   Future<void> showAlarm({
@@ -63,6 +64,15 @@ class _RecordingAlarmDispatcher implements ThermostatAlarmDispatcher {
     required DateTime triggeredAt,
   }) async {
     triggered.add('${thermostat.id}::$valueC');
+  }
+
+  @override
+  Future<void> showStaleDataAlarm({
+    required Thermostat thermostat,
+    required DateTime dataUpdatedAt,
+    required DateTime triggeredAt,
+  }) async {
+    staleTriggered.add('${thermostat.id}::${dataUpdatedAt.toIso8601String()}');
   }
 }
 
@@ -466,6 +476,224 @@ void main() {
     expect(state.lastAlarmAt, now);
     expect(state.snoozedUntil, isNull);
     expect(alarms.triggered, contains('${thermostat.id}::4.0'));
+  });
+
+  group('stale data (dead sensor) detection', () {
+    // Poll interval 5 min -> threshold max(15 min, 15 min) = 15 minutes.
+    const pollInterval = Duration(minutes: 5);
+    final now = DateTime.utc(2025, 1, 1, 12);
+
+    Future<Thermostat> createThermostat() {
+      return repository.create(
+        ThermostatDraft(
+          name: 'Silent Barn',
+          rawUrl: '44444444444444444444444444444444',
+          minC: 10,
+          maxC: 20,
+        ),
+      );
+    }
+
+    ThermostatMonitorRunner buildRunner() {
+      return ThermostatMonitorRunner(
+        repository: repository,
+        network: network,
+        alarmDispatcher: alarms,
+        pollInterval: pollInterval,
+        clock: () => now,
+      );
+    }
+
+    test('stale data raises a stale alarm with a clear message', () async {
+      final thermostat = await createThermostat();
+      // In-range value, but the gist content is 61 minutes old.
+      final dataUpdatedAt = now.subtract(const Duration(minutes: 61));
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: dataUpdatedAt,
+        etag: 'etag-stale',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      expect(state.dataUpdatedAt, dataUpdatedAt);
+      expect(state.lastAlarmAt, now);
+      expect(
+        state.statusMessage,
+        'No new data since 2025-01-01 10:59 UTC — sensor may be offline',
+      );
+      expect(
+        alarms.staleTriggered,
+        contains('${thermostat.id}::${dataUpdatedAt.toIso8601String()}'),
+      );
+      // The out-of-range alarm path must not fire for stale data.
+      expect(alarms.triggered, isEmpty);
+    });
+
+    test('stale data respects an active snooze', () async {
+      final thermostat = await createThermostat();
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: 15,
+        fetchedAt: now.subtract(const Duration(minutes: 10)),
+        message: 'stale',
+        setSnoozedUntil: true,
+        snoozedUntil: now.add(const Duration(minutes: 4)),
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+        etag: 'etag-snoozed',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      expect(state.snoozedUntil, now.add(const Duration(minutes: 4)));
+      expect(alarms.staleTriggered, isEmpty);
+      expect(alarms.triggered, isEmpty);
+    });
+
+    test('stale data does not re-fire within the rate limit', () async {
+      final thermostat = await createThermostat();
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: 15,
+        fetchedAt: now.subtract(const Duration(minutes: 4)),
+        message: 'stale',
+        lastAlarmAt: now.subtract(const Duration(minutes: 4)),
+        setLastAlarmAt: true,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+        etag: 'etag-rl',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      // Unchanged: no new alarm within the rate-limit window.
+      expect(state.lastAlarmAt, now.subtract(const Duration(minutes: 4)));
+      expect(alarms.staleTriggered, isEmpty);
+    });
+
+    test('stale data re-fires once the rate limit has elapsed', () async {
+      final thermostat = await createThermostat();
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: 15,
+        fetchedAt: now.subtract(const Duration(minutes: 6)),
+        message: 'stale',
+        lastAlarmAt: now.subtract(const Duration(minutes: 6)),
+        setLastAlarmAt: true,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+        etag: 'etag-rl2',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      expect(state.lastAlarmAt, now);
+      expect(alarms.staleTriggered, hasLength(1));
+    });
+
+    test('fresh data stays OK and does not alarm', () async {
+      final thermostat = await createThermostat();
+      final dataUpdatedAt = now.subtract(const Duration(minutes: 3));
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: dataUpdatedAt,
+        etag: 'etag-fresh',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.ok);
+      expect(state.dataUpdatedAt, dataUpdatedAt);
+      expect(alarms.staleTriggered, isEmpty);
+      expect(alarms.triggered, isEmpty);
+    });
+
+    test('a reading without updated_at is never treated as stale', () async {
+      final thermostat = await createThermostat();
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        etag: 'etag-no-ts',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.ok);
+      expect(state.dataUpdatedAt, isNull);
+      expect(alarms.staleTriggered, isEmpty);
+    });
+
+    test('an out-of-range stale reading alarms as out-of-range', () async {
+      final thermostat = await createThermostat();
+      network._result = ThermostatFetchSuccess(
+        valueC: 99,
+        fetchedAt: now,
+        dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+        etag: 'etag-oor',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      // Out-of-range wins: the temperature itself is the louder problem.
+      expect(state!.status, ThermostatReadingStatus.outOfRange);
+      expect(state.dataUpdatedAt, now.subtract(const Duration(hours: 2)));
+      expect(alarms.triggered, contains('${thermostat.id}::99.0'));
+      expect(alarms.staleTriggered, isEmpty);
+    });
+
+    test('recovered data clears a stale status back to OK', () async {
+      final thermostat = await createThermostat();
+      await repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: 15,
+        fetchedAt: now.subtract(const Duration(minutes: 10)),
+        message: 'stale',
+        setSilenceUntilOk: true,
+        silenceUntilOk: true,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15,
+        fetchedAt: now,
+        dataUpdatedAt: now.subtract(const Duration(minutes: 2)),
+        etag: 'etag-recovered',
+      );
+
+      await buildRunner().run();
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.status, ThermostatReadingStatus.ok);
+      // Recovery clears "silence until OK", like any OK reading.
+      expect(state.silenceUntilOk, isFalse);
+      expect(alarms.staleTriggered, isEmpty);
+    });
   });
 
   test(

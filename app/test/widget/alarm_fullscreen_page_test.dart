@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,6 +121,76 @@ void main() {
     );
     expect(find.textContaining('Something went wrong'), findsOneWidget);
   });
+
+  testWidgets(
+    'describes a stale-data alarm as missing data, not out of range',
+    (tester) async {
+      final base = buildSummary();
+      final state = base.state!;
+      final stale = ThermostatSummary(
+        thermostat: base.thermostat,
+        state: ThermostatState(
+          thermostatId: state.thermostatId,
+          status: ThermostatReadingStatus.stale,
+          lastValueC: 14.2,
+          lastFetchedAt: state.lastFetchedAt,
+          statusMessage: 'No new data since 2025-01-01 10:00 UTC',
+          lastAlarmAt: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 30),
+          ),
+          createdAt: state.createdAt,
+          updatedAt: state.updatedAt,
+        ),
+      );
+
+      await pumpStream(tester, Stream<ThermostatSummary?>.value(stale));
+
+      expect(find.textContaining('No new data for'), findsOneWidget);
+      expect(find.textContaining('Out of range for'), findsNothing);
+      // The last reading itself is in range, so it must not be error red.
+      final context = tester.element(find.byType(AlarmFullScreenPage));
+      final colorScheme = Theme.of(context).colorScheme;
+      final valueText = tester.widget<Text>(find.text('14.2°C'));
+      expect(valueText.style?.color, colorScheme.onSurface);
+      expect(valueText.style?.color, isNot(colorScheme.error));
+    },
+  );
+
+  testWidgets(
+    'clears the Android lock-screen flags when the page is dismissed',
+    (tester) async {
+      // Regression guard: the alarm launch latches showWhenLocked/turnScreenOn
+      // natively; dismissing the alarm page must ask the platform to drop them
+      // so the app is not left showable over the keyguard.
+      const channel = MethodChannel('com.example.farmctl/alarm_screen');
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        );
+      });
+
+      await pumpPage(tester);
+      expect(calls, isEmpty);
+
+      // Every alarm action (acknowledge, snooze, silence, back) pops the page;
+      // removing it from the tree exercises the same dispose path.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpAndSettle();
+
+      expect(
+        calls.map((call) => call.method),
+        contains('clearAlarmLockScreenFlags'),
+      );
+    },
+  );
 
   testWidgets('surfaces snooze and silence status details', (tester) async {
     final base = buildSummary();

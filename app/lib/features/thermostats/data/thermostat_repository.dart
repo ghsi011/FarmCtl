@@ -149,6 +149,8 @@ class ThermostatRepository {
     required ThermostatReadingStatus status,
     double? valueC,
     DateTime? fetchedAt,
+    DateTime? dataUpdatedAt,
+    bool setDataUpdatedAt = false,
     String? etag,
     String? message,
     DateTime? lastAlarmAt,
@@ -168,6 +170,12 @@ class ThermostatRepository {
             : const drift.Value.absent(),
         lastFetchedAt: fetchedAt != null
             ? drift.Value(fetchedAt)
+            : const drift.Value.absent(),
+        // Explicit-set flag (like snoozedUntil) so successful fetches can
+        // write null when the API omitted the timestamp, while error paths
+        // leave the last known data time untouched.
+        dataUpdatedAt: setDataUpdatedAt
+            ? drift.Value(dataUpdatedAt)
             : const drift.Value.absent(),
         etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
         statusMessage: message != null
@@ -205,10 +213,62 @@ class ThermostatRepository {
     required String thermostatId,
     required double valueC,
     required DateTime fetchedAt,
+    DateTime? dataUpdatedAt,
     String? etag,
     required String message,
     required DateTime now,
     Duration rateLimit = kAlarmRateLimit,
+  }) {
+    return _recordAlarmConditionAndShouldAlarm(
+      thermostatId: thermostatId,
+      status: ThermostatReadingStatus.outOfRange,
+      valueC: valueC,
+      fetchedAt: fetchedAt,
+      dataUpdatedAt: dataUpdatedAt,
+      etag: etag,
+      message: message,
+      now: now,
+      rateLimit: rateLimit,
+    );
+  }
+
+  /// Same transactional compare-and-set as [recordOutOfRangeAndShouldAlarm],
+  /// but for a stale-data (silent sensor) condition: the fetch succeeded and
+  /// the value is in range, yet the gist content hasn't changed for longer
+  /// than the staleness threshold.
+  Future<bool> recordStaleDataAndShouldAlarm({
+    required String thermostatId,
+    required double valueC,
+    required DateTime fetchedAt,
+    required DateTime dataUpdatedAt,
+    String? etag,
+    required String message,
+    required DateTime now,
+    Duration rateLimit = kAlarmRateLimit,
+  }) {
+    return _recordAlarmConditionAndShouldAlarm(
+      thermostatId: thermostatId,
+      status: ThermostatReadingStatus.stale,
+      valueC: valueC,
+      fetchedAt: fetchedAt,
+      dataUpdatedAt: dataUpdatedAt,
+      etag: etag,
+      message: message,
+      now: now,
+      rateLimit: rateLimit,
+    );
+  }
+
+  Future<bool> _recordAlarmConditionAndShouldAlarm({
+    required String thermostatId,
+    required ThermostatReadingStatus status,
+    required double valueC,
+    required DateTime fetchedAt,
+    required DateTime? dataUpdatedAt,
+    required String? etag,
+    required String message,
+    required DateTime now,
+    required Duration rateLimit,
   }) async {
     return _database.transaction(() async {
       final entry = await _database.getThermostatState(thermostatId);
@@ -218,15 +278,19 @@ class ThermostatRepository {
         previousState: previous,
         now: now,
         rateLimit: rateLimit,
+        alarmStatus: status,
       );
       final clearSnooze = fire && previous?.snoozedUntil != null;
 
       await _database.upsertThermostatState(
         ThermostatStateEntriesCompanion(
           thermostatId: drift.Value(thermostatId),
-          lastStatus: drift.Value(ThermostatReadingStatus.outOfRange.name),
+          lastStatus: drift.Value(status.name),
           lastValueC: drift.Value(valueC),
           lastFetchedAt: drift.Value(fetchedAt),
+          // Both callers record a successful fetch, so the data timestamp is
+          // always authoritative here (null when the API omitted it).
+          dataUpdatedAt: drift.Value(dataUpdatedAt),
           etag: etag != null ? drift.Value(etag) : const drift.Value.absent(),
           statusMessage: drift.Value(message),
           lastAlarmAt: fire ? drift.Value(now) : const drift.Value.absent(),

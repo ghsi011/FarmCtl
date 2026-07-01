@@ -10,6 +10,7 @@ import '../../../core/format/relative_time.dart';
 import '../../../core/format/semantics_text.dart';
 import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
+import '../services/alarm_screen_channel.dart';
 
 class AlarmFullScreenPage extends ConsumerStatefulWidget {
   const AlarmFullScreenPage({required this.thermostatId, super.key});
@@ -33,6 +34,12 @@ class _AlarmFullScreenPageState extends ConsumerState<AlarmFullScreenPage> {
   @override
   void dispose() {
     unawaited(WakelockPlus.disable().catchError((Object _) {}));
+    // The page leaving the stack means the alarm was dealt with (every action
+    // — acknowledge, snooze, silence, back, dismiss — pops it), so drop the
+    // Android show-when-locked/turn-screen-on flags that the alarm launch
+    // latched. Otherwise the whole app would stay showable over the keyguard
+    // until the next non-alarm launch.
+    unawaited(AlarmScreenChannel().clearLockScreenFlags());
     super.dispose();
   }
 
@@ -141,12 +148,17 @@ class _AlarmContentState extends ConsumerState<_AlarmContent> {
       ? '${widget.currentValue!.toStringAsFixed(1)}°C'
       : 'Unavailable';
 
+  bool get _isStale => widget.status == ThermostatReadingStatus.stale;
+
   String? get _elapsedText {
     final since = widget.lastAlarmAt;
     if (since == null) {
       return null;
     }
-    return 'Out of range for ${formatElapsed(DateTime.now().toUtc().difference(since))}';
+    final elapsed = formatElapsed(DateTime.now().toUtc().difference(since));
+    // A stale-data alarm means the sensor went silent while the last reading
+    // was in range — describing it as "out of range" would be wrong.
+    return _isStale ? 'No new data for $elapsed' : 'Out of range for $elapsed';
   }
 
   @override
@@ -201,7 +213,11 @@ class _AlarmContentState extends ConsumerState<_AlarmContent> {
                     Text(
                       _valueText,
                       style: textTheme.displayMedium?.copyWith(
-                        color: colorScheme.error,
+                        // For a stale-data alarm the last value itself is in
+                        // range, so don't paint it in error red.
+                        color: _isStale
+                            ? colorScheme.onSurface
+                            : colorScheme.error,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,

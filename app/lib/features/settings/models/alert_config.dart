@@ -17,6 +17,10 @@ class AlertConfig {
   final Duration pollInterval;
   final String? soundUri;
   final bool vibrate;
+
+  /// Unused: the "boost volume" feature was removed (the insistent, looping
+  /// alarm sound is the audibility mechanism). The field and its DB column are
+  /// retained only for schema stability — nothing reads it at alarm time.
   final bool volumeBoost;
   final DateTime? pauseAllUntil;
   final String? githubToken;

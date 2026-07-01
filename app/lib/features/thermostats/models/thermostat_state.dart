@@ -10,6 +10,7 @@ class ThermostatState {
     required this.status,
     this.lastValueC,
     this.lastFetchedAt,
+    this.dataUpdatedAt,
     this.etag,
     this.statusMessage,
     this.lastAlarmAt,
@@ -23,6 +24,13 @@ class ThermostatState {
   final ThermostatReadingStatus status;
   final double? lastValueC;
   final DateTime? lastFetchedAt;
+
+  /// When the gist content itself was last updated (the sensor's observation
+  /// time), unlike [lastFetchedAt] which advances on every successful HTTP
+  /// fetch even when the content is unchanged. Null for legacy rows or when
+  /// the API omitted the timestamp.
+  final DateTime? dataUpdatedAt;
+
   final String? etag;
   final String? statusMessage;
   final DateTime? lastAlarmAt;
@@ -37,6 +45,7 @@ class ThermostatState {
       status: ThermostatReadingStatusX.fromName(entry.lastStatus),
       lastValueC: entry.lastValueC,
       lastFetchedAt: entry.lastFetchedAt?.toUtc(),
+      dataUpdatedAt: entry.dataUpdatedAt?.toUtc(),
       etag: entry.etag,
       statusMessage: entry.statusMessage,
       lastAlarmAt: entry.lastAlarmAt?.toUtc(),
@@ -51,6 +60,7 @@ class ThermostatState {
     ThermostatReadingStatus? status,
     double? lastValueC,
     DateTime? lastFetchedAt,
+    DateTime? dataUpdatedAt,
     String? etag,
     String? statusMessage,
     DateTime? lastAlarmAt,
@@ -63,6 +73,7 @@ class ThermostatState {
       status: status ?? this.status,
       lastValueC: lastValueC ?? this.lastValueC,
       lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
+      dataUpdatedAt: dataUpdatedAt ?? this.dataUpdatedAt,
       etag: etag ?? this.etag,
       statusMessage: statusMessage ?? this.statusMessage,
       lastAlarmAt: lastAlarmAt ?? this.lastAlarmAt,
@@ -81,6 +92,7 @@ class ThermostatState {
           other.status == status &&
           other.lastValueC == lastValueC &&
           other.lastFetchedAt == lastFetchedAt &&
+          other.dataUpdatedAt == dataUpdatedAt &&
           other.etag == etag &&
           other.statusMessage == statusMessage &&
           other.lastAlarmAt == lastAlarmAt &&
@@ -95,6 +107,7 @@ class ThermostatState {
     status,
     lastValueC,
     lastFetchedAt,
+    dataUpdatedAt,
     etag,
     statusMessage,
     lastAlarmAt,
@@ -126,6 +139,10 @@ class ThermostatSummary {
 enum ThermostatReadingStatus {
   ok,
   outOfRange,
+
+  /// The fetch succeeded but the gist content hasn't changed for longer than
+  /// the staleness threshold — the sensor-side uploader is likely dead.
+  stale,
   networkError,
   httpError,
   parseError,

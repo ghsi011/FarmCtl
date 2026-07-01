@@ -1,15 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:farmctl/features/settings/models/alert_config.dart';
+import 'package:farmctl/features/settings/providers/settings_providers.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
 import 'package:farmctl/features/thermostats/models/thermostat_state.dart';
 import 'package:farmctl/features/thermostats/widgets/thermostat_card.dart';
+
+const AlertConfig _defaultConfig = AlertConfig(
+  pollInterval: Duration(minutes: 5),
+  soundUri: null,
+  vibrate: true,
+  volumeBoost: false,
+  pauseAllUntil: null,
+  githubToken: null,
+);
 
 ThermostatSummary _summary({
   ThermostatReadingStatus? status,
   double? value,
   String? message,
   DateTime? fetchedAt,
+  DateTime? dataUpdatedAt,
 }) {
   final timestamp = DateTime.utc(2025, 1, 1, 12);
   return ThermostatSummary(
@@ -31,6 +44,7 @@ ThermostatSummary _summary({
             status: status,
             lastValueC: value,
             lastFetchedAt: fetchedAt,
+            dataUpdatedAt: dataUpdatedAt,
             statusMessage: message,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -45,17 +59,29 @@ Future<void> _pump(
   VoidCallback? onEdit,
   VoidCallback? onDelete,
   VoidCallback? onRefresh,
+  AlertConfig config = _defaultConfig,
 }) {
   return tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: ThermostatCard(
-            summary: summary,
-            onTap: onTap,
-            onEdit: onEdit,
-            onDelete: onDelete,
-            onRefresh: onRefresh,
+    ProviderScope(
+      // Keyed by config: a ProviderScope's overrides are fixed for its
+      // element's lifetime, so re-pumping with a different config must create
+      // a fresh scope rather than silently keeping the old override.
+      key: ValueKey(config),
+      overrides: [
+        // Plain value stream so the card's stale-threshold lookup never touches
+        // the real database-backed provider chain.
+        alertConfigProvider.overrideWith((ref) => Stream.value(config)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ThermostatCard(
+              summary: summary,
+              onTap: onTap,
+              onEdit: onEdit,
+              onDelete: onDelete,
+              onRefresh: onRefresh,
+            ),
           ),
         ),
       ),
@@ -137,6 +163,95 @@ void main() {
       // A connectivity/server problem must NOT look like a healthy reading.
       expect(find.byIcon(Icons.check_circle), findsNothing);
     }
+  });
+
+  testWidgets('flags stale data even when the fetch time is fresh', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    // The gist keeps being fetched successfully (fresh lastFetchedAt) but its
+    // content hasn't changed for 2 hours: the badge must key on data age.
+    await _pump(
+      tester,
+      _summary(
+        status: ThermostatReadingStatus.stale,
+        value: 15.0,
+        fetchedAt: now.subtract(const Duration(minutes: 1)),
+        dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Last update (stale)'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule), findsOneWidget);
+    // The shown age is the data age, not the fresh fetch age.
+    expect(find.text('2 hours ago'), findsOneWidget);
+    // Stale gets its own non-ok status glyph.
+    expect(find.byIcon(Icons.sensors_off), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+  });
+
+  testWidgets('does not flag fresh data as stale', (tester) async {
+    final now = DateTime.now().toUtc();
+    await _pump(
+      tester,
+      _summary(
+        status: ThermostatReadingStatus.ok,
+        value: 15.0,
+        fetchedAt: now.subtract(const Duration(minutes: 1)),
+        dataUpdatedAt: now.subtract(const Duration(minutes: 5)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Last update'), findsOneWidget);
+    expect(find.text('Last update (stale)'), findsNothing);
+  });
+
+  testWidgets('stale threshold scales with the configured poll interval', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    // 20 minutes of data age: stale at the default 5-min poll interval
+    // (threshold 15 min) but fresh at a 30-min interval (threshold 90 min).
+    final summary = _summary(
+      status: ThermostatReadingStatus.ok,
+      value: 15.0,
+      fetchedAt: now.subtract(const Duration(minutes: 1)),
+      dataUpdatedAt: now.subtract(const Duration(minutes: 20)),
+    );
+
+    await _pump(tester, summary);
+    await tester.pump();
+    expect(find.text('Last update (stale)'), findsOneWidget);
+
+    await _pump(
+      tester,
+      summary,
+      config: _defaultConfig.copyWith(
+        pollInterval: const Duration(minutes: 30),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Last update (stale)'), findsNothing);
+    expect(find.text('Last update'), findsOneWidget);
+  });
+
+  testWidgets('legacy rows without a data timestamp fall back to fetch age', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    await _pump(
+      tester,
+      _summary(
+        status: ThermostatReadingStatus.ok,
+        value: 15.0,
+        fetchedAt: now.subtract(const Duration(hours: 1)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Last update (stale)'), findsOneWidget);
   });
 
   testWidgets('exposes an accessible semantics label and value', (

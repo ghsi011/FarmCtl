@@ -34,7 +34,7 @@ void main() {
             'application/vnd.github+json',
           );
           return ResponseBody.fromString(
-            '{"files": {"thermostat.txt": {"filename": "thermostat.txt", "truncated": false, "content": "Temperature: 12.5 C"}}}',
+            '{"updated_at": "2025-06-27T11:58:00Z", "files": {"thermostat.txt": {"filename": "thermostat.txt", "truncated": false, "content": "Temperature: 12.5 C"}}}',
             200,
             headers: {
               Headers.contentTypeHeader: [ContentType.json.mimeType],
@@ -54,6 +54,59 @@ void main() {
     expect(result.valueC, closeTo(12.5, 0.0001));
     // Injected clock removes the previous wall-clock dependency.
     expect(result.fetchedAt, fixedNow);
+    // The gist-level updated_at (data/observation time) is extracted so the
+    // app can tell data age from fetch age.
+    expect(result.dataUpdatedAt, DateTime.utc(2025, 6, 27, 11, 58));
+  });
+
+  test('fetchCurrent tolerates a missing or malformed updated_at', () async {
+    for (final fixture in [
+      // No updated_at at all.
+      '{"files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 12.5 C"}}}',
+      // Malformed timestamp.
+      '{"updated_at": "not-a-timestamp", "files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 12.5 C"}}}',
+      // Wrong type.
+      '{"updated_at": 42, "files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 12.5 C"}}}',
+    ]) {
+      final dio = Dio()
+        ..httpClientAdapter = _FakeAdapter((options) async {
+          return ResponseBody.fromString(
+            fixture,
+            200,
+            headers: {
+              Headers.contentTypeHeader: [ContentType.json.mimeType],
+            },
+          );
+        });
+      final client = ThermostatHttpClient(dio: dio);
+
+      final result = await client.fetchCurrent(
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      );
+      // A metadata quirk must not fail the reading — just no data timestamp.
+      expect(result.valueC, closeTo(12.5, 0.0001));
+      expect(result.dataUpdatedAt, isNull);
+    }
+  });
+
+  test('fetchCurrent normalises a non-UTC updated_at to UTC', () async {
+    final dio = Dio()
+      ..httpClientAdapter = _FakeAdapter((options) async {
+        return ResponseBody.fromString(
+          '{"updated_at": "2025-06-27T13:30:00+02:00", "files": {"thermostat.txt": {"truncated": false, "content": "Temperature: 12.5 C"}}}',
+          200,
+          headers: {
+            Headers.contentTypeHeader: [ContentType.json.mimeType],
+          },
+        );
+      });
+    final client = ThermostatHttpClient(dio: dio);
+
+    final result = await client.fetchCurrent(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+    expect(result.dataUpdatedAt, DateTime.utc(2025, 6, 27, 11, 30));
+    expect(result.dataUpdatedAt!.isUtc, isTrue);
   });
 
   test('fetchCurrent throws on parse error (Gist API)', () async {

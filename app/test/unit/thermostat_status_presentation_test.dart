@@ -50,6 +50,30 @@ void main() {
     expect(p.isDanger, isTrue);
   });
 
+  test('stale data is a distinct warning driven by data age', () {
+    final stale = ThermostatState(
+      thermostatId: 't1',
+      status: ThermostatReadingStatus.stale,
+      lastValueC: 12,
+      // Fetches keep succeeding (fresh) while the sensor is silent (old).
+      lastFetchedAt: now.subtract(const Duration(minutes: 1)),
+      dataUpdatedAt: now.subtract(const Duration(hours: 2)),
+      statusMessage:
+          'No new data since 2025-01-01 10:00 UTC — sensor may be offline',
+      createdAt: now,
+      updatedAt: now,
+    );
+    final p = ThermostatStatusPresentation.fromState(stale, now: now);
+    expect(p.severity, ThermostatStatusSeverity.warning);
+    expect(p.label, 'Stale data');
+    expect(p.icon, Icons.sensors_off);
+    expect(p.isDanger, isFalse, reason: 'the temperature is not the problem');
+    expect(p.isProblem, isTrue);
+    // The detail reflects the DATA age, not the fresh fetch age.
+    expect(p.detail, contains('2 hours ago'));
+    expect(p.detail, contains('No new data since'));
+  });
+
   test('network error is offline, not danger', () {
     final p = present(ThermostatReadingStatus.networkError);
     expect(p.severity, ThermostatStatusSeverity.offline);

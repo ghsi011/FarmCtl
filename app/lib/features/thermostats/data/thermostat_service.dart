@@ -9,18 +9,42 @@ import 'thermostat_client.dart';
 import 'thermostat_reading_utils.dart';
 import 'thermostat_repository.dart';
 
+/// Poll cadence assumed for staleness when no supplier is wired or the config
+/// is transiently unreadable; yields the 15-minute threshold floor.
+const Duration _defaultPollIntervalForStaleness = Duration(minutes: 5);
+
 class ThermostatService {
   ThermostatService({
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
     Future<String?> Function()? tokenSupplier,
+    Future<Duration?> Function()? pollIntervalSupplier,
+    DateTime Function()? clock,
   }) : _repository = repository,
        _network = network,
-       _tokenSupplier = tokenSupplier;
+       _tokenSupplier = tokenSupplier,
+       _pollIntervalSupplier = pollIntervalSupplier,
+       _clock = clock ?? _defaultClock;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
   final Future<String?> Function()? _tokenSupplier;
+  final Future<Duration?> Function()? _pollIntervalSupplier;
+  final DateTime Function() _clock;
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
+
+  /// Resolves the configured poll interval for the stale-data threshold,
+  /// falling back to a sane default so a transient config failure can't turn
+  /// a refresh into an error.
+  Future<Duration> _resolvePollInterval() async {
+    try {
+      return await _pollIntervalSupplier?.call() ??
+          _defaultPollIntervalForStaleness;
+    } catch (_) {
+      return _defaultPollIntervalForStaleness;
+    }
+  }
 
   Future<Thermostat> createAndTest(
     ThermostatDraft draft, {
@@ -97,8 +121,34 @@ class ThermostatService {
         status: ThermostatReadingStatus.outOfRange,
         valueC: value,
         fetchedAt: result.fetchedAt,
+        dataUpdatedAt: result.dataUpdatedAt,
+        setDataUpdatedAt: true,
         etag: result.etag,
         message: formatOutOfRangeThermostatMessage(thermostat, value),
+      );
+      return;
+    }
+
+    // Mirror refresh(): a reachable gist whose content stopped updating is
+    // stale, not OK. Record the status only — do NOT clear snooze/silence or
+    // cancel the alarm notification, since alarm arbitration for a possibly
+    // dead sensor belongs to the background monitor.
+    final pollInterval = await _resolvePollInterval();
+    if (isThermostatDataStale(
+      dataUpdatedAt: result.dataUpdatedAt,
+      now: _clock(),
+      pollInterval: pollInterval,
+    )) {
+      final dataUpdatedAt = result.dataUpdatedAt!;
+      await _repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: value,
+        fetchedAt: result.fetchedAt,
+        dataUpdatedAt: dataUpdatedAt,
+        setDataUpdatedAt: true,
+        etag: result.etag,
+        message: formatStaleDataMessage(dataUpdatedAt),
       );
       return;
     }
@@ -111,6 +161,8 @@ class ThermostatService {
       status: ThermostatReadingStatus.ok,
       valueC: value,
       fetchedAt: result.fetchedAt,
+      dataUpdatedAt: result.dataUpdatedAt,
+      setDataUpdatedAt: true,
       etag: result.etag,
       message: 'Fetched ${value.toStringAsFixed(2)}°C',
       setSnoozedUntil: previousState?.snoozedUntil != null,
@@ -142,11 +194,44 @@ class ThermostatService {
           status: ThermostatReadingStatus.outOfRange,
           valueC: value,
           fetchedAt: fetchedAt,
+          dataUpdatedAt: result.dataUpdatedAt,
+          setDataUpdatedAt: true,
           etag: result.etag,
           message: message,
         );
         return ThermostatRefreshResult(
           status: ThermostatReadingStatus.outOfRange,
+          message: message,
+          valueC: value,
+          fetchedAt: fetchedAt,
+        );
+      }
+
+      // Mirror the background monitor's dead-sensor detection: a reachable
+      // gist whose content stopped updating is stale, not OK. The foreground
+      // path only records the status (so the card shows it immediately) — it
+      // deliberately does NOT touch lastAlarmAt or dispatch a notification,
+      // leaving alarm arbitration to the monitor exactly as out-of-range does.
+      final pollInterval = await _resolvePollInterval();
+      if (isThermostatDataStale(
+        dataUpdatedAt: result.dataUpdatedAt,
+        now: _clock(),
+        pollInterval: pollInterval,
+      )) {
+        final dataUpdatedAt = result.dataUpdatedAt!;
+        final message = formatStaleDataMessage(dataUpdatedAt);
+        await _repository.saveState(
+          thermostatId: thermostat.id,
+          status: ThermostatReadingStatus.stale,
+          valueC: value,
+          fetchedAt: fetchedAt,
+          dataUpdatedAt: dataUpdatedAt,
+          setDataUpdatedAt: true,
+          etag: result.etag,
+          message: message,
+        );
+        return ThermostatRefreshResult(
+          status: ThermostatReadingStatus.stale,
           message: message,
           valueC: value,
           fetchedAt: fetchedAt,
@@ -161,6 +246,8 @@ class ThermostatService {
         status: ThermostatReadingStatus.ok,
         valueC: value,
         fetchedAt: fetchedAt,
+        dataUpdatedAt: result.dataUpdatedAt,
+        setDataUpdatedAt: true,
         etag: result.etag,
         message: message,
         setSnoozedUntil: shouldClearSnooze,
@@ -412,5 +499,7 @@ class ThermostatRefreshResult {
 
   bool get isSuccess =>
       status == ThermostatReadingStatus.ok ||
-      status == ThermostatReadingStatus.outOfRange;
+      status == ThermostatReadingStatus.outOfRange ||
+      // The fetch itself succeeded; the data is just old.
+      status == ThermostatReadingStatus.stale;
 }

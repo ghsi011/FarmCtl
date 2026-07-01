@@ -581,15 +581,21 @@ class ThermostatMonitorRunner {
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
     required ThermostatAlarmDispatcher alarmDispatcher,
+    Duration pollInterval = _fallbackPollInterval,
     DateTime Function()? clock,
   }) : _repository = repository,
        _network = network,
        _alarmDispatcher = alarmDispatcher,
+       _pollInterval = pollInterval,
        _clock = clock ?? _defaultClock;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
   final ThermostatAlarmDispatcher _alarmDispatcher;
+
+  /// Configured poll cadence, used to derive the stale-data threshold
+  /// (max(3 × interval, 15 min)) for dead-sensor detection.
+  final Duration _pollInterval;
   final DateTime Function() _clock;
 
   static DateTime _defaultClock() => DateTime.now().toUtc();
@@ -626,6 +632,7 @@ class ThermostatMonitorRunner {
             thermostatId: thermostat.id,
             valueC: value,
             fetchedAt: fetchedAt,
+            dataUpdatedAt: result.dataUpdatedAt,
             etag: result.etag,
             message: baseMessage,
             now: now,
@@ -634,6 +641,34 @@ class ThermostatMonitorRunner {
             await _alarmDispatcher.showAlarm(
               thermostat: thermostat,
               valueC: value,
+              triggeredAt: now,
+            );
+          }
+        } else if (isThermostatDataStale(
+          dataUpdatedAt: result.dataUpdatedAt,
+          now: _clock(),
+          pollInterval: _pollInterval,
+        )) {
+          // The gist is reachable but its content hasn't changed for longer
+          // than the staleness threshold: the sensor-side uploader is likely
+          // dead. Same transactional arbitration (snooze/silence/rate-limit)
+          // as out-of-range so overlapping runs can't double-fire.
+          final now = _clock();
+          final dataUpdatedAt = result.dataUpdatedAt!;
+          final message = formatStaleDataMessage(dataUpdatedAt);
+          final shouldAlarm = await _repository.recordStaleDataAndShouldAlarm(
+            thermostatId: thermostat.id,
+            valueC: value,
+            fetchedAt: fetchedAt,
+            dataUpdatedAt: dataUpdatedAt,
+            etag: result.etag,
+            message: message,
+            now: now,
+          );
+          if (shouldAlarm) {
+            await _alarmDispatcher.showStaleDataAlarm(
+              thermostat: thermostat,
+              dataUpdatedAt: dataUpdatedAt,
               triggeredAt: now,
             );
           }
@@ -646,6 +681,8 @@ class ThermostatMonitorRunner {
             status: ThermostatReadingStatus.ok,
             valueC: value,
             fetchedAt: fetchedAt,
+            dataUpdatedAt: result.dataUpdatedAt,
+            setDataUpdatedAt: true,
             etag: result.etag,
             message: message,
             setSnoozedUntil: shouldClearSnooze,
@@ -710,11 +747,13 @@ MonitorDependencies buildMonitorDependencies(
     repository: repository,
     network: network,
     tokenSupplier: () async => config.githubToken,
+    pollIntervalSupplier: () async => config.pollInterval,
   );
   final runner = ThermostatMonitorRunner(
     repository: repository,
     network: network,
     alarmDispatcher: NotificationAlarmDispatcher(notifications, config: config),
+    pollInterval: config.pollInterval,
   );
   return MonitorDependencies(
     repository: repository,
@@ -724,12 +763,31 @@ MonitorDependencies buildMonitorDependencies(
   );
 }
 
-String _alarmChannelIdForSound(String? soundUri) {
+/// Android `Notification.FLAG_INSISTENT`: repeats the alarm sound (and
+/// vibration) until the notification is dismissed or acknowledged, matching
+/// the alarm-app-like behavior required by Spec 3.5. flutter_local_notifications
+/// exposes raw flags only via `additionalFlags`, hence the literal value.
+@visibleForTesting
+const int insistentNotificationFlag = 4;
+
+/// Channel id for the alarm channel carrying [soundUri] + [vibrate].
+///
+/// Notification channel settings are immutable once the channel exists
+/// (API 26+), so every user-configurable channel property must be folded into
+/// the channel identity — otherwise toggling the setting would silently keep
+/// the old channel behavior. `vibrate == true` maps to the historical id so
+/// channels created before vibration joined the identity (always created with
+/// vibration on) remain valid.
+@visibleForTesting
+String alarmChannelIdFor({required String? soundUri, required bool vibrate}) {
+  final String base;
   if (soundUri == null || soundUri.isEmpty) {
-    return '${_alarmChannelPrefix}_default';
+    base = '${_alarmChannelPrefix}_default';
+  } else {
+    final hash = soundUri.hashCode & 0x7fffffff;
+    base = '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
   }
-  final hash = soundUri.hashCode & 0x7fffffff;
-  return '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
+  return vibrate ? base : '${base}_novib';
 }
 
 AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
@@ -739,8 +797,12 @@ AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
   return UriAndroidNotificationSound(target);
 }
 
-AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
-  final channelId = _alarmChannelIdForSound(soundUri);
+@visibleForTesting
+AndroidNotificationChannel buildAlarmChannel({
+  required String? soundUri,
+  required bool vibrate,
+}) {
+  final channelId = alarmChannelIdFor(soundUri: soundUri, vibrate: vibrate);
   return AndroidNotificationChannel(
     channelId,
     _alarmChannelName,
@@ -749,7 +811,45 @@ AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
     playSound: true,
     sound: _alarmNotificationSound(soundUri),
     audioAttributesUsage: AudioAttributesUsage.alarm,
-    enableVibration: true,
+    enableVibration: vibrate,
+  );
+}
+
+/// Builds the Android-side alarm notification details for [config]. Pure
+/// (no plugin calls) so tests can assert the channel identity, vibration and
+/// the insistent (looping) flag directly.
+@visibleForTesting
+AndroidNotificationDetails buildAlarmAndroidDetails({
+  required AlertConfig config,
+  required bool autoCancel,
+  required bool ongoing,
+  required List<AndroidNotificationAction> actions,
+  bool fullScreenIntent = true,
+  String ticker = 'Thermostat alarm',
+}) {
+  final channel = buildAlarmChannel(
+    soundUri: config.soundUri,
+    vibrate: config.vibrate,
+  );
+  return AndroidNotificationDetails(
+    channel.id,
+    channel.name,
+    channelDescription: channel.description,
+    importance: Importance.max,
+    priority: Priority.high,
+    fullScreenIntent: fullScreenIntent,
+    category: AndroidNotificationCategory.alarm,
+    ticker: ticker,
+    autoCancel: autoCancel,
+    ongoing: ongoing,
+    enableVibration: config.vibrate,
+    playSound: true,
+    sound: _alarmNotificationSound(config.soundUri),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    channelAction: AndroidNotificationChannelAction.createIfNotExists,
+    // Loop sound/vibration until the alarm is dismissed or acknowledged.
+    additionalFlags: Int32List.fromList(const [insistentNotificationFlag]),
+    actions: actions,
   );
 }
 
@@ -766,27 +866,19 @@ Future<NotificationDetails> _prepareAlarmNotificationDetails({
       .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin
       >();
-  final channel = _buildAlarmChannel(config.soundUri);
+  final channel = buildAlarmChannel(
+    soundUri: config.soundUri,
+    vibrate: config.vibrate,
+  );
   await androidPlugin?.createNotificationChannel(channel);
-  final sound = _alarmNotificationSound(config.soundUri);
 
-  final androidDetails = AndroidNotificationDetails(
-    channel.id,
-    channel.name,
-    channelDescription: channel.description,
-    importance: Importance.max,
-    priority: Priority.high,
-    fullScreenIntent: fullScreenIntent,
-    category: AndroidNotificationCategory.alarm,
-    ticker: ticker,
+  final androidDetails = buildAlarmAndroidDetails(
+    config: config,
     autoCancel: autoCancel,
     ongoing: ongoing,
-    enableVibration: config.vibrate,
-    playSound: true,
-    sound: sound,
-    audioAttributesUsage: AudioAttributesUsage.alarm,
-    channelAction: AndroidNotificationChannelAction.createIfNotExists,
     actions: actions,
+    fullScreenIntent: fullScreenIntent,
+    ticker: ticker,
   );
 
   return NotificationDetails(android: androidDetails);
@@ -796,6 +888,15 @@ abstract class ThermostatAlarmDispatcher {
   Future<void> showAlarm({
     required Thermostat thermostat,
     required double valueC,
+    required DateTime triggeredAt,
+  });
+
+  /// Raises the same alarm surface as [showAlarm], but for a silent sensor:
+  /// the gist is reachable yet its content stopped updating at
+  /// [dataUpdatedAt].
+  Future<void> showStaleDataAlarm({
+    required Thermostat thermostat,
+    required DateTime dataUpdatedAt,
     required DateTime triggeredAt,
   });
 }
@@ -814,6 +915,34 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     required Thermostat thermostat,
     required double valueC,
     required DateTime triggeredAt,
+  }) {
+    return _show(
+      thermostat: thermostat,
+      title: '${thermostat.name} out of range',
+      body:
+          'Current ${valueC.toStringAsFixed(2)}°C • '
+          'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
+          '${thermostat.maxC.toStringAsFixed(2)}°C',
+    );
+  }
+
+  @override
+  Future<void> showStaleDataAlarm({
+    required Thermostat thermostat,
+    required DateTime dataUpdatedAt,
+    required DateTime triggeredAt,
+  }) {
+    return _show(
+      thermostat: thermostat,
+      title: '${thermostat.name} — no new data',
+      body: formatStaleDataMessage(dataUpdatedAt),
+    );
+  }
+
+  Future<void> _show({
+    required Thermostat thermostat,
+    required String title,
+    required String body,
   }) async {
     final payload = jsonEncode({'thermostatId': thermostat.id});
     final details = await _prepareAlarmNotificationDetails(
@@ -830,10 +959,8 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     );
     await _notifications.show(
       _alarmNotificationId(thermostat.id),
-      '${thermostat.name} out of range',
-      'Current ${valueC.toStringAsFixed(2)}°C • '
-          'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
-          '${thermostat.maxC.toStringAsFixed(2)}°C',
+      title,
+      body,
       details,
       payload: payload,
     );
@@ -853,6 +980,9 @@ Future<void> showTestAlarmNotification({required AlertConfig config}) async {
   final plugin = FlutterLocalNotificationsPlugin();
   await _initializeNotifications(plugin, config: config);
 
+  // Deliberately shares the real alarm's details (including the insistent,
+  // looping sound) so "Test alarm" is a faithful preview; autoCancel keeps a
+  // single tap enough to stop it.
   final details = await _prepareAlarmNotificationDetails(
     plugin: plugin,
     config: config,
@@ -909,8 +1039,10 @@ Future<void> _initializeNotifications(
   if (customSound != null && customSound.isNotEmpty) {
     soundUris.add(customSound);
   }
+  // Without a loaded config, warm up the vibrating channel (the DB default).
+  final vibrate = config?.vibrate ?? true;
   for (final soundUri in soundUris) {
-    final channel = _buildAlarmChannel(soundUri);
+    final channel = buildAlarmChannel(soundUri: soundUri, vibrate: vibrate);
     await androidPlugin?.createNotificationChannel(channel);
   }
 }

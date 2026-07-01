@@ -9,6 +9,7 @@ import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_form_dialog.dart';
 import '../../../core/background/thermostat_monitor.dart';
 import '../../../core/format/error_messages.dart';
+import '../../../core/permissions/notification_permission.dart';
 import '../../../core/router/app_router.dart';
 import '../../settings/providers/settings_providers.dart';
 
@@ -275,6 +276,9 @@ class ThermostatsPage extends ConsumerWidget {
     final pausedUntil = (config != null && config.isPaused(now))
         ? config.pauseAllUntil
         : null;
+    final notificationsBlocked =
+        ref.watch(notificationPermissionStatusProvider).asData?.value ==
+        AlarmNotificationPermission.denied;
 
     final content = asyncThermostats.when(
       data: (thermostats) {
@@ -302,6 +306,23 @@ class ThermostatsPage extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: notificationsBlocked
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _NotificationsBlockedBanner(
+                        onOpenSettings: () {
+                          ref
+                              .read(notificationPermissionCheckerProvider)
+                              .openSettings();
+                        },
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
               switchInCurve: Curves.easeOut,
@@ -335,6 +356,77 @@ class ThermostatsPage extends ConsumerWidget {
         onPressed: () => _createThermostat(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Add thermostat'),
+      ),
+    );
+  }
+}
+
+/// Persistent error banner shown while the `POST_NOTIFICATIONS` permission is
+/// denied: every alarm the monitor raises is silently suppressed by the OS, so
+/// this is surfaced on the main page rather than buried in Settings. Mirrors
+/// the structure and semantics of [_PauseBanner].
+class _NotificationsBlockedBanner extends StatelessWidget {
+  const _NotificationsBlockedBanner({required this.onOpenSettings});
+
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    const message =
+        'Notifications are turned off, so temperature alarms cannot reach '
+        'you. Allow notifications in system settings.';
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: 'Alarms are blocked',
+      value: message,
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.notifications_off,
+                color: colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Alarms are blocked — notifications are turned off',
+                      style: textTheme.titleSmall?.copyWith(
+                        color: colorScheme.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: onOpenSettings,
+                style: TextButton.styleFrom(
+                  foregroundColor: colorScheme.onErrorContainer,
+                ),
+                child: const Text('Open settings'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
