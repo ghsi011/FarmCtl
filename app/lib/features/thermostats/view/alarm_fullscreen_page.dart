@@ -141,12 +141,17 @@ class _AlarmContentState extends ConsumerState<_AlarmContent> {
       ? '${widget.currentValue!.toStringAsFixed(1)}°C'
       : 'Unavailable';
 
+  bool get _isStale => widget.status == ThermostatReadingStatus.stale;
+
   String? get _elapsedText {
     final since = widget.lastAlarmAt;
     if (since == null) {
       return null;
     }
-    return 'Out of range for ${formatElapsed(DateTime.now().toUtc().difference(since))}';
+    final elapsed = formatElapsed(DateTime.now().toUtc().difference(since));
+    // A stale-data alarm means the sensor went silent while the last reading
+    // was in range — describing it as "out of range" would be wrong.
+    return _isStale ? 'No new data for $elapsed' : 'Out of range for $elapsed';
   }
 
   @override
@@ -201,7 +206,11 @@ class _AlarmContentState extends ConsumerState<_AlarmContent> {
                     Text(
                       _valueText,
                       style: textTheme.displayMedium?.copyWith(
-                        color: colorScheme.error,
+                        // For a stale-data alarm the last value itself is in
+                        // range, so don't paint it in error red.
+                        color: _isStale
+                            ? colorScheme.onSurface
+                            : colorScheme.error,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,

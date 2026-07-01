@@ -129,6 +129,30 @@ class ThermostatService {
       return;
     }
 
+    // Mirror refresh(): a reachable gist whose content stopped updating is
+    // stale, not OK. Record the status only — do NOT clear snooze/silence or
+    // cancel the alarm notification, since alarm arbitration for a possibly
+    // dead sensor belongs to the background monitor.
+    final pollInterval = await _resolvePollInterval();
+    if (isThermostatDataStale(
+      dataUpdatedAt: result.dataUpdatedAt,
+      now: _clock(),
+      pollInterval: pollInterval,
+    )) {
+      final dataUpdatedAt = result.dataUpdatedAt!;
+      await _repository.saveState(
+        thermostatId: thermostat.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: value,
+        fetchedAt: result.fetchedAt,
+        dataUpdatedAt: dataUpdatedAt,
+        setDataUpdatedAt: true,
+        etag: result.etag,
+        message: formatStaleDataMessage(dataUpdatedAt),
+      );
+      return;
+    }
+
     // OK reading: clear any snooze/silence, exactly as refresh() does — otherwise
     // editing a snoozed/silenced thermostat to an in-range value would leave the
     // suppression in place and mute the next genuine out-of-range alarm.

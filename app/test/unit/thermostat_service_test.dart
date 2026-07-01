@@ -299,6 +299,72 @@ void main() {
     expect(state.snoozedUntil, isNull);
   });
 
+  test(
+    'updateAndTest keeps stale status and suppression for a dead sensor',
+    () async {
+      final created = await service.createAndTest(
+        ThermostatDraft(
+          name: 'Vent',
+          rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          minC: 10,
+          maxC: 20,
+        ),
+      );
+      // The sensor went silent while suppressed: stale, silenced and snoozed.
+      final snoozedUntil = DateTime.utc(2025, 1, 2, 13);
+      await repository.saveState(
+        thermostatId: created.id,
+        status: ThermostatReadingStatus.stale,
+        valueC: 14.2,
+        fetchedAt: DateTime.utc(2025, 1, 2, 11),
+        etag: 'old',
+        message: 'No new data',
+        setSilenceUntilOk: true,
+        silenceUntilOk: true,
+        setSnoozedUntil: true,
+        snoozedUntil: snoozedUntil,
+      );
+
+      final now = DateTime.utc(2025, 1, 2, 12);
+      final staleService = ThermostatService(
+        repository: repository,
+        network: network,
+        // 5-minute poll interval -> 15-minute threshold; data is 90 min old.
+        pollIntervalSupplier: () async => const Duration(minutes: 5),
+        clock: () => now,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 14.2,
+        fetchedAt: now,
+        dataUpdatedAt: DateTime.utc(2025, 1, 2, 10, 30),
+        etag: 'stale',
+      );
+
+      // Editing the thermostat re-tests the fetch; the value is in range but
+      // the data is stale, so the edit must NOT flip the state to OK, must
+      // NOT clear the suppression, and must NOT arbitrate alarms.
+      await staleService.updateAndTest(
+        created,
+        ThermostatDraft(
+          name: 'Vent',
+          rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          minC: 10,
+          maxC: 20,
+        ),
+      );
+
+      final state = await repository.loadState(created.id);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      expect(
+        state.statusMessage,
+        'No new data since 2025-01-02 10:30 UTC — sensor may be offline',
+      );
+      expect(state.silenceUntilOk, isTrue);
+      expect(state.snoozedUntil, snoozedUntil);
+      expect(state.lastAlarmAt, isNull);
+    },
+  );
+
   test('createAndTest rethrows fetch errors', () async {
     network._exception = const ThermostatFetchException(
       status: ThermostatReadingStatus.networkError,

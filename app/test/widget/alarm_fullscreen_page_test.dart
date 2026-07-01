@@ -121,6 +121,40 @@ void main() {
     expect(find.textContaining('Something went wrong'), findsOneWidget);
   });
 
+  testWidgets(
+    'describes a stale-data alarm as missing data, not out of range',
+    (tester) async {
+      final base = buildSummary();
+      final state = base.state!;
+      final stale = ThermostatSummary(
+        thermostat: base.thermostat,
+        state: ThermostatState(
+          thermostatId: state.thermostatId,
+          status: ThermostatReadingStatus.stale,
+          lastValueC: 14.2,
+          lastFetchedAt: state.lastFetchedAt,
+          statusMessage: 'No new data since 2025-01-01 10:00 UTC',
+          lastAlarmAt: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 30),
+          ),
+          createdAt: state.createdAt,
+          updatedAt: state.updatedAt,
+        ),
+      );
+
+      await pumpStream(tester, Stream<ThermostatSummary?>.value(stale));
+
+      expect(find.textContaining('No new data for'), findsOneWidget);
+      expect(find.textContaining('Out of range for'), findsNothing);
+      // The last reading itself is in range, so it must not be error red.
+      final context = tester.element(find.byType(AlarmFullScreenPage));
+      final colorScheme = Theme.of(context).colorScheme;
+      final valueText = tester.widget<Text>(find.text('14.2°C'));
+      expect(valueText.style?.color, colorScheme.onSurface);
+      expect(valueText.style?.color, isNot(colorScheme.error));
+    },
+  );
+
   testWidgets('surfaces snooze and silence status details', (tester) async {
     final base = buildSummary();
     final state = base.state!;
