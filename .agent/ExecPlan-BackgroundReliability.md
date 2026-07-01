@@ -91,5 +91,55 @@ Recommend testing on the reporter's Pixel 9 before relying on it:
     fail (`targetSdk > compileSdk`). Not introduced by this change (the app
     already relied on `flutter.compileSdkVersion` before), but worth a
     one-line `flutter --version` sanity check when building for real.
+- ✅ Full "reviewer + skeptic" pass: 7 independent finder agents (line-by-line,
+  removed-behavior, cross-file tracing, reuse, simplification, efficiency,
+  altitude, CLAUDE.md/AGENTS.md conventions) plus a skeptic verifier on the
+  fixes themselves.
+  - **Fixed**: duplicated `ForegroundTaskOptions` construction between
+    `init()`/`updateService()` extracted into one `_foregroundTaskOptions()`
+    helper; `FlutterForegroundTask.init()` no longer runs on every call when
+    the service is already running (only needed on the cold-start path —
+    verified against the real plugin source that `updateService()`/
+    `isRunningService` never read `init()`-populated static state); the
+    `thermostatMonitorTask`/`thermostatMonitorUniqueName` constants (now
+    watchdog-only) renamed to `thermostatWatchdogTask`/
+    `thermostatWatchdogUniqueName` for clarity (string *values* unchanged, so
+    WorkManager still targets the same persisted periodic work on upgrade);
+    stale comment referencing "WorkManager retry backoff" (no longer
+    applicable — the watchdog doesn't call `_runMonitorTask`) rewritten;
+    added a comment on `_runWatchdogTask` explaining why it isn't redundant
+    with the plugin's own `allowAutoRestart`/`autoRunOnBoot` (it survives an
+    OEM process kill, which those don't — the actual Pixel 9 failure mode).
+  - **Declined, with rationale**: merging the 3 "open DB → load config →
+    close" sites (`initializeBackgroundMonitoring`, `_runWatchdogTask`,
+    `_runMonitorTaskLocked`) into one shared helper — on inspection they have
+    genuinely different, intentional error-handling shapes (swallow-and-close
+    vs. propagate-and-close vs. swallow-and-keep-open for the rest of the
+    run), so a shared helper would need parameters for each axis and not
+    actually reduce complexity. Removing the WorkManager watchdog in favor of
+    the plugin's native restart-only mechanisms — it's the only thing that
+    survives an OEM battery-manager process kill (see the new code comment).
+    Making pause immediately drop the service's tick cadence to the pause end
+    — real but low-severity (a few extra cheap DB reads per tick during a
+    pause window, no missed/incorrect behavior); would need to touch
+    pause-start/resume/duration-change call sites for a UX-only, non-bug win.
+    Escalating repeated `_runMonitorTask` failures beyond a debug log — a
+    genuine observability gap (a permanently-failing DB wouldn't get any
+    watchdog attention since `isRunningService` stays true) but is a new
+    diagnostics feature, not a bug fix, out of scope for this pass.
+  - **Refuted**: `pollIntervalMillis`'s 30s floor removing the old "0 =
+    monitoring off" state (unreachable — Settings clamps 1–30 min, DB default
+    is 5 min, no write path produces 0); poll-interval-vs-alarm-rate-limit
+    ratio (by design per `docs/Spec.md`: 1–30 min poll range, fixed 5 min
+    rate limit, pre-existing whenever exact alarms were previously enabled);
+    `BootCompletedReceiver`'s removed synchronous notification (a net
+    improvement — it used to show "Monitoring active" unconditionally even
+    on total scheduling failure); the v8→v9 `dropColumn` "old SQLite"
+    concern (`sqlite3_flutter_libs` bundles its own recent SQLite, not the
+    OS/WebView one — DROP COLUMN has been supported since SQLite 3.35, 2021);
+    the iOS/non-Android no-op path (iOS is explicitly out of scope per
+    AGENTS.md).
+  - Re-ran `flutter analyze` (clean), `flutter test` (211/211), and
+    `dart format` (clean) after applying fixes.
 - ☐ Manual verification on the reporter's Pixel 9 (see the limitation note
   above) — could not be done in this sandboxed session.

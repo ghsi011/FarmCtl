@@ -22,10 +22,10 @@ import '../../features/thermostats/models/thermostat_state.dart';
 import '../router/app_router.dart';
 import '../router/router_keys.dart';
 
-// WorkManager's task name/unique name are retained for the watchdog role (see
-// `_runWatchdogTask`): it no longer performs the monitor run itself.
-const String thermostatMonitorTask = 'thermostat_watchdog_task';
-const String thermostatMonitorUniqueName = 'thermostat_monitor_periodic';
+// WorkManager now only restarts the foreground service if it's dead — it
+// never performs the monitor run itself (see `_runWatchdogTask`).
+const String thermostatWatchdogTask = 'thermostat_watchdog_task';
+const String thermostatWatchdogUniqueName = 'thermostat_monitor_periodic';
 
 const String _monitoringChannelId = 'farmctl_monitoring';
 const String _monitoringChannelName = 'Thermostat monitoring';
@@ -46,11 +46,10 @@ const int _alarmNotificationBaseId = 4000;
 // interval, so it always uses the platform floor.
 const Duration _watchdogFrequency = Duration(minutes: 15);
 
-// Collapses the near-simultaneous onStart + onRepeatEvent (or watchdog restart)
-// fires into a single monitor run. Kept short so it stays below both the 60s+
-// gap between legitimate consecutive runs AND the WorkManager retry backoff —
-// otherwise a failed run's own retry could be debounced away (the run-start
-// stamp is written before the run and persists on failure).
+// Secondary safety net behind the in-isolate `_monitorRunInProgress` lock (see
+// below): collapses a near-simultaneous onStart + onRepeatEvent fire into a
+// single monitor run if they ever reach the DB check before the lock is set.
+// Kept well short of the 60s+ gap between legitimate consecutive runs.
 const Duration _monitorRunDebounce = Duration(seconds: 10);
 
 bool get _supportsForegroundService => !kIsWeb && Platform.isAndroid;
@@ -67,28 +66,14 @@ int pollIntervalMillis(
   return effective.inMilliseconds;
 }
 
-void _initForegroundTask(Duration pollInterval) {
-  FlutterForegroundTask.init(
-    androidNotificationOptions: AndroidNotificationOptions(
-      channelId: _monitoringChannelId,
-      channelName: _monitoringChannelName,
-      channelDescription: _monitoringChannelDescription,
-      channelImportance: NotificationChannelImportance.LOW,
-      priority: NotificationPriority.LOW,
-      onlyAlertOnce: true,
+ForegroundTaskOptions _foregroundTaskOptions(Duration pollInterval) {
+  return ForegroundTaskOptions(
+    eventAction: ForegroundTaskEventAction.repeat(
+      pollIntervalMillis(pollInterval),
     ),
-    iosNotificationOptions: const IOSNotificationOptions(
-      showNotification: false,
-      playSound: false,
-    ),
-    foregroundTaskOptions: ForegroundTaskOptions(
-      eventAction: ForegroundTaskEventAction.repeat(
-        pollIntervalMillis(pollInterval),
-      ),
-      autoRunOnBoot: true,
-      autoRunOnMyPackageReplaced: true,
-      allowWakeLock: true,
-    ),
+    autoRunOnBoot: true,
+    autoRunOnMyPackageReplaced: true,
+    allowWakeLock: true,
   );
 }
 
@@ -101,26 +86,36 @@ Future<void> _ensureForegroundServiceRunning(Duration pollInterval) async {
     return;
   }
 
-  _initForegroundTask(pollInterval);
-
   try {
     final running = await FlutterForegroundTask.isRunningService;
     if (running) {
       final result = await FlutterForegroundTask.updateService(
-        foregroundTaskOptions: ForegroundTaskOptions(
-          eventAction: ForegroundTaskEventAction.repeat(
-            pollIntervalMillis(pollInterval),
-          ),
-          autoRunOnBoot: true,
-          autoRunOnMyPackageReplaced: true,
-          allowWakeLock: true,
-        ),
+        foregroundTaskOptions: _foregroundTaskOptions(pollInterval),
       );
       if (result is ServiceRequestFailure) {
         debugPrint('Failed to update monitoring service: ${result.error}');
       }
       return;
     }
+
+    // init() populates isolate-local static config that startService() reads
+    // (updateService() doesn't need it — it's a self-contained call), so it
+    // only needs to run on this, the cold-start, path.
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: _monitoringChannelId,
+        channelName: _monitoringChannelName,
+        channelDescription: _monitoringChannelDescription,
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: false,
+        playSound: false,
+      ),
+      foregroundTaskOptions: _foregroundTaskOptions(pollInterval),
+    );
 
     final result = await FlutterForegroundTask.startService(
       serviceId: _foregroundServiceId,
@@ -215,8 +210,8 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   // itself, so it can't double-poll alongside the live service.
   await Workmanager().initialize(thermostatMonitorCallbackDispatcher);
   await Workmanager().registerPeriodicTask(
-    thermostatMonitorUniqueName,
-    thermostatMonitorTask,
+    thermostatWatchdogUniqueName,
+    thermostatWatchdogTask,
     frequency: _watchdogFrequency,
     existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     constraints: Constraints(networkType: NetworkType.connected),
@@ -248,6 +243,17 @@ void thermostatMonitorCallbackDispatcher() {
 
 /// Restarts the foreground service if it isn't running. Does not fetch or
 /// write thermostat data itself — the live service already handles that.
+///
+/// Not redundant with the plugin's own `allowAutoRestart`/`autoRunOnBoot`:
+/// those recover from the OS killing the *service* (or a device reboot), but
+/// not from an OEM battery manager killing the whole app *process* outside
+/// of a device reboot — which is the actual Pixel 9 failure mode this file
+/// was reworked for. WorkManager's periodic work is OS-scheduled
+/// (JobScheduler-backed) independent of the app process being alive, so it
+/// still fires and can relaunch a fresh process. (A user-initiated "Force
+/// stop" is the one thing nothing here can survive — Android deliberately
+/// suspends all of an app's scheduled work, including WorkManager, until the
+/// user manually reopens it.)
 Future<bool> _runWatchdogTask() async {
   WidgetsFlutterBinding.ensureInitialized();
   ui.DartPluginRegistrant.ensureInitialized();
