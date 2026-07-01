@@ -411,25 +411,35 @@ Future<void> _updateMonitorHealth({required bool runSucceeded}) async {
     degraded: _monitorHealthDegraded,
     runSucceeded: runSucceeded,
   );
+  // The failure counter always advances, but `_monitorHealthDegraded` tracks
+  // what the notification actually shows — so only flip it once the notification
+  // write succeeds. If the write fails, the flag is left unchanged and the next
+  // run recomputes the same transition and retries, instead of the notification
+  // silently getting stuck in the wrong state.
   _consecutiveMonitorFailures = next.failures;
-  _monitorHealthDegraded = next.degraded;
   switch (next.action) {
     case MonitorNotificationAction.showDegraded:
-      await _setMonitorNotification(
+      if (await _setMonitorNotification(
         title: 'FarmCtl monitoring — not running',
         text: 'Last check failed. Open FarmCtl to restore monitoring.',
-      );
+      )) {
+        _monitorHealthDegraded = true;
+      }
     case MonitorNotificationAction.showHealthy:
-      await _setMonitorNotification(
+      if (await _setMonitorNotification(
         title: 'FarmCtl monitoring',
         text: 'Monitoring active',
-      );
+      )) {
+        _monitorHealthDegraded = false;
+      }
     case MonitorNotificationAction.none:
       break;
   }
 }
 
-Future<void> _setMonitorNotification({
+/// Returns whether the notification was successfully updated, so the caller can
+/// defer committing the degraded/healthy state until the write actually lands.
+Future<bool> _setMonitorNotification({
   required String title,
   required String text,
 }) async {
@@ -440,10 +450,13 @@ Future<void> _setMonitorNotification({
     );
     if (result is ServiceRequestFailure) {
       debugPrint('Failed to update monitoring notification: ${result.error}');
+      return false;
     }
+    return true;
   } catch (error, stackTrace) {
     debugPrint('Failed to update monitoring notification: $error');
     debugPrint('$stackTrace');
+    return false;
   }
 }
 
