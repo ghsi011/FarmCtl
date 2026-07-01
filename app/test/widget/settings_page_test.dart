@@ -183,6 +183,31 @@ void main() {
     );
   });
 
+  testWidgets(
+    'suppresses the overdue warning during an intentional monitoring pause',
+    (tester) async {
+      final lastRun = DateTime.now().toUtc().subtract(
+        const Duration(minutes: 30),
+      );
+      await _pumpData(
+        tester,
+        _config(
+          interval: const Duration(minutes: 5),
+          lastMonitorRunAt: lastRun,
+          pauseUntil: DateTime.now().toUtc().add(const Duration(hours: 1)),
+        ),
+      );
+
+      expect(find.text('Last check'), findsOneWidget);
+      expect(find.text('30 mins ago'), findsOneWidget);
+      expect(find.byIcon(Icons.warning_amber), findsNothing);
+      expect(
+        find.text('Overdue — checks may be delayed or blocked.'),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('shows Never when the monitor has not run yet', (tester) async {
     await _pumpData(tester, _config());
 

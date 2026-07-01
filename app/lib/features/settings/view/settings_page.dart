@@ -534,6 +534,7 @@ class _SettingsContentState extends State<_SettingsContent> {
                     lastRunAt: widget.config.lastMonitorRunAt,
                     pollInterval: widget.config.pollInterval,
                     now: now,
+                    paused: widget.config.isPaused(now),
                   ),
                   const SizedBox(height: 8),
                   const Divider(),
@@ -901,23 +902,28 @@ class _SettingsTileHeader extends StatelessWidget {
 /// When the background monitor last started a run, as relative time ('2 mins
 /// ago') or 'Never' when it has not run yet. Rendered in an error style once
 /// the reading is older than twice the poll interval — at that point a check
-/// has been missed and alarm delivery can no longer be trusted.
+/// has been missed and alarm delivery can no longer be trusted. During an
+/// intentional monitoring pause the service deliberately sleeps, so the
+/// overdue warning is suppressed rather than flagging expected silence.
 class _LastCheckRow extends StatelessWidget {
   const _LastCheckRow({
     required this.lastRunAt,
     required this.pollInterval,
     required this.now,
+    required this.paused,
   });
 
   final DateTime? lastRunAt;
   final Duration pollInterval;
   final DateTime now;
+  final bool paused;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final last = lastRunAt;
-    final stale = last != null && now.difference(last) > pollInterval * 2;
+    final stale =
+        !paused && last != null && now.difference(last) > pollInterval * 2;
     final value = last == null
         ? 'Never'
         : formatRelativeDuration(now.difference(last));
