@@ -6,8 +6,10 @@ import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,9 +19,51 @@ class MainActivity : FlutterActivity() {
     private const val CHANNEL = "com.example.farmctl/sound_picker"
     private const val REQUEST_CODE_PICK_SOUND = 0xFA10
     private const val TAG = "SoundPicker"
+
+    // Action set by flutter_local_notifications on the launch intent it uses
+    // for both the notification's fullScreenIntent and body taps. The only
+    // notifications this app posts through that plugin are thermostat alarms,
+    // so this action reliably identifies an alarm launch.
+    private const val ALARM_NOTIFICATION_ACTION = "SELECT_NOTIFICATION"
   }
 
   private var pendingResult: MethodChannel.Result? = null
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    applyAlarmLockScreenFlags(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    applyAlarmLockScreenFlags(intent)
+  }
+
+  /**
+   * Shows this activity over the keyguard and turns the screen on, but only
+   * when the activity was launched by an alarm notification (its full-screen
+   * intent firing on a locked device, or the user tapping it). For every other
+   * launch the flags are cleared, so the app is never exposed over the lock
+   * screen during normal use.
+   */
+  @Suppress("DEPRECATION")
+  private fun applyAlarmLockScreenFlags(intent: Intent?) {
+    val isAlarmLaunch = intent?.action == ALARM_NOTIFICATION_ACTION
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(isAlarmLaunch)
+      setTurnScreenOn(isAlarmLaunch)
+    } else {
+      // API 26: setShowWhenLocked/setTurnScreenOn require O_MR1 (27), so fall
+      // back to the window flags they replaced.
+      val lockScreenFlags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+      if (isAlarmLaunch) {
+        window.addFlags(lockScreenFlags)
+      } else {
+        window.clearFlags(lockScreenFlags)
+      }
+    }
+  }
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)

@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Required (API 29+) for the alarm notification's fullScreenIntent to
+         launch the alarm screen on a locked device; without it the intent is
+         silently ignored. showWhenLocked/turnScreenOn are set programmatically
+         in MainActivity only for alarm launches, so the rest of the app never
+         appears over the keyguard. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <application
         android:label="farmctl"
         android:name="${applicationName}"
