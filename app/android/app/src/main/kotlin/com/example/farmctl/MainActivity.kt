@@ -49,7 +49,15 @@ class MainActivity : FlutterActivity() {
    */
   @Suppress("DEPRECATION")
   private fun applyAlarmLockScreenFlags(intent: Intent?) {
-    val isAlarmLaunch = intent?.action == ALARM_NOTIFICATION_ACTION
+    // A relaunch from recents after process death redelivers the original
+    // alarm intent with FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY set; treat it as
+    // a normal launch so an already-handled alarm cannot re-expose the app
+    // over the lock screen. This mirrors flutter_local_notifications' own
+    // launchedActivityFromHistory filter, keeping Kotlin and Dart aligned.
+    // PendingIntent-driven alarm launches (full-screen intent, notification
+    // tap) never carry this flag.
+    val isAlarmLaunch = intent?.action == ALARM_NOTIFICATION_ACTION &&
+      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(isAlarmLaunch)
       setTurnScreenOn(isAlarmLaunch)
@@ -84,9 +92,11 @@ class MainActivity : FlutterActivity() {
           WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
       )
     }
-    // Neutralize the stored launch intent so activity recreation (a config
-    // change, or reopening from recents) does not re-apply the flags via
-    // onCreate for an alarm that was already handled. Safe with respect to
+    // Neutralize the stored launch intent so in-process activity recreation
+    // (a config change) does not re-apply the flags via onCreate for an alarm
+    // that was already handled. History relaunches after process death are
+    // covered by the FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY filter in
+    // applyAlarmLockScreenFlags. Safe with respect to
     // flutter_local_notifications: getNotificationAppLaunchDetails() inspects
     // this intent's action, but the app queries it exactly once during startup
     // (handleNotificationLaunch in main.dart) — always before the alarm page
