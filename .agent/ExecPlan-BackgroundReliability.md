@@ -141,5 +141,49 @@ Recommend testing on the reporter's Pixel 9 before relying on it:
     AGENTS.md).
   - Re-ran `flutter analyze` (clean), `flutter test` (211/211), and
     `dart format` (clean) after applying fixes.
-- ☐ Manual verification on the reporter's Pixel 9 (see the limitation note
-  above) — could not be done in this sandboxed session.
+- ✅ **Manual verification on the reporter's Pixel 9** — v0.5.0 (signed release
+  APK) sideloaded and confirmed working on-device by the reporter. The
+  original "monitoring fails to run on my Pixel 9" bug is resolved. The
+  foreground-service approach (Gate A: Flutter-only) is validated on real
+  hardware; no native shim needed.
+
+---
+
+## 🔁 Follow-up (post-v0.5.0): pause efficiency + failure visibility
+
+Two review findings deliberately deferred from the bug-fix PR, now picked up
+as a focused follow-up once the core fix was field-confirmed.
+
+- **Pause efficiency (#2).** With the old AlarmManager chain, "Pause for Nh"
+  deferred the next wakeup to the pause end. The foreground service instead
+  ticks at the poll interval through the whole pause, opening the DB /
+  checking `isPaused` / bailing every time — wasteful (battery + DB churn),
+  though not incorrect. Fix: `effectiveServiceInterval(config, now)` returns
+  the *remaining pause* (when it exceeds the poll interval) so the service
+  sleeps until the pause ends, then a single tick at pause-end resets it to
+  the normal cadence. Verified against the plugin's Android source that
+  `updateService(foregroundTaskOptions: repeat(newMs))` cancels and relaunches
+  the repeat timer (`ForegroundTask.update → startRepeatTask`), and that
+  changing the interval / notification from inside the TaskHandler is the
+  plugin's own documented pattern (README + example).
+- **Failure visibility (#3).** If a run can't execute at all (config/DB
+  unreadable → no thermostat checked), it previously only `debugPrint`ed,
+  leaving a healthy-looking notification over silently-broken monitoring
+  (`isRunningService` stays true, so the watchdog never intervenes). Fix:
+  after 2 consecutive failed runs, flip the ongoing "FarmCtl monitoring"
+  notification to an error state ("not running / open FarmCtl to restore");
+  a successful run clears it. Threshold-2 avoids flapping on a single
+  transient blip. User chose the "update the ongoing notification" surface
+  (proportionate, reuses the existing status notification) over a separate
+  alarm-style alert. Transition logic extracted into the pure, unit-tested
+  `nextMonitorHealth(...)`.
+- Both surface through `FlutterForegroundTask.updateService` from the service
+  isolate. The interval reconcile runs on *every* run (and every exit path —
+  debounce-skip, paused bail, config-load failure → fallback interval) rather
+  than being gated on a local memo: a memo of the applied interval desyncs the
+  moment the main isolate changes the real interval, stranding a stale cadence
+  (adversarial review found three variants of this). The plugin already
+  compares against the service's *actual* current interval and only restarts
+  the repeat timer when it truly changed, so an unchanged reconcile is a cheap
+  no-op — and calling `updateService` each tick is the plugin's own documented
+  pattern. The health notification only fires on a healthy↔degraded transition.

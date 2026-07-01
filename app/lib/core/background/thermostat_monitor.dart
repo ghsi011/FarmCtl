@@ -46,6 +46,10 @@ const int _alarmNotificationBaseId = 4000;
 // interval, so it always uses the platform floor.
 const Duration _watchdogFrequency = Duration(minutes: 15);
 
+// Cadence used when the real poll interval can't be loaded (config/DB
+// transiently unreadable), so the service keeps retrying at a sane pace.
+const Duration _fallbackPollInterval = Duration(minutes: 5);
+
 // Secondary safety net behind the in-isolate `_monitorRunInProgress` lock (see
 // below): collapses a near-simultaneous onStart + onRepeatEvent fire into a
 // single monitor run if they ever reach the DB check before the lock is set.
@@ -64,6 +68,60 @@ int pollIntervalMillis(
 }) {
   final effective = pollInterval < minimum ? minimum : pollInterval;
   return effective.inMilliseconds;
+}
+
+/// The cadence the foreground service should tick at for [config] at [nowUtc].
+///
+/// During an active pause that is longer than one poll interval, the service
+/// sleeps until the pause ends instead of waking every interval only to notice
+/// it's paused and bail — so the remaining pause is used as the interval. A
+/// single tick then fires at the pause end and, seeing monitoring un-paused,
+/// resets the cadence back to the poll interval. Pure for testability.
+Duration effectiveServiceInterval(AlertConfig config, DateTime nowUtc) {
+  final remaining = config.remainingPause(nowUtc);
+  if (remaining != null && remaining > config.pollInterval) {
+    return remaining;
+  }
+  return config.pollInterval;
+}
+
+/// How the ongoing "monitoring" notification should change after a run.
+enum MonitorNotificationAction { none, showDegraded, showHealthy }
+
+/// After 2 consecutive failed runs the notification is flipped once to show
+/// that monitoring is broken.
+const int _monitorFailureThreshold = 2;
+
+/// Pure state transition for the ongoing-notification health indicator, given
+/// the [failures] seen so far and whether the notification is already
+/// [degraded]. Escalates only after [threshold] consecutive failures (so a
+/// single transient blip doesn't trip it) and only emits an action on the
+/// healthy<->degraded transition, so a steady state makes no platform calls.
+({int failures, bool degraded, MonitorNotificationAction action})
+nextMonitorHealth({
+  required int failures,
+  required bool degraded,
+  required bool runSucceeded,
+  int threshold = _monitorFailureThreshold,
+}) {
+  if (runSucceeded) {
+    return (
+      failures: 0,
+      degraded: false,
+      action: degraded
+          ? MonitorNotificationAction.showHealthy
+          : MonitorNotificationAction.none,
+    );
+  }
+  final nextFailures = failures + 1;
+  final reachedThreshold = nextFailures >= threshold;
+  return (
+    failures: nextFailures,
+    degraded: degraded || reachedThreshold,
+    action: (reachedThreshold && !degraded)
+        ? MonitorNotificationAction.showDegraded
+        : MonitorNotificationAction.none,
+  );
 }
 
 ForegroundTaskOptions _foregroundTaskOptions(Duration pollInterval) {
@@ -208,9 +266,12 @@ Future<void> initializeBackgroundMonitoring({Duration? pollFrequency}) async {
   );
 
   final configuredInterval =
-      pollFrequency ?? config?.pollInterval ?? const Duration(minutes: 5);
+      pollFrequency ?? config?.pollInterval ?? _fallbackPollInterval;
 
   // The foreground service is the single source of truth for polling cadence.
+  // Pause-stretching (sleeping the service until a pause ends) is handled
+  // solely by the service isolate's own reconcile — see _reconcileServiceInterval
+  // — so its cadence memo stays consistent; this always uses the plain interval.
   await _ensureForegroundServiceRunning(configuredInterval);
 
   // WorkManager is demoted to a watchdog: it only restarts the foreground
@@ -317,6 +378,13 @@ bool shouldSkipMonitorRun({
 // the same way.
 bool _monitorRunInProgress = false;
 
+// Service-isolate-local health state. Lives for the lifetime of the foreground
+// service isolate (reset to defaults if the OS kills and the watchdog restarts
+// the process, which is fine — the service starts with a fresh healthy
+// notification and normal cadence).
+int _consecutiveMonitorFailures = 0;
+bool _monitorHealthDegraded = false;
+
 Future<bool> _runMonitorTask() async {
   if (_monitorRunInProgress) {
     debugPrint('Skipping monitor run; one is already in progress.');
@@ -324,9 +392,82 @@ Future<bool> _runMonitorTask() async {
   }
   _monitorRunInProgress = true;
   try {
-    return await _runMonitorTaskLocked();
+    final succeeded = await _runMonitorTaskLocked();
+    await _updateMonitorHealth(runSucceeded: succeeded);
+    return succeeded;
   } finally {
     _monitorRunInProgress = false;
+  }
+}
+
+/// Flips the ongoing notification to an error state after repeated failures (and
+/// back to healthy on recovery), so a silently-broken monitor is visible.
+Future<void> _updateMonitorHealth({required bool runSucceeded}) async {
+  if (!_supportsForegroundService) {
+    return;
+  }
+  final next = nextMonitorHealth(
+    failures: _consecutiveMonitorFailures,
+    degraded: _monitorHealthDegraded,
+    runSucceeded: runSucceeded,
+  );
+  _consecutiveMonitorFailures = next.failures;
+  _monitorHealthDegraded = next.degraded;
+  switch (next.action) {
+    case MonitorNotificationAction.showDegraded:
+      await _setMonitorNotification(
+        title: 'FarmCtl monitoring — not running',
+        text: 'Last check failed. Open FarmCtl to restore monitoring.',
+      );
+    case MonitorNotificationAction.showHealthy:
+      await _setMonitorNotification(
+        title: 'FarmCtl monitoring',
+        text: 'Monitoring active',
+      );
+    case MonitorNotificationAction.none:
+      break;
+  }
+}
+
+Future<void> _setMonitorNotification({
+  required String title,
+  required String text,
+}) async {
+  try {
+    final result = await FlutterForegroundTask.updateService(
+      notificationTitle: title,
+      notificationText: text,
+    );
+    if (result is ServiceRequestFailure) {
+      debugPrint('Failed to update monitoring notification: ${result.error}');
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Failed to update monitoring notification: $error');
+    debugPrint('$stackTrace');
+  }
+}
+
+/// Sets the running service's tick cadence (e.g. stretching it out during a
+/// pause, or restoring the poll interval afterwards). Called on every run so a
+/// prior pause-stretch is always corrected; the plugin itself compares against
+/// the service's actual current interval and only restarts the repeat timer
+/// when it truly changed, so an unchanged interval is a cheap no-op. (A local
+/// "last applied" memo was deliberately avoided — it would desync from the real
+/// interval whenever the main isolate changed it, stranding a stale cadence.)
+Future<void> _reconcileServiceInterval(Duration interval) async {
+  if (!_supportsForegroundService) {
+    return;
+  }
+  try {
+    final result = await FlutterForegroundTask.updateService(
+      foregroundTaskOptions: _foregroundTaskOptions(interval),
+    );
+    if (result is ServiceRequestFailure) {
+      debugPrint('Failed to adjust monitoring cadence: ${result.error}');
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Failed to adjust monitoring cadence: $error');
+    debugPrint('$stackTrace');
   }
 }
 
@@ -350,33 +491,35 @@ Future<bool> _runMonitorTaskLocked() async {
   if (config == null) {
     debugPrint('Alert config unavailable; skipping monitor run.');
     await database.close();
+    // Don't strand the service at a stretched (pause) cadence when the config
+    // is transiently unreadable: fall back to the default interval so it keeps
+    // retrying at a normal pace and self-heals once the config is readable.
+    await _reconcileServiceInterval(_fallbackPollInterval);
     return false;
   }
 
+  final alertConfig = config; // promote to non-null
   final now = DateTime.now().toUtc();
-
-  // Debounce the overlapping onStart + onRepeatEvent triggers into a single
-  // run rather than fetching and writing the same rows twice.
-  if (shouldSkipMonitorRun(
-    lastRunStartedAt: config.lastMonitorRunAt,
-    now: now,
-  )) {
-    debugPrint('Skipping monitor run; another run started recently.');
-    await database.close();
-    return true;
-  }
-
-  // Record the run start up-front so a near-simultaneous trigger debounces.
-  try {
-    await database.setLastMonitorRunAt(now);
-  } catch (error, stackTrace) {
-    debugPrint('Failed to record monitor run start: $error');
-    debugPrint('$stackTrace');
-  }
-
   var success = true;
   try {
-    final alertConfig = config; // promote to non-null for closures
+    // Debounce the overlapping onStart + onRepeatEvent triggers into a single
+    // run rather than fetching and writing the same rows twice.
+    if (shouldSkipMonitorRun(
+      lastRunStartedAt: alertConfig.lastMonitorRunAt,
+      now: now,
+    )) {
+      debugPrint('Skipping monitor run; another run started recently.');
+      return true;
+    }
+
+    // Record the run start up-front so a near-simultaneous trigger debounces.
+    try {
+      await database.setLastMonitorRunAt(now);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to record monitor run start: $error');
+      debugPrint('$stackTrace');
+    }
+
     final deps = buildMonitorDependencies(database, alertConfig, notifications);
     final repository = deps.repository;
     final service = deps.service;
@@ -411,6 +554,10 @@ Future<bool> _runMonitorTaskLocked() async {
     debugPrint('$stackTrace');
   } finally {
     await database.close();
+    // Reconcile cadence on EVERY exit path (debounce-skip, paused bail, or a
+    // full run) so a prior pause-stretch is always corrected: during a pause,
+    // stretch the next wake to the pause end; otherwise the normal interval.
+    await _reconcileServiceInterval(effectiveServiceInterval(alertConfig, now));
   }
 
   return success;

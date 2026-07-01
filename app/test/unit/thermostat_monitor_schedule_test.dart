@@ -1,6 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/core/background/thermostat_monitor.dart';
+import 'package:farmctl/features/settings/models/alert_config.dart';
+
+AlertConfig _config({
+  Duration pollInterval = const Duration(minutes: 5),
+  DateTime? pauseAllUntil,
+}) {
+  return AlertConfig(
+    pollInterval: pollInterval,
+    soundUri: null,
+    vibrate: true,
+    volumeBoost: false,
+    pauseAllUntil: pauseAllUntil,
+    githubToken: null,
+  );
+}
 
 void main() {
   group('shouldSkipMonitorRun', () {
@@ -107,6 +122,111 @@ void main() {
         ),
         const Duration(seconds: 10).inMilliseconds,
       );
+    });
+  });
+
+  group('effectiveServiceInterval', () {
+    final now = DateTime.utc(2025, 1, 1, 12);
+
+    test('uses the poll interval when not paused', () {
+      expect(
+        effectiveServiceInterval(
+          _config(pollInterval: const Duration(minutes: 5)),
+          now,
+        ),
+        const Duration(minutes: 5),
+      );
+    });
+
+    test('sleeps until the pause ends when the pause is longer', () {
+      final config = _config(
+        pollInterval: const Duration(minutes: 5),
+        pauseAllUntil: now.add(const Duration(hours: 8)),
+      );
+      expect(effectiveServiceInterval(config, now), const Duration(hours: 8));
+    });
+
+    test('keeps the poll interval when the remaining pause is shorter', () {
+      final config = _config(
+        pollInterval: const Duration(minutes: 5),
+        pauseAllUntil: now.add(const Duration(minutes: 2)),
+      );
+      expect(effectiveServiceInterval(config, now), const Duration(minutes: 5));
+    });
+
+    test('keeps the poll interval once the pause has elapsed', () {
+      final config = _config(
+        pollInterval: const Duration(minutes: 5),
+        pauseAllUntil: now.subtract(const Duration(minutes: 1)),
+      );
+      expect(effectiveServiceInterval(config, now), const Duration(minutes: 5));
+    });
+  });
+
+  group('nextMonitorHealth', () {
+    test('a success from a clean state does nothing', () {
+      final r = nextMonitorHealth(
+        failures: 0,
+        degraded: false,
+        runSucceeded: true,
+      );
+      expect(r.failures, 0);
+      expect(r.degraded, isFalse);
+      expect(r.action, MonitorNotificationAction.none);
+    });
+
+    test('a single failure does not yet degrade (threshold 2)', () {
+      final r = nextMonitorHealth(
+        failures: 0,
+        degraded: false,
+        runSucceeded: false,
+      );
+      expect(r.failures, 1);
+      expect(r.degraded, isFalse);
+      expect(r.action, MonitorNotificationAction.none);
+    });
+
+    test('the second consecutive failure flips to degraded exactly once', () {
+      final r = nextMonitorHealth(
+        failures: 1,
+        degraded: false,
+        runSucceeded: false,
+      );
+      expect(r.failures, 2);
+      expect(r.degraded, isTrue);
+      expect(r.action, MonitorNotificationAction.showDegraded);
+    });
+
+    test('further failures while degraded emit no repeat notification', () {
+      final r = nextMonitorHealth(
+        failures: 2,
+        degraded: true,
+        runSucceeded: false,
+      );
+      expect(r.failures, 3);
+      expect(r.degraded, isTrue);
+      expect(r.action, MonitorNotificationAction.none);
+    });
+
+    test('recovery from degraded restores the healthy notification once', () {
+      final r = nextMonitorHealth(
+        failures: 3,
+        degraded: true,
+        runSucceeded: true,
+      );
+      expect(r.failures, 0);
+      expect(r.degraded, isFalse);
+      expect(r.action, MonitorNotificationAction.showHealthy);
+    });
+
+    test('honours a custom threshold', () {
+      final r = nextMonitorHealth(
+        failures: 0,
+        degraded: false,
+        runSucceeded: false,
+        threshold: 1,
+      );
+      expect(r.action, MonitorNotificationAction.showDegraded);
     });
   });
 }
