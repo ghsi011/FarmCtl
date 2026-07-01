@@ -66,7 +66,9 @@ void main() {
     expect(find.text('Resume monitoring'), findsOneWidget);
     expect(find.text('Alarm sound'), findsOneWidget);
     expect(find.text('Vibrate on alarm'), findsOneWidget);
-    expect(find.text('Boost volume'), findsOneWidget);
+    // The old no-op "Boost volume" switch must stay removed: it persisted a
+    // flag nothing read at alarm time.
+    expect(find.text('Boost volume'), findsNothing);
     expect(find.text('Test alarm'), findsOneWidget);
     expect(find.text('API configuration'), findsOneWidget);
 

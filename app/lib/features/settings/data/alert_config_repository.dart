@@ -114,12 +114,6 @@ class AlertConfigRepository {
     );
   }
 
-  Future<void> setVolumeBoost(bool enabled) async {
-    await _database.updateAlertConfig(
-      AlertConfigEntriesCompanion(volumeBoost: Value(enabled)),
-    );
-  }
-
   Future<void> pauseFor(Duration duration) async {
     final until = _clock().add(duration);
     await _database.updateAlertConfig(

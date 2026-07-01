@@ -44,9 +44,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onVibrateChanged: (value) {
               _setVibrateEnabled(value);
             },
-            onVolumeBoostChanged: (value) {
-              _setVolumeBoostEnabled(value);
-            },
             onPauseFor: (duration) {
               _pauseFor(duration);
             },
@@ -167,17 +164,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _setVibrateEnabled(bool value) async {
     try {
       await ref.read(alertConfigRepositoryProvider).setVibrate(value);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(humanizeError(error))));
-    }
-  }
-
-  Future<void> _setVolumeBoostEnabled(bool value) async {
-    try {
-      await ref.read(alertConfigRepositoryProvider).setVolumeBoost(value);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -416,7 +402,6 @@ class _SettingsContent extends StatefulWidget {
     required this.onPollIntervalChangeEnd,
     required this.onRequestBatteryExemption,
     required this.onVibrateChanged,
-    required this.onVolumeBoostChanged,
     required this.onPauseFor,
     required this.onResumeNow,
     required this.onPickSound,
@@ -433,7 +418,6 @@ class _SettingsContent extends StatefulWidget {
   final ValueChanged<double> onPollIntervalChangeEnd;
   final Future<void> Function() onRequestBatteryExemption;
   final ValueChanged<bool> onVibrateChanged;
-  final ValueChanged<bool> onVolumeBoostChanged;
   final ValueChanged<Duration> onPauseFor;
   final VoidCallback onResumeNow;
   final ValueChanged<AlertConfig> onPickSound;
@@ -646,17 +630,6 @@ class _SettingsContentState extends State<_SettingsContent> {
                     title: const Text('Vibrate on alarm'),
                     contentPadding: EdgeInsets.zero,
                     secondary: const Icon(Icons.vibration),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile.adaptive(
-                    value: widget.config.volumeBoost,
-                    onChanged: widget.onVolumeBoostChanged,
-                    title: const Text('Boost volume'),
-                    subtitle: const Text(
-                      'Keeps alarm volume at maximum while alarming.',
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.volume_up),
                   ),
                   const SizedBox(height: 20),
                   Align(

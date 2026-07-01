@@ -763,12 +763,31 @@ MonitorDependencies buildMonitorDependencies(
   );
 }
 
-String _alarmChannelIdForSound(String? soundUri) {
+/// Android `Notification.FLAG_INSISTENT`: repeats the alarm sound (and
+/// vibration) until the notification is dismissed or acknowledged, matching
+/// the alarm-app-like behavior required by Spec 3.5. flutter_local_notifications
+/// exposes raw flags only via `additionalFlags`, hence the literal value.
+@visibleForTesting
+const int insistentNotificationFlag = 4;
+
+/// Channel id for the alarm channel carrying [soundUri] + [vibrate].
+///
+/// Notification channel settings are immutable once the channel exists
+/// (API 26+), so every user-configurable channel property must be folded into
+/// the channel identity — otherwise toggling the setting would silently keep
+/// the old channel behavior. `vibrate == true` maps to the historical id so
+/// channels created before vibration joined the identity (always created with
+/// vibration on) remain valid.
+@visibleForTesting
+String alarmChannelIdFor({required String? soundUri, required bool vibrate}) {
+  final String base;
   if (soundUri == null || soundUri.isEmpty) {
-    return '${_alarmChannelPrefix}_default';
+    base = '${_alarmChannelPrefix}_default';
+  } else {
+    final hash = soundUri.hashCode & 0x7fffffff;
+    base = '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
   }
-  final hash = soundUri.hashCode & 0x7fffffff;
-  return '${_alarmChannelPrefix}_${hash.toRadixString(36)}';
+  return vibrate ? base : '${base}_novib';
 }
 
 AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
@@ -778,8 +797,12 @@ AndroidNotificationSound _alarmNotificationSound(String? soundUri) {
   return UriAndroidNotificationSound(target);
 }
 
-AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
-  final channelId = _alarmChannelIdForSound(soundUri);
+@visibleForTesting
+AndroidNotificationChannel buildAlarmChannel({
+  required String? soundUri,
+  required bool vibrate,
+}) {
+  final channelId = alarmChannelIdFor(soundUri: soundUri, vibrate: vibrate);
   return AndroidNotificationChannel(
     channelId,
     _alarmChannelName,
@@ -788,7 +811,45 @@ AndroidNotificationChannel _buildAlarmChannel(String? soundUri) {
     playSound: true,
     sound: _alarmNotificationSound(soundUri),
     audioAttributesUsage: AudioAttributesUsage.alarm,
-    enableVibration: true,
+    enableVibration: vibrate,
+  );
+}
+
+/// Builds the Android-side alarm notification details for [config]. Pure
+/// (no plugin calls) so tests can assert the channel identity, vibration and
+/// the insistent (looping) flag directly.
+@visibleForTesting
+AndroidNotificationDetails buildAlarmAndroidDetails({
+  required AlertConfig config,
+  required bool autoCancel,
+  required bool ongoing,
+  required List<AndroidNotificationAction> actions,
+  bool fullScreenIntent = true,
+  String ticker = 'Thermostat alarm',
+}) {
+  final channel = buildAlarmChannel(
+    soundUri: config.soundUri,
+    vibrate: config.vibrate,
+  );
+  return AndroidNotificationDetails(
+    channel.id,
+    channel.name,
+    channelDescription: channel.description,
+    importance: Importance.max,
+    priority: Priority.high,
+    fullScreenIntent: fullScreenIntent,
+    category: AndroidNotificationCategory.alarm,
+    ticker: ticker,
+    autoCancel: autoCancel,
+    ongoing: ongoing,
+    enableVibration: config.vibrate,
+    playSound: true,
+    sound: _alarmNotificationSound(config.soundUri),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    channelAction: AndroidNotificationChannelAction.createIfNotExists,
+    // Loop sound/vibration until the alarm is dismissed or acknowledged.
+    additionalFlags: Int32List.fromList(const [insistentNotificationFlag]),
+    actions: actions,
   );
 }
 
@@ -805,27 +866,19 @@ Future<NotificationDetails> _prepareAlarmNotificationDetails({
       .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin
       >();
-  final channel = _buildAlarmChannel(config.soundUri);
+  final channel = buildAlarmChannel(
+    soundUri: config.soundUri,
+    vibrate: config.vibrate,
+  );
   await androidPlugin?.createNotificationChannel(channel);
-  final sound = _alarmNotificationSound(config.soundUri);
 
-  final androidDetails = AndroidNotificationDetails(
-    channel.id,
-    channel.name,
-    channelDescription: channel.description,
-    importance: Importance.max,
-    priority: Priority.high,
-    fullScreenIntent: fullScreenIntent,
-    category: AndroidNotificationCategory.alarm,
-    ticker: ticker,
+  final androidDetails = buildAlarmAndroidDetails(
+    config: config,
     autoCancel: autoCancel,
     ongoing: ongoing,
-    enableVibration: config.vibrate,
-    playSound: true,
-    sound: sound,
-    audioAttributesUsage: AudioAttributesUsage.alarm,
-    channelAction: AndroidNotificationChannelAction.createIfNotExists,
     actions: actions,
+    fullScreenIntent: fullScreenIntent,
+    ticker: ticker,
   );
 
   return NotificationDetails(android: androidDetails);
@@ -927,6 +980,9 @@ Future<void> showTestAlarmNotification({required AlertConfig config}) async {
   final plugin = FlutterLocalNotificationsPlugin();
   await _initializeNotifications(plugin, config: config);
 
+  // Deliberately shares the real alarm's details (including the insistent,
+  // looping sound) so "Test alarm" is a faithful preview; autoCancel keeps a
+  // single tap enough to stop it.
   final details = await _prepareAlarmNotificationDetails(
     plugin: plugin,
     config: config,
@@ -983,8 +1039,10 @@ Future<void> _initializeNotifications(
   if (customSound != null && customSound.isNotEmpty) {
     soundUris.add(customSound);
   }
+  // Without a loaded config, warm up the vibrating channel (the DB default).
+  final vibrate = config?.vibrate ?? true;
   for (final soundUri in soundUris) {
-    final channel = _buildAlarmChannel(soundUri);
+    final channel = buildAlarmChannel(soundUri: soundUri, vibrate: vibrate);
     await androidPlugin?.createNotificationChannel(channel);
   }
 }
