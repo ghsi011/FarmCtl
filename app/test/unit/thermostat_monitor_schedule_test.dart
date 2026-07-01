@@ -1,22 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/core/background/thermostat_monitor.dart';
-import 'package:farmctl/features/settings/models/alert_config.dart';
-
-AlertConfig _config({
-  Duration interval = const Duration(minutes: 5),
-  DateTime? pauseUntil,
-}) {
-  return AlertConfig(
-    pollInterval: interval,
-    exactAlarmsEnabled: false,
-    soundUri: null,
-    vibrate: true,
-    volumeBoost: false,
-    pauseAllUntil: pauseUntil,
-    githubToken: null,
-  );
-}
 
 void main() {
   group('shouldSkipMonitorRun', () {
@@ -92,77 +76,36 @@ void main() {
     });
   });
 
-  group('nextMonitorRunUtc', () {
-    final now = DateTime.utc(2025, 1, 1, 12);
-
-    test('schedules the next run exactly one poll interval ahead', () {
+  group('pollIntervalMillis', () {
+    test('converts a normal poll interval to milliseconds', () {
       expect(
-        nextMonitorRunUtc(_config(interval: const Duration(minutes: 1)), now),
-        now.add(const Duration(minutes: 1)),
+        pollIntervalMillis(const Duration(minutes: 1)),
+        const Duration(minutes: 1).inMilliseconds,
       );
       expect(
-        nextMonitorRunUtc(_config(interval: const Duration(minutes: 5)), now),
-        now.add(const Duration(minutes: 5)),
-      );
-      expect(
-        nextMonitorRunUtc(_config(interval: const Duration(minutes: 30)), now),
-        now.add(const Duration(minutes: 30)),
+        pollIntervalMillis(const Duration(minutes: 30)),
+        const Duration(minutes: 30).inMilliseconds,
       );
     });
 
-    test('returns null for a non-positive interval (monitoring off)', () {
-      expect(nextMonitorRunUtc(_config(interval: Duration.zero), now), isNull);
+    test('clamps below the defensive floor up to the floor', () {
+      expect(
+        pollIntervalMillis(Duration.zero),
+        const Duration(seconds: 30).inMilliseconds,
+      );
+      expect(
+        pollIntervalMillis(const Duration(seconds: 5)),
+        const Duration(seconds: 30).inMilliseconds,
+      );
     });
 
-    test('defers the next run to the end of an active pause', () {
-      final pauseUntil = now.add(const Duration(hours: 1));
+    test('honours a custom floor', () {
       expect(
-        nextMonitorRunUtc(
-          _config(interval: const Duration(minutes: 5), pauseUntil: pauseUntil),
-          now,
+        pollIntervalMillis(
+          const Duration(seconds: 5),
+          minimum: const Duration(seconds: 10),
         ),
-        pauseUntil,
-      );
-    });
-
-    test('ignores a pause that ends before the next interval', () {
-      final pauseUntil = now.add(const Duration(minutes: 2));
-      expect(
-        nextMonitorRunUtc(
-          _config(interval: const Duration(minutes: 5), pauseUntil: pauseUntil),
-          now,
-        ),
-        now.add(const Duration(minutes: 5)),
-      );
-    });
-  });
-
-  group('effectiveMonitorFrequency', () {
-    test('clamps sub-15-minute intervals up to the platform floor', () {
-      // WorkManager cannot run more often than every 15 minutes; the precise
-      // sub-15-minute cadence is driven by the AlarmManager one-shot instead.
-      expect(
-        effectiveMonitorFrequency(const Duration(minutes: 1)),
-        const Duration(minutes: 15),
-      );
-      expect(
-        effectiveMonitorFrequency(const Duration(minutes: 5)),
-        const Duration(minutes: 15),
-      );
-      expect(
-        effectiveMonitorFrequency(const Duration(minutes: 15)),
-        const Duration(minutes: 15),
-      );
-    });
-
-    test('honours intervals at or above the floor', () {
-      expect(
-        effectiveMonitorFrequency(const Duration(minutes: 20)),
-        const Duration(minutes: 20),
-      );
-      expect(
-        effectiveMonitorFrequency(const Duration(minutes: 30)),
-        const Duration(minutes: 30),
+        const Duration(seconds: 10).inMilliseconds,
       );
     });
   });

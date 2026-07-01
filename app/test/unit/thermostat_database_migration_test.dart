@@ -67,9 +67,15 @@ void main() {
         ),
       ]);
 
-      // Simulate a v6 on-disk schema: drop the v7 column and rewind the version.
+      // Simulate a v6 on-disk schema: drop the v7 column, add back the
+      // exact_alarms_enabled column a real v6 table still had (dropped in
+      // v9), and rewind the version.
       await db.customStatement(
         'ALTER TABLE alert_config_entries DROP COLUMN last_monitor_run_at',
+      );
+      await db.customStatement(
+        'ALTER TABLE alert_config_entries '
+        'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
       );
       await db.customStatement('PRAGMA user_version = 6');
       await db.close();
@@ -110,10 +116,16 @@ void main() {
     await db.customStatement(
       'ALTER TABLE alert_config_entries DROP COLUMN github_token',
     );
+    // A real v1 table had exact_alarms_enabled from the start (dropped in
+    // v9); add it back so this simulation matches actual v1 data.
+    await db.customStatement(
+      'ALTER TABLE alert_config_entries '
+      'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
+    );
     await db.customStatement('PRAGMA user_version = 1');
     await db.close();
 
-    // Re-open: onUpgrade(1 -> 7) must run every step. Before the createTable/
+    // Re-open: onUpgrade(1 -> 9) must run every step. Before the createTable/
     // addColumn ordering fix this threw a duplicate-column error on v3.
     final upgraded = openDb();
 
@@ -142,6 +154,12 @@ void main() {
 
   test('upgrades v7 -> v8, consolidating duplicate alert_config rows', () async {
     final db = openDb();
+    // A real v7 on-disk table still had exact_alarms_enabled (dropped in v9);
+    // add it back so this raw-SQL simulation matches actual v7 data.
+    await db.customStatement(
+      'ALTER TABLE alert_config_entries '
+      'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
+    );
     // Simulate the pre-fix duplicate-row state. id=1 is the LIVE row the app
     // reads/writes (poll=5, exact alarms off, token already migrated to secure
     // storage so the plaintext column is null); id=2 is a frozen leftover that
@@ -167,11 +185,38 @@ void main() {
     final rows = await upgraded.select(upgraded.alertConfigEntries).get();
     expect(rows, hasLength(1));
     final config = await upgraded.getAlertConfig();
-    // Live settings survive (NOT the stale id=2 values 9 / true)...
+    // Live settings survive (NOT the stale id=2 value 9)...
     expect(config.pollIntervalMin, 5);
-    expect(config.exactAlarmsEnabled, isFalse);
     // ...and the only token (from the duplicate) is forward-filled.
     expect(config.githubToken, 'ghp_seed');
     await upgraded.close();
   });
+
+  test(
+    'upgrades v8 -> v9, dropping the unused exact_alarms_enabled column',
+    () async {
+      final db = openDb();
+      await seedThermostat(db, 't1');
+      await db.updateAlertConfig(
+        const AlertConfigEntriesCompanion(pollIntervalMin: Value(7)),
+      );
+
+      // Simulate a v8 on-disk schema: add back the column the current (v9)
+      // schema no longer declares, then rewind the version.
+      await db.customStatement(
+        'ALTER TABLE alert_config_entries '
+        'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.customStatement('PRAGMA user_version = 8');
+      await db.close();
+
+      // Re-open: the real onUpgrade(8 -> 9) should run and the DB must still
+      // be usable (the dropped column is never read again).
+      final upgraded = openDb();
+      final config = await upgraded.getAlertConfig();
+      expect(config.pollIntervalMin, 7, reason: 'data must survive upgrade');
+      expect(await upgraded.listThermostats(), hasLength(1));
+      await upgraded.close();
+    },
+  );
 }

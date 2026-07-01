@@ -6,7 +6,6 @@ import '../../thermostats/data/thermostat_database.dart';
 class AlertConfig {
   const AlertConfig({
     required this.pollInterval,
-    required this.exactAlarmsEnabled,
     required this.soundUri,
     required this.vibrate,
     required this.volumeBoost,
@@ -16,7 +15,6 @@ class AlertConfig {
   });
 
   final Duration pollInterval;
-  final bool exactAlarmsEnabled;
   final String? soundUri;
   final bool vibrate;
   final bool volumeBoost;
@@ -24,13 +22,13 @@ class AlertConfig {
   final String? githubToken;
 
   /// When the background monitor last started a run. Used to debounce the
-  /// overlapping WorkManager + AlarmManager triggers into a single run.
+  /// overlapping foreground-service + WorkManager-watchdog triggers into a
+  /// single run.
   final DateTime? lastMonitorRunAt;
 
   factory AlertConfig.fromEntry(AlertConfigEntry entry) {
     return AlertConfig(
       pollInterval: Duration(minutes: entry.pollIntervalMin),
-      exactAlarmsEnabled: entry.exactAlarmsEnabled,
       soundUri: entry.soundUri,
       vibrate: entry.vibrate,
       volumeBoost: entry.volumeBoost,
@@ -46,7 +44,6 @@ class AlertConfig {
   AlertConfig withToken(String? token) {
     return AlertConfig(
       pollInterval: pollInterval,
-      exactAlarmsEnabled: exactAlarmsEnabled,
       soundUri: soundUri,
       vibrate: vibrate,
       volumeBoost: volumeBoost,
@@ -73,7 +70,6 @@ class AlertConfig {
 
   AlertConfig copyWith({
     Duration? pollInterval,
-    bool? exactAlarmsEnabled,
     String? soundUri,
     bool? vibrate,
     bool? volumeBoost,
@@ -83,7 +79,6 @@ class AlertConfig {
   }) {
     return AlertConfig(
       pollInterval: pollInterval ?? this.pollInterval,
-      exactAlarmsEnabled: exactAlarmsEnabled ?? this.exactAlarmsEnabled,
       soundUri: soundUri ?? this.soundUri,
       vibrate: vibrate ?? this.vibrate,
       volumeBoost: volumeBoost ?? this.volumeBoost,
@@ -98,7 +93,6 @@ class AlertConfig {
       identical(this, other) ||
       other is AlertConfig &&
           other.pollInterval == pollInterval &&
-          other.exactAlarmsEnabled == exactAlarmsEnabled &&
           other.soundUri == soundUri &&
           other.vibrate == vibrate &&
           other.volumeBoost == volumeBoost &&
@@ -109,7 +103,6 @@ class AlertConfig {
   @override
   int get hashCode => Object.hash(
     pollInterval,
-    exactAlarmsEnabled,
     soundUri,
     vibrate,
     volumeBoost,

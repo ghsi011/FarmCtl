@@ -52,7 +52,6 @@ class DeveloperLogExporter {
   Map<String, dynamic> _serializeConfig(AlertConfig config) {
     return {
       'pollIntervalMinutes': config.pollInterval.inMinutes,
-      'exactAlarmsEnabled': config.exactAlarmsEnabled,
       'soundUri': config.soundUri,
       'vibrate': config.vibrate,
       'volumeBoost': config.volumeBoost,

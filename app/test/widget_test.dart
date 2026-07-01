@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _defaultConfig = AlertConfig(
   pollInterval: Duration(minutes: 5),
-  exactAlarmsEnabled: false,
   soundUri: null,
   vibrate: true,
   volumeBoost: false,
