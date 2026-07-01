@@ -68,7 +68,28 @@ Recommend testing on the reporter's Pixel 9 before relying on it:
 - ✅ Confirmed `flutter_foreground_task` v9.2.2 API (fetched real source: task
   handler signatures, `ForegroundTaskOptions`, `specialUse` service type,
   Android 15 restrictions) directly from the plugin's GitHub repo.
-- ☐ Implement scheduler swap, manifest/gradle changes, Settings UI cleanup,
-  DB migration.
-- ☐ Update/extend unit + widget tests; run `build_runner`, `analyze`, `test`.
-- ☐ Code review pass.
+- ✅ Implemented scheduler swap, manifest/gradle changes, Settings UI cleanup,
+  DB migration (v8 -> v9, drops `exact_alarms_enabled`).
+- ✅ Updated/extended unit + widget tests; `build_runner`, `analyze`, `test`
+  (211/211) all green; coverage 72.75% (threshold 70%); `dart format` clean.
+- ✅ Two independent review passes (scheduler correctness; Android
+  manifest/plugin-API correctness against the real v9.2.2 source):
+  - **Fixed**: `onStart` + `onRepeatEvent` (the only two callers of
+    `_runMonitorTask`, both in the foreground service's own isolate) could
+    both pass the DB-backed debounce check before either wrote
+    `lastMonitorRunAt` back (check-then-write across separate `await`s),
+    letting two runs execute concurrently. Closed with a synchronous
+    in-isolate lock (`_monitorRunInProgress`) around `_runMonitorTask`,
+    which can't race the same way since the check-and-set has no `await`
+    between them. The DB-backed debounce is kept as a secondary safety net.
+  - **No other real bugs found.** Manifest/service declaration, permissions,
+    and every `flutter_foreground_task` call site were verified against the
+    plugin's actual v9.2.2 source (not training-data assumptions).
+  - **Open, non-blocking nit**: `compileSdk = flutter.compileSdkVersion` is
+    auto-resolved from the Flutter SDK; if the developer's installed Flutter
+    version resolves a `compileSdkVersion` below 35, the Gradle build would
+    fail (`targetSdk > compileSdk`). Not introduced by this change (the app
+    already relied on `flutter.compileSdkVersion` before), but worth a
+    one-line `flutter --version` sanity check when building for real.
+- ☐ Manual verification on the reporter's Pixel 9 (see the limitation note
+  above) — could not be done in this sandboxed session.

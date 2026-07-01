@@ -293,7 +293,29 @@ bool shouldSkipMonitorRun({
   return elapsed >= Duration.zero && elapsed < debounce;
 }
 
+// Guards against onStart and onRepeatEvent (the only two callers, both in the
+// foreground service's own isolate) interleaving at an `await` inside a run:
+// the DB-backed shouldSkipMonitorRun check is check-then-write across two
+// separate awaits, so two calls that both reach it before either has written
+// lastMonitorRunAt would both proceed. This flag's check-and-set is
+// synchronous (no await in between), so within a single isolate it can't race
+// the same way.
+bool _monitorRunInProgress = false;
+
 Future<bool> _runMonitorTask() async {
+  if (_monitorRunInProgress) {
+    debugPrint('Skipping monitor run; one is already in progress.');
+    return true;
+  }
+  _monitorRunInProgress = true;
+  try {
+    return await _runMonitorTaskLocked();
+  } finally {
+    _monitorRunInProgress = false;
+  }
+}
+
+Future<bool> _runMonitorTaskLocked() async {
   WidgetsFlutterBinding.ensureInitialized();
   ui.DartPluginRegistrant.ensureInitialized();
 
