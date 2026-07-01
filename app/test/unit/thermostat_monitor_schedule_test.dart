@@ -154,6 +154,16 @@ void main() {
       expect(effectiveServiceInterval(config, now), const Duration(minutes: 5));
     });
 
+    test('keeps the poll interval when the remaining pause equals it', () {
+      // Boundary: the impl uses a strict `>`, so an exactly-equal remaining
+      // pause must NOT stretch (which would delay the post-pause wake a cycle).
+      final config = _config(
+        pollInterval: const Duration(minutes: 5),
+        pauseAllUntil: now.add(const Duration(minutes: 5)),
+      );
+      expect(effectiveServiceInterval(config, now), const Duration(minutes: 5));
+    });
+
     test('keeps the poll interval once the pause has elapsed', () {
       final config = _config(
         pollInterval: const Duration(minutes: 5),

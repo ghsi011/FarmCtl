@@ -6,12 +6,12 @@ import '../../features/thermostats/providers/thermostat_providers.dart';
 /// Wraps the app and re-fetches every thermostat's current reading whenever the
 /// app is launched or brought back to the foreground.
 ///
-/// Background checks (WorkManager + the AlarmManager one-shot chain) can be
-/// deferred for long stretches by Android Doze and OEM battery optimisation, so
-/// without this the first thing a user sees on opening the app is a stale,
-/// possibly hours-old reading until they pull-to-refresh by hand. Refreshing on
-/// resume makes that manual step automatic, which is the behaviour users expect
-/// when they "enter the app to check the temperature".
+/// Even with the foreground-service monitor, the last background reading can be
+/// a poll interval old (or older if the OS killed and restarted the service),
+/// so without this the first thing a user sees on opening the app could be a
+/// stale reading until they pull-to-refresh by hand. Refreshing on resume makes
+/// that manual step automatic, which is the behaviour users expect when they
+/// "enter the app to check the temperature".
 class ForegroundRefresher extends ConsumerStatefulWidget {
   const ForegroundRefresher({
     required this.child,

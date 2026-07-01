@@ -187,3 +187,44 @@ as a focused follow-up once the core fix was field-confirmed.
   the repeat timer when it truly changed, so an unchanged reconcile is a cheap
   no-op — and calling `updateService` each tick is the plugin's own documented
   pattern. The health notification only fires on a healthy↔degraded transition.
+- **P2 (Codex review of PR #29): retry a failed health-notification write.**
+  `_updateMonitorHealth` used to advance `_monitorHealthDegraded` before the
+  `updateService` call, so a failed write left the notification stuck. Now
+  `_setMonitorNotification` reports success and the flag is only committed once
+  the write lands; the failure counter still advances, so the next run
+  recomputes the same transition and retries.
+
+## 🔬 Comprehensive review (4 dimensions + decisions)
+
+A four-dimension review (concurrency/isolate lifecycle; correctness/logic;
+Android platform/plugin; tests/data/migration) over the full current
+monitoring subsystem. Cleared as sound: the v8→v9 migration and `AlertConfig`
+removal, the alarm/hysteresis/rate-limit path (no missed/double/false alarm in
+the restructure), the P2 retry convergence, the `_monitorRunInProgress` lock,
+and DB open/close discipline. Findings and dispositions:
+
+- **Fixed — `POST_NOTIFICATIONS` never requested (safety).** Declared in the
+  manifest but never requested at runtime, so on a fresh Android 13+ install
+  the foreground service runs but the ongoing *and every alarm* notification
+  are silently suppressed — the core safety alert never reaches the user.
+  Added `ensureNotificationPermission()` (permission_handler, one OS permission
+  covering both notification channels), prompted once post-`runApp` from
+  `main()`. Pre-existing gap in the base rework, surfaced by this review.
+- **Fixed — test gap:** added the `remaining == pollInterval` exact-boundary
+  case for `effectiveServiceInterval` (impl uses strict `>`). Also corrected a
+  stale `ForegroundRefresher` doc comment that still referenced the removed
+  `WorkManager + AlarmManager` chain.
+- **Kept as-scoped (user decision) — the health indicator does not trip on
+  network/endpoint outages,** only on run-machinery failures (config/DB
+  unreadable). This matches the agreed scope for #3; fetch outages are already
+  surfaced per-thermostat (offline badges/banner), and conflating "data source
+  down" with "monitoring broken" would false-alarm on brief network blips.
+- **Accepted as a documented minor limitation — cross-isolate cadence flap.**
+  Changing the poll interval in Settings *exactly* while a stale-config
+  background tick is mid-run can revert the cadence for up to one interval
+  before self-healing on the next tick. Rare, transient, no missed alarm; a
+  clean fix would add real cross-isolate coordination for no safety benefit.
+- **Noted — reconcile/health *glue* has only indirect (pure-helper) test
+  coverage** because `updateService` isn't behind an injectable seam;
+  consistent with the pre-existing untested `_runMonitorTaskLocked` I/O body.
+  Left for a future test-seam refactor rather than reshaping the code now.
