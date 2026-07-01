@@ -81,9 +81,13 @@ ForegroundTaskOptions _foregroundTaskOptions(Duration pollInterval) {
 /// run. Unlike the old WorkManager+AlarmManager pair, a live foreground
 /// service is exempt from Doze/App Standby deferral, so this is the single
 /// source of truth for polling cadence — no exact-alarm permission needed.
-Future<void> _ensureForegroundServiceRunning(Duration pollInterval) async {
+///
+/// Returns whether the service is confirmed running/updated, so a caller like
+/// the watchdog can propagate a failure instead of reporting success for a
+/// service that never actually started.
+Future<bool> _ensureForegroundServiceRunning(Duration pollInterval) async {
   if (!_supportsForegroundService) {
-    return;
+    return true;
   }
 
   try {
@@ -94,8 +98,9 @@ Future<void> _ensureForegroundServiceRunning(Duration pollInterval) async {
       );
       if (result is ServiceRequestFailure) {
         debugPrint('Failed to update monitoring service: ${result.error}');
+        return false;
       }
-      return;
+      return true;
     }
 
     // init() populates isolate-local static config that startService() reads
@@ -126,10 +131,13 @@ Future<void> _ensureForegroundServiceRunning(Duration pollInterval) async {
     );
     if (result is ServiceRequestFailure) {
       debugPrint('Failed to start monitoring service: ${result.error}');
+      return false;
     }
+    return true;
   } catch (error, stackTrace) {
     debugPrint('Failed to ensure monitoring service is running: $error');
     debugPrint('$stackTrace');
+    return false;
   }
 }
 
@@ -276,8 +284,9 @@ Future<bool> _runWatchdogTask() async {
       await database.close();
     }
 
-    await _ensureForegroundServiceRunning(config.pollInterval);
-    return true;
+    // Propagate a failed restart so WorkManager retries with backoff instead
+    // of waiting the full 15-minute watchdog period while monitoring is dead.
+    return await _ensureForegroundServiceRunning(config.pollInterval);
   } catch (error, stackTrace) {
     debugPrint('Watchdog failed to restart monitoring service: $error');
     debugPrint('$stackTrace');
