@@ -141,5 +141,90 @@ Recommend testing on the reporter's Pixel 9 before relying on it:
     AGENTS.md).
   - Re-ran `flutter analyze` (clean), `flutter test` (211/211), and
     `dart format` (clean) after applying fixes.
-- ☐ Manual verification on the reporter's Pixel 9 (see the limitation note
-  above) — could not be done in this sandboxed session.
+- ✅ **Manual verification on the reporter's Pixel 9** — v0.5.0 (signed release
+  APK) sideloaded and confirmed working on-device by the reporter. The
+  original "monitoring fails to run on my Pixel 9" bug is resolved. The
+  foreground-service approach (Gate A: Flutter-only) is validated on real
+  hardware; no native shim needed.
+
+---
+
+## 🔁 Follow-up (post-v0.5.0): pause efficiency + failure visibility
+
+Two review findings deliberately deferred from the bug-fix PR, now picked up
+as a focused follow-up once the core fix was field-confirmed.
+
+- **Pause efficiency (#2).** With the old AlarmManager chain, "Pause for Nh"
+  deferred the next wakeup to the pause end. The foreground service instead
+  ticks at the poll interval through the whole pause, opening the DB /
+  checking `isPaused` / bailing every time — wasteful (battery + DB churn),
+  though not incorrect. Fix: `effectiveServiceInterval(config, now)` returns
+  the *remaining pause* (when it exceeds the poll interval) so the service
+  sleeps until the pause ends, then a single tick at pause-end resets it to
+  the normal cadence. Verified against the plugin's Android source that
+  `updateService(foregroundTaskOptions: repeat(newMs))` cancels and relaunches
+  the repeat timer (`ForegroundTask.update → startRepeatTask`), and that
+  changing the interval / notification from inside the TaskHandler is the
+  plugin's own documented pattern (README + example).
+- **Failure visibility (#3).** If a run can't execute at all (config/DB
+  unreadable → no thermostat checked), it previously only `debugPrint`ed,
+  leaving a healthy-looking notification over silently-broken monitoring
+  (`isRunningService` stays true, so the watchdog never intervenes). Fix:
+  after 2 consecutive failed runs, flip the ongoing "FarmCtl monitoring"
+  notification to an error state ("not running / open FarmCtl to restore");
+  a successful run clears it. Threshold-2 avoids flapping on a single
+  transient blip. User chose the "update the ongoing notification" surface
+  (proportionate, reuses the existing status notification) over a separate
+  alarm-style alert. Transition logic extracted into the pure, unit-tested
+  `nextMonitorHealth(...)`.
+- Both surface through `FlutterForegroundTask.updateService` from the service
+  isolate. The interval reconcile runs on *every* run (and every exit path —
+  debounce-skip, paused bail, config-load failure → fallback interval) rather
+  than being gated on a local memo: a memo of the applied interval desyncs the
+  moment the main isolate changes the real interval, stranding a stale cadence
+  (adversarial review found three variants of this). The plugin already
+  compares against the service's *actual* current interval and only restarts
+  the repeat timer when it truly changed, so an unchanged reconcile is a cheap
+  no-op — and calling `updateService` each tick is the plugin's own documented
+  pattern. The health notification only fires on a healthy↔degraded transition.
+- **P2 (Codex review of PR #29): retry a failed health-notification write.**
+  `_updateMonitorHealth` used to advance `_monitorHealthDegraded` before the
+  `updateService` call, so a failed write left the notification stuck. Now
+  `_setMonitorNotification` reports success and the flag is only committed once
+  the write lands; the failure counter still advances, so the next run
+  recomputes the same transition and retries.
+
+## 🔬 Comprehensive review (4 dimensions + decisions)
+
+A four-dimension review (concurrency/isolate lifecycle; correctness/logic;
+Android platform/plugin; tests/data/migration) over the full current
+monitoring subsystem. Cleared as sound: the v8→v9 migration and `AlertConfig`
+removal, the alarm/hysteresis/rate-limit path (no missed/double/false alarm in
+the restructure), the P2 retry convergence, the `_monitorRunInProgress` lock,
+and DB open/close discipline. Findings and dispositions:
+
+- **Fixed — `POST_NOTIFICATIONS` never requested (safety).** Declared in the
+  manifest but never requested at runtime, so on a fresh Android 13+ install
+  the foreground service runs but the ongoing *and every alarm* notification
+  are silently suppressed — the core safety alert never reaches the user.
+  Added `ensureNotificationPermission()` (permission_handler, one OS permission
+  covering both notification channels), prompted once post-`runApp` from
+  `main()`. Pre-existing gap in the base rework, surfaced by this review.
+- **Fixed — test gap:** added the `remaining == pollInterval` exact-boundary
+  case for `effectiveServiceInterval` (impl uses strict `>`). Also corrected a
+  stale `ForegroundRefresher` doc comment that still referenced the removed
+  `WorkManager + AlarmManager` chain.
+- **Kept as-scoped (user decision) — the health indicator does not trip on
+  network/endpoint outages,** only on run-machinery failures (config/DB
+  unreadable). This matches the agreed scope for #3; fetch outages are already
+  surfaced per-thermostat (offline badges/banner), and conflating "data source
+  down" with "monitoring broken" would false-alarm on brief network blips.
+- **Accepted as a documented minor limitation — cross-isolate cadence flap.**
+  Changing the poll interval in Settings *exactly* while a stale-config
+  background tick is mid-run can revert the cadence for up to one interval
+  before self-healing on the next tick. Rare, transient, no missed alarm; a
+  clean fix would add real cross-isolate coordination for no safety benefit.
+- **Noted — reconcile/health *glue* has only indirect (pure-helper) test
+  coverage** because `updateService` isn't behind an injectable seam;
+  consistent with the pre-existing untested `_runMonitorTaskLocked` I/O body.
+  Left for a future test-seam refactor rather than reshaping the code now.
