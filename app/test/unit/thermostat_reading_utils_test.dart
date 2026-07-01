@@ -230,5 +230,107 @@ void main() {
         );
       },
     );
+
+    test('rate-limits a stale alarm only against a persisted stale state', () {
+      // Same stale condition persisted -> rate limit applies.
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            status: ThermostatReadingStatus.stale,
+            lastAlarmAt: now.subtract(const Duration(minutes: 4)),
+          ),
+          now: now,
+          alarmStatus: ThermostatReadingStatus.stale,
+        ),
+        isFalse,
+      );
+      // Different persisted condition (out of range) -> a fresh stale alarm
+      // is not rate-limited.
+      expect(
+        shouldTriggerAlarm(
+          previousState: stateWith(
+            lastAlarmAt: now.subtract(const Duration(minutes: 1)),
+          ),
+          now: now,
+          alarmStatus: ThermostatReadingStatus.stale,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('staleDataThreshold', () {
+    test('floors at 15 minutes for short poll intervals', () {
+      expect(
+        staleDataThreshold(const Duration(minutes: 1)),
+        const Duration(minutes: 15),
+      );
+      expect(
+        staleDataThreshold(const Duration(minutes: 5)),
+        const Duration(minutes: 15),
+      );
+    });
+
+    test('scales to 3x for longer poll intervals', () {
+      expect(
+        staleDataThreshold(const Duration(minutes: 10)),
+        const Duration(minutes: 30),
+      );
+      expect(
+        staleDataThreshold(const Duration(minutes: 30)),
+        const Duration(minutes: 90),
+      );
+    });
+  });
+
+  group('isThermostatDataStale', () {
+    final now = DateTime.utc(2025, 1, 1, 12);
+
+    test('null data timestamp is never stale', () {
+      expect(
+        isThermostatDataStale(
+          dataUpdatedAt: null,
+          now: now,
+          pollInterval: const Duration(minutes: 5),
+        ),
+        isFalse,
+      );
+    });
+
+    test('flags data older than the threshold', () {
+      expect(
+        isThermostatDataStale(
+          dataUpdatedAt: now.subtract(const Duration(minutes: 16)),
+          now: now,
+          pollInterval: const Duration(minutes: 5),
+        ),
+        isTrue,
+      );
+      expect(
+        isThermostatDataStale(
+          dataUpdatedAt: now.subtract(const Duration(minutes: 14)),
+          now: now,
+          pollInterval: const Duration(minutes: 5),
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('formatStaleDataMessage', () {
+    test('renders the data time in UTC with a clear hint', () {
+      expect(
+        formatStaleDataMessage(DateTime.utc(2025, 1, 1, 10, 59)),
+        'No new data since 2025-01-01 10:59 UTC — sensor may be offline',
+      );
+    });
+
+    test('converts non-UTC input to UTC', () {
+      final local = DateTime.utc(2025, 6, 5, 4, 3).toLocal();
+      expect(
+        formatStaleDataMessage(local),
+        'No new data since 2025-06-05 04:03 UTC — sensor may be offline',
+      );
+    });
   });
 }

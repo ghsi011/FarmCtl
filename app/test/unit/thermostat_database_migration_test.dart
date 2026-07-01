@@ -67,11 +67,14 @@ void main() {
         ),
       ]);
 
-      // Simulate a v6 on-disk schema: drop the v7 column, add back the
-      // exact_alarms_enabled column a real v6 table still had (dropped in
-      // v9), and rewind the version.
+      // Simulate a v6 on-disk schema: drop the v7 column and the v10 column,
+      // add back the exact_alarms_enabled column a real v6 table still had
+      // (dropped in v9), and rewind the version.
       await db.customStatement(
         'ALTER TABLE alert_config_entries DROP COLUMN last_monitor_run_at',
+      );
+      await db.customStatement(
+        'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
       );
       await db.customStatement(
         'ALTER TABLE alert_config_entries '
@@ -155,10 +158,14 @@ void main() {
   test('upgrades v7 -> v8, consolidating duplicate alert_config rows', () async {
     final db = openDb();
     // A real v7 on-disk table still had exact_alarms_enabled (dropped in v9);
-    // add it back so this raw-SQL simulation matches actual v7 data.
+    // add it back so this raw-SQL simulation matches actual v7 data. A real
+    // v7 state table also lacked data_updated_at (added in v10).
     await db.customStatement(
       'ALTER TABLE alert_config_entries '
       'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.customStatement(
+      'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
     );
     // Simulate the pre-fix duplicate-row state. id=1 is the LIVE row the app
     // reads/writes (poll=5, exact alarms off, token already migrated to secure
@@ -201,11 +208,15 @@ void main() {
         const AlertConfigEntriesCompanion(pollIntervalMin: Value(7)),
       );
 
-      // Simulate a v8 on-disk schema: add back the column the current (v9)
-      // schema no longer declares, then rewind the version.
+      // Simulate a v8 on-disk schema: add back the column the current schema
+      // no longer declares (dropped in v9), drop the v10 column a real v8
+      // table didn't have yet, then rewind the version.
       await db.customStatement(
         'ALTER TABLE alert_config_entries '
         'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.customStatement(
+        'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
       );
       await db.customStatement('PRAGMA user_version = 8');
       await db.close();
@@ -215,6 +226,53 @@ void main() {
       final upgraded = openDb();
       final config = await upgraded.getAlertConfig();
       expect(config.pollIntervalMin, 7, reason: 'data must survive upgrade');
+      expect(await upgraded.listThermostats(), hasLength(1));
+      await upgraded.close();
+    },
+  );
+
+  test(
+    'upgrades v9 -> v10, adding data_updated_at and keeping state data',
+    () async {
+      final db = openDb();
+      await seedThermostat(db, 't1');
+      await db.upsertThermostatState(
+        const ThermostatStateEntriesCompanion(
+          thermostatId: Value('t1'),
+          lastStatus: Value('ok'),
+          lastValueC: Value(12.0),
+        ),
+      );
+
+      // Simulate a v9 on-disk schema: drop the v10 column and rewind.
+      await db.customStatement(
+        'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
+      );
+      await db.customStatement('PRAGMA user_version = 9');
+      await db.close();
+
+      // Re-open: the real onUpgrade(9 -> 10) should run.
+      final upgraded = openDb();
+      final state = await upgraded.getThermostatState('t1');
+      expect(state, isNotNull, reason: 'state row must survive upgrade');
+      expect(state!.lastValueC, 12.0);
+      expect(
+        state.dataUpdatedAt,
+        isNull,
+        reason: 'new column defaults to null for legacy rows',
+      );
+
+      // The added column must be writable and read back.
+      await upgraded.upsertThermostatState(
+        ThermostatStateEntriesCompanion(
+          thermostatId: const Value('t1'),
+          lastStatus: const Value('stale'),
+          dataUpdatedAt: Value(DateTime.utc(2026, 6, 30, 8)),
+        ),
+      );
+      final updated = await upgraded.getThermostatState('t1');
+      expect(updated!.dataUpdatedAt, isNotNull);
+
       expect(await upgraded.listThermostats(), hasLength(1));
       await upgraded.close();
     },

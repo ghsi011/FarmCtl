@@ -131,6 +131,7 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       return ThermostatFetchSuccess(
         valueC: snapshot.value,
         fetchedAt: _clock(),
+        dataUpdatedAt: snapshot.dataUpdatedAt,
         etag: snapshot.etag,
       );
     } on ThermostatFetchException {
@@ -561,7 +562,22 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     }
 
     final etag = response.headers.value(HttpHeaders.etagHeader);
-    return _SnapshotResult(value: value, etag: etag);
+    return _SnapshotResult(
+      value: value,
+      etag: etag,
+      dataUpdatedAt: _parseDataUpdatedAt(decoded['updated_at']),
+    );
+  }
+
+  /// Parses the gist-level `updated_at` timestamp — the moment the sensor last
+  /// pushed new content — used to distinguish data age from fetch age. Returns
+  /// null (rather than throwing) on a missing/malformed value so a metadata
+  /// quirk can never fail an otherwise good reading.
+  static DateTime? _parseDataUpdatedAt(Object? raw) {
+    if (raw is! String || raw.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(raw)?.toUtc();
   }
 
   Future<double?> _fetchRevisionValue(String gistId, String revisionId) async {
@@ -662,11 +678,20 @@ class ThermostatFetchSuccess {
   const ThermostatFetchSuccess({
     required this.valueC,
     required this.fetchedAt,
+    this.dataUpdatedAt,
     this.etag,
   });
 
   final double valueC;
+
+  /// Wall time of the HTTP fetch (when the app last talked to the gist).
   final DateTime fetchedAt;
+
+  /// When the gist content itself was last updated (`updated_at`, UTC) — the
+  /// observation time of the reading. Null when the API omits it or it cannot
+  /// be parsed.
+  final DateTime? dataUpdatedAt;
+
   final String? etag;
 }
 
@@ -701,10 +726,11 @@ class ThermostatHistorySample {
 }
 
 class _SnapshotResult {
-  const _SnapshotResult({required this.value, this.etag});
+  const _SnapshotResult({required this.value, this.etag, this.dataUpdatedAt});
 
   final double value;
   final String? etag;
+  final DateTime? dataUpdatedAt;
 }
 
 class GistCommit {

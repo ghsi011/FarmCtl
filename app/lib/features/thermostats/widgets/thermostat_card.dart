@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format/relative_time.dart';
 import '../../../core/format/semantics_text.dart';
+import '../../settings/providers/settings_providers.dart';
+import '../data/thermostat_reading_utils.dart';
 import '../models/thermostat_state.dart';
 import '../models/thermostat_status_presentation.dart';
 
-class ThermostatCard extends StatelessWidget {
+/// Poll cadence assumed while the alert config is still loading; yields the
+/// 15-minute stale threshold floor.
+const Duration _defaultPollInterval = Duration(minutes: 5);
+
+class ThermostatCard extends ConsumerWidget {
   const ThermostatCard({
     required this.summary,
     this.onEdit,
@@ -22,7 +29,7 @@ class ThermostatCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -50,10 +57,16 @@ class ThermostatCard extends StatelessWidget {
         : colorScheme.onPrimaryContainer;
 
     final now = DateTime.now().toUtc();
-    final lastFetchedAt = state?.lastFetchedAt;
+    // Data age, not fetch age: while the sensor is silent the fetches keep
+    // succeeding, so lastFetchedAt would stay forever fresh. Legacy rows
+    // (pre-dataUpdatedAt) fall back to lastFetchedAt.
+    final lastDataAt = state?.dataUpdatedAt ?? state?.lastFetchedAt;
+    final pollInterval =
+        ref.watch(alertConfigProvider).asData?.value.pollInterval ??
+        _defaultPollInterval;
     final isStale =
-        lastFetchedAt != null &&
-        now.difference(lastFetchedAt) > const Duration(minutes: 30);
+        lastDataAt != null &&
+        now.difference(lastDataAt) > staleDataThreshold(pollInterval);
 
     // Spoken status uses the short label word (not the detail line) so the
     // temperature isn't read twice at two precisions.
@@ -187,7 +200,7 @@ class ThermostatCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (lastFetchedAt != null)
+                        if (lastDataAt != null)
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -213,7 +226,7 @@ class ThermostatCard extends StatelessWidget {
                                   ],
                                   Text(
                                     formatRelativeDuration(
-                                      now.difference(lastFetchedAt),
+                                      now.difference(lastDataAt),
                                     ),
                                     style: textTheme.bodyMedium?.copyWith(
                                       color: highlightOnColor,

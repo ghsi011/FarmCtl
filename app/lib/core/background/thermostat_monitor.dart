@@ -581,15 +581,21 @@ class ThermostatMonitorRunner {
     required ThermostatRepository repository,
     required ThermostatNetworkDataSource network,
     required ThermostatAlarmDispatcher alarmDispatcher,
+    Duration pollInterval = _fallbackPollInterval,
     DateTime Function()? clock,
   }) : _repository = repository,
        _network = network,
        _alarmDispatcher = alarmDispatcher,
+       _pollInterval = pollInterval,
        _clock = clock ?? _defaultClock;
 
   final ThermostatRepository _repository;
   final ThermostatNetworkDataSource _network;
   final ThermostatAlarmDispatcher _alarmDispatcher;
+
+  /// Configured poll cadence, used to derive the stale-data threshold
+  /// (max(3 × interval, 15 min)) for dead-sensor detection.
+  final Duration _pollInterval;
   final DateTime Function() _clock;
 
   static DateTime _defaultClock() => DateTime.now().toUtc();
@@ -626,6 +632,7 @@ class ThermostatMonitorRunner {
             thermostatId: thermostat.id,
             valueC: value,
             fetchedAt: fetchedAt,
+            dataUpdatedAt: result.dataUpdatedAt,
             etag: result.etag,
             message: baseMessage,
             now: now,
@@ -634,6 +641,34 @@ class ThermostatMonitorRunner {
             await _alarmDispatcher.showAlarm(
               thermostat: thermostat,
               valueC: value,
+              triggeredAt: now,
+            );
+          }
+        } else if (isThermostatDataStale(
+          dataUpdatedAt: result.dataUpdatedAt,
+          now: _clock(),
+          pollInterval: _pollInterval,
+        )) {
+          // The gist is reachable but its content hasn't changed for longer
+          // than the staleness threshold: the sensor-side uploader is likely
+          // dead. Same transactional arbitration (snooze/silence/rate-limit)
+          // as out-of-range so overlapping runs can't double-fire.
+          final now = _clock();
+          final dataUpdatedAt = result.dataUpdatedAt!;
+          final message = formatStaleDataMessage(dataUpdatedAt);
+          final shouldAlarm = await _repository.recordStaleDataAndShouldAlarm(
+            thermostatId: thermostat.id,
+            valueC: value,
+            fetchedAt: fetchedAt,
+            dataUpdatedAt: dataUpdatedAt,
+            etag: result.etag,
+            message: message,
+            now: now,
+          );
+          if (shouldAlarm) {
+            await _alarmDispatcher.showStaleDataAlarm(
+              thermostat: thermostat,
+              dataUpdatedAt: dataUpdatedAt,
               triggeredAt: now,
             );
           }
@@ -646,6 +681,8 @@ class ThermostatMonitorRunner {
             status: ThermostatReadingStatus.ok,
             valueC: value,
             fetchedAt: fetchedAt,
+            dataUpdatedAt: result.dataUpdatedAt,
+            setDataUpdatedAt: true,
             etag: result.etag,
             message: message,
             setSnoozedUntil: shouldClearSnooze,
@@ -710,11 +747,13 @@ MonitorDependencies buildMonitorDependencies(
     repository: repository,
     network: network,
     tokenSupplier: () async => config.githubToken,
+    pollIntervalSupplier: () async => config.pollInterval,
   );
   final runner = ThermostatMonitorRunner(
     repository: repository,
     network: network,
     alarmDispatcher: NotificationAlarmDispatcher(notifications, config: config),
+    pollInterval: config.pollInterval,
   );
   return MonitorDependencies(
     repository: repository,
@@ -798,6 +837,15 @@ abstract class ThermostatAlarmDispatcher {
     required double valueC,
     required DateTime triggeredAt,
   });
+
+  /// Raises the same alarm surface as [showAlarm], but for a silent sensor:
+  /// the gist is reachable yet its content stopped updating at
+  /// [dataUpdatedAt].
+  Future<void> showStaleDataAlarm({
+    required Thermostat thermostat,
+    required DateTime dataUpdatedAt,
+    required DateTime triggeredAt,
+  });
 }
 
 class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
@@ -814,6 +862,34 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     required Thermostat thermostat,
     required double valueC,
     required DateTime triggeredAt,
+  }) {
+    return _show(
+      thermostat: thermostat,
+      title: '${thermostat.name} out of range',
+      body:
+          'Current ${valueC.toStringAsFixed(2)}°C • '
+          'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
+          '${thermostat.maxC.toStringAsFixed(2)}°C',
+    );
+  }
+
+  @override
+  Future<void> showStaleDataAlarm({
+    required Thermostat thermostat,
+    required DateTime dataUpdatedAt,
+    required DateTime triggeredAt,
+  }) {
+    return _show(
+      thermostat: thermostat,
+      title: '${thermostat.name} — no new data',
+      body: formatStaleDataMessage(dataUpdatedAt),
+    );
+  }
+
+  Future<void> _show({
+    required Thermostat thermostat,
+    required String title,
+    required String body,
   }) async {
     final payload = jsonEncode({'thermostatId': thermostat.id});
     final details = await _prepareAlarmNotificationDetails(
@@ -830,10 +906,8 @@ class NotificationAlarmDispatcher implements ThermostatAlarmDispatcher {
     );
     await _notifications.show(
       _alarmNotificationId(thermostat.id),
-      '${thermostat.name} out of range',
-      'Current ${valueC.toStringAsFixed(2)}°C • '
-          'Range ${thermostat.minC.toStringAsFixed(2)}°C – '
-          '${thermostat.maxC.toStringAsFixed(2)}°C',
+      title,
+      body,
       details,
       payload: payload,
     );

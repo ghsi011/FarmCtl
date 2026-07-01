@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:farmctl/features/settings/models/alert_config.dart';
+import 'package:farmctl/features/settings/providers/settings_providers.dart';
 import 'package:farmctl/features/thermostats/models/history_range.dart';
 import 'package:farmctl/features/thermostats/models/temperature_sample.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
@@ -12,6 +14,15 @@ import 'package:farmctl/features/thermostats/widgets/thermostat_card.dart';
 import 'package:farmctl/features/thermostats/widgets/thermostat_history_chart.dart';
 
 const _id = 'thermostat-1';
+
+const AlertConfig _defaultConfig = AlertConfig(
+  pollInterval: Duration(minutes: 5),
+  soundUri: null,
+  vibrate: true,
+  volumeBoost: false,
+  pauseAllUntil: null,
+  githubToken: null,
+);
 
 ThermostatSummary _summary() {
   final timestamp = DateTime.utc(2025, 1, 1, 12);
@@ -77,6 +88,9 @@ Future<void> _pump(
           thermostatId: _id,
           prioritizeLastHour: true,
         )).overrideWith((ref) async {}),
+        // The card reads the poll interval for its stale-data threshold; keep
+        // it off the real database-backed provider chain in tests.
+        alertConfigProvider.overrideWith((ref) => Stream.value(_defaultConfig)),
       ],
       child: const MaterialApp(home: ThermostatDetailPage(thermostatId: _id)),
     ),
@@ -141,6 +155,9 @@ void main() {
           thermostatHistoryRefreshProvider.overrideWith((ref, args) async {
             refreshCount++;
           }),
+          alertConfigProvider.overrideWith(
+            (ref) => Stream.value(_defaultConfig),
+          ),
         ],
         child: const MaterialApp(home: ThermostatDetailPage(thermostatId: _id)),
       ),

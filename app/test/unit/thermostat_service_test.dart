@@ -431,6 +431,84 @@ void main() {
       );
     });
 
+    test('refresh marks stale data with the dead-sensor message', () async {
+      final now = DateTime.utc(2025, 1, 2, 12);
+      final dataUpdatedAt = DateTime.utc(2025, 1, 2, 10, 30);
+      final staleService = ThermostatService(
+        repository: repository,
+        network: network,
+        // 5-minute poll interval -> 15-minute threshold; data is 90 min old.
+        pollIntervalSupplier: () async => const Duration(minutes: 5),
+        clock: () => now,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15.0,
+        fetchedAt: now,
+        dataUpdatedAt: dataUpdatedAt,
+        etag: 'etag-stale',
+      );
+
+      final result = await staleService.refresh(thermostat);
+
+      expect(result.status, ThermostatReadingStatus.stale);
+      expect(result.isSuccess, isTrue);
+      expect(
+        result.message,
+        'No new data since 2025-01-02 10:30 UTC — sensor may be offline',
+      );
+
+      final state = await repository.loadState(thermostat.id);
+      expect(state, isNotNull);
+      expect(state!.status, ThermostatReadingStatus.stale);
+      expect(state.dataUpdatedAt, dataUpdatedAt);
+      // The foreground path records the status but never arbitrates alarms.
+      expect(state.lastAlarmAt, isNull);
+    });
+
+    test('refresh keeps fresh data OK and persists its data time', () async {
+      final now = DateTime.utc(2025, 1, 2, 12);
+      final dataUpdatedAt = DateTime.utc(2025, 1, 2, 11, 55);
+      final freshService = ThermostatService(
+        repository: repository,
+        network: network,
+        pollIntervalSupplier: () async => const Duration(minutes: 5),
+        clock: () => now,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15.0,
+        fetchedAt: now,
+        dataUpdatedAt: dataUpdatedAt,
+        etag: 'etag-fresh',
+      );
+
+      final result = await freshService.refresh(thermostat);
+
+      expect(result.status, ThermostatReadingStatus.ok);
+      final state = await repository.loadState(thermostat.id);
+      expect(state!.dataUpdatedAt, dataUpdatedAt);
+    });
+
+    test('refresh falls back to the default threshold when the poll-interval '
+        'supplier fails', () async {
+      final now = DateTime.utc(2025, 1, 2, 12);
+      final failingService = ThermostatService(
+        repository: repository,
+        network: network,
+        pollIntervalSupplier: () async => throw Exception('config gone'),
+        clock: () => now,
+      );
+      network._result = ThermostatFetchSuccess(
+        valueC: 15.0,
+        fetchedAt: now,
+        // 16 minutes old: past the fallback 15-minute floor.
+        dataUpdatedAt: now.subtract(const Duration(minutes: 16)),
+        etag: 'etag',
+      );
+
+      final result = await failingService.refresh(thermostat);
+      expect(result.status, ThermostatReadingStatus.stale);
+    });
+
     test('refresh guards against unexpected errors', () async {
       network._otherError = Exception('boom');
 

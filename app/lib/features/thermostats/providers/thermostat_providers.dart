@@ -51,6 +51,10 @@ final thermostatServiceProvider = Provider<ThermostatService>((ref) {
       final config = await alertRepo.loadConfig();
       return config.githubToken;
     },
+    pollIntervalSupplier: () async {
+      final config = await alertRepo.loadConfig();
+      return config.pollInterval;
+    },
   );
 });
 
@@ -199,6 +203,9 @@ final offlineStatusProvider = Provider<OfflineStatus>((ref) {
         switch (state.status) {
           case ThermostatReadingStatus.ok:
           case ThermostatReadingStatus.outOfRange:
+          // Stale data still means the fetch itself succeeded — the network
+          // path is healthy, only the sensor-side uploader is silent.
+          case ThermostatReadingStatus.stale:
             if (lastFetchedAt != null &&
                 now.difference(lastFetchedAt) <= const Duration(minutes: 15)) {
               recentSuccess = true;

@@ -45,6 +45,10 @@ class ThermostatStateEntries extends Table {
 
   DateTimeColumn get lastFetchedAt => dateTime().nullable()();
 
+  /// When the gist content itself was last updated (the sensor's observation
+  /// time), as opposed to [lastFetchedAt] which is when the app fetched it.
+  DateTimeColumn get dataUpdatedAt => dateTime().nullable()();
+
   TextColumn get etag => text().nullable()();
 
   TextColumn get statusMessage => text().nullable()();
@@ -146,7 +150,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -178,6 +182,15 @@ class ThermostatDatabase extends _$ThermostatDatabase {
           await m.addColumn(
             thermostatStateEntries,
             thermostatStateEntries.silenceUntilOk,
+          );
+        }
+        if (from < 10) {
+          // Data-age tracking for dead-sensor detection. Inside the `else` so
+          // v1 installs — whose state table was just created with its current
+          // columns above — don't hit a duplicate-column error.
+          await m.addColumn(
+            thermostatStateEntries,
+            thermostatStateEntries.dataUpdatedAt,
           );
         }
       }
