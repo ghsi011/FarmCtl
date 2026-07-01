@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -152,6 +153,42 @@ void main() {
       final valueText = tester.widget<Text>(find.text('14.2°C'));
       expect(valueText.style?.color, colorScheme.onSurface);
       expect(valueText.style?.color, isNot(colorScheme.error));
+    },
+  );
+
+  testWidgets(
+    'clears the Android lock-screen flags when the page is dismissed',
+    (tester) async {
+      // Regression guard: the alarm launch latches showWhenLocked/turnScreenOn
+      // natively; dismissing the alarm page must ask the platform to drop them
+      // so the app is not left showable over the keyguard.
+      const channel = MethodChannel('com.example.farmctl/alarm_screen');
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        );
+      });
+
+      await pumpPage(tester);
+      expect(calls, isEmpty);
+
+      // Every alarm action (acknowledge, snooze, silence, back) pops the page;
+      // removing it from the tree exercises the same dispose path.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpAndSettle();
+
+      expect(
+        calls.map((call) => call.method),
+        contains('clearAlarmLockScreenFlags'),
+      );
     },
   );
 

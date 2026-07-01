@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
   companion object {
     private const val CHANNEL = "com.example.farmctl/sound_picker"
+    private const val ALARM_SCREEN_CHANNEL = "com.example.farmctl/alarm_screen"
     private const val REQUEST_CODE_PICK_SOUND = 0xFA10
     private const val TAG = "SoundPicker"
 
@@ -65,6 +66,37 @@ class MainActivity : FlutterActivity() {
     }
   }
 
+  /**
+   * Drops the lock-screen exposure once the alarm has been dealt with. Called
+   * over [ALARM_SCREEN_CHANNEL] when the Flutter alarm page is dismissed
+   * (acknowledged, snoozed, or silenced). Deliberately NOT called from
+   * onPause/onStop — those fire when the keyguard engages, which would defeat
+   * the full-screen alarm itself.
+   */
+  @Suppress("DEPRECATION")
+  private fun clearAlarmLockScreenFlags() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(false)
+      setTurnScreenOn(false)
+    } else {
+      window.clearFlags(
+        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+          WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+      )
+    }
+    // Neutralize the stored launch intent so activity recreation (a config
+    // change, or reopening from recents) does not re-apply the flags via
+    // onCreate for an alarm that was already handled. Safe with respect to
+    // flutter_local_notifications: getNotificationAppLaunchDetails() inspects
+    // this intent's action, but the app queries it exactly once during startup
+    // (handleNotificationLaunch in main.dart) — always before the alarm page
+    // can be dismissed and this method invoked.
+    intent?.takeIf { it.action == ALARM_NOTIFICATION_ACTION }?.let { launchIntent ->
+      launchIntent.action = Intent.ACTION_MAIN
+      setIntent(launchIntent)
+    }
+  }
+
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -72,6 +104,16 @@ class MainActivity : FlutterActivity() {
         when (call.method) {
           "pickSound" -> handlePickSound(call.argument("initialUri"), result)
           "releasePersistablePermission" -> handleReleasePermission(call.argument("uri"), result)
+          else -> result.notImplemented()
+        }
+      }
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_SCREEN_CHANNEL)
+      .setMethodCallHandler { call, result ->
+        when (call.method) {
+          "clearAlarmLockScreenFlags" -> {
+            clearAlarmLockScreenFlags()
+            result.success(null)
+          }
           else -> result.notImplemented()
         }
       }

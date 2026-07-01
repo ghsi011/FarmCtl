@@ -10,6 +10,7 @@ import '../../../core/format/relative_time.dart';
 import '../../../core/format/semantics_text.dart';
 import '../models/thermostat_state.dart';
 import '../providers/thermostat_providers.dart';
+import '../services/alarm_screen_channel.dart';
 
 class AlarmFullScreenPage extends ConsumerStatefulWidget {
   const AlarmFullScreenPage({required this.thermostatId, super.key});
@@ -33,6 +34,12 @@ class _AlarmFullScreenPageState extends ConsumerState<AlarmFullScreenPage> {
   @override
   void dispose() {
     unawaited(WakelockPlus.disable().catchError((Object _) {}));
+    // The page leaving the stack means the alarm was dealt with (every action
+    // — acknowledge, snooze, silence, back, dismiss — pops it), so drop the
+    // Android show-when-locked/turn-screen-on flags that the alarm launch
+    // latched. Otherwise the whole app would stay showable over the keyguard
+    // until the next non-alarm launch.
+    unawaited(AlarmScreenChannel().clearLockScreenFlags());
     super.dispose();
   }
 
