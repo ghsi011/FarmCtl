@@ -608,9 +608,16 @@ void main() {
       ),
     );
 
+    final now = DateTime.now().toUtc();
     network.commits = [
-      GistCommit(revisionId: 'rev1', observedAt: DateTime.utc(2025, 1, 1, 12)),
-      GistCommit(revisionId: 'rev2', observedAt: DateTime.utc(2025, 1, 1, 13)),
+      GistCommit(
+        revisionId: 'rev1',
+        observedAt: now.subtract(const Duration(hours: 3)),
+      ),
+      GistCommit(
+        revisionId: 'rev2',
+        observedAt: now.subtract(const Duration(hours: 2)),
+      ),
     ];
     network.revisionValues = const {'rev1': 11.5, 'rev2': 12.0};
 

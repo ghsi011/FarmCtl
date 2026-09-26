@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -483,6 +484,19 @@ class _SettingsContentState extends State<_SettingsContent> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
       children: [
+        _SettingsCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('Device configuration'),
+            subtitle: const Text(
+              'Connect a private fleet file and review its desired settings.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/device-configuration'),
+          ),
+        ),
+        const SizedBox(height: 24),
         _Section(
           title: 'Monitoring',
           description:

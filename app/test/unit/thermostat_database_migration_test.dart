@@ -40,6 +40,21 @@ void main() {
     );
   }
 
+  Future<void> setVersion(ThermostatDatabase db, int version) async {
+    if (version < 12) {
+      await db.customStatement('DROP TABLE device_events');
+    }
+    if (version < 11) {
+      await db.customStatement(
+        'ALTER TABLE thermostat_entries DROP COLUMN diagnostics_gist_id',
+      );
+      await db.customStatement(
+        'ALTER TABLE thermostat_entries DROP COLUMN device_ref',
+      );
+    }
+    await db.customStatement('PRAGMA user_version = $version');
+  }
+
   test(
     'upgrades from v6 to v7, adding last_monitor_run_at and keeping data',
     () async {
@@ -80,7 +95,7 @@ void main() {
         'ALTER TABLE alert_config_entries '
         'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
       );
-      await db.customStatement('PRAGMA user_version = 6');
+      await setVersion(db, 6);
       await db.close();
 
       // Re-open: the real onUpgrade(6 -> 7) should run.
@@ -125,7 +140,7 @@ void main() {
       'ALTER TABLE alert_config_entries '
       'ADD COLUMN exact_alarms_enabled INTEGER NOT NULL DEFAULT 0',
     );
-    await db.customStatement('PRAGMA user_version = 1');
+    await setVersion(db, 1);
     await db.close();
 
     // Re-open: onUpgrade(1 -> 9) must run every step. Before the createTable/
@@ -183,7 +198,7 @@ void main() {
       'volume_boost, pause_all_until, github_token, last_monitor_run_at) '
       "VALUES (2, 9, 1, NULL, 1, 0, NULL, 'ghp_seed', NULL)",
     );
-    await db.customStatement('PRAGMA user_version = 7');
+    await setVersion(db, 7);
     await db.close();
 
     // Re-open: onUpgrade(7 -> 8) collapses to a single row, keeping the LIVE
@@ -218,7 +233,7 @@ void main() {
       await db.customStatement(
         'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
       );
-      await db.customStatement('PRAGMA user_version = 8');
+      await setVersion(db, 8);
       await db.close();
 
       // Re-open: the real onUpgrade(8 -> 9) should run and the DB must still
@@ -248,7 +263,7 @@ void main() {
       await db.customStatement(
         'ALTER TABLE thermostat_state_entries DROP COLUMN data_updated_at',
       );
-      await db.customStatement('PRAGMA user_version = 9');
+      await setVersion(db, 9);
       await db.close();
 
       // Re-open: the real onUpgrade(9 -> 10) should run.
@@ -274,6 +289,93 @@ void main() {
       expect(updated!.dataUpdatedAt, isNotNull);
 
       expect(await upgraded.listThermostats(), hasLength(1));
+      await upgraded.close();
+    },
+  );
+
+  test(
+    'upgrades v10 -> v11 preserving thermostat, alarm, and history rows',
+    () async {
+      final db = openDb();
+      await seedThermostat(db, 't1');
+      await db.upsertThermostatState(
+        ThermostatStateEntriesCompanion(
+          thermostatId: const Value('t1'),
+          lastStatus: const Value('outOfRange'),
+          lastValueC: const Value(29.5),
+          lastAlarmAt: Value(DateTime.utc(2026, 1, 2)),
+          silenceUntilOk: const Value(true),
+        ),
+      );
+      await db.insertTemperatureReadings([
+        TemperatureReadingsCompanion.insert(
+          id: 'history-v10',
+          thermostatId: 't1',
+          source: 'revision',
+          valueC: 29.5,
+          observedAt: DateTime.utc(2026, 1, 2),
+        ),
+      ]);
+      await setVersion(db, 10);
+      await db.close();
+
+      final upgraded = openDb();
+      final thermostat = await upgraded.getThermostat('t1');
+      final state = await upgraded.getThermostatState('t1');
+      expect(thermostat, isNotNull);
+      expect(thermostat!.diagnosticsGistId, isNull);
+      expect(thermostat.deviceRef, isNull);
+      expect(state!.lastStatus, 'outOfRange');
+      expect(state.lastAlarmAt!.toUtc(), DateTime.utc(2026, 1, 2));
+      expect(state.silenceUntilOk, isTrue);
+      expect((await upgraded.listTemperatureReadings('t1')), hasLength(1));
+      await upgraded.close();
+    },
+  );
+
+  test(
+    'upgrades v11 -> v12 with event table isolated from existing rows',
+    () async {
+      final db = openDb();
+      await seedThermostat(db, 't1');
+      await db.upsertThermostatState(
+        ThermostatStateEntriesCompanion(
+          thermostatId: const Value('t1'),
+          lastStatus: const Value('outOfRange'),
+          lastValueC: const Value(29.5),
+          lastAlarmAt: Value(DateTime.utc(2026, 1, 2)),
+        ),
+      );
+      await db.insertTemperatureReadings([
+        TemperatureReadingsCompanion.insert(
+          id: 'temperature-before-events',
+          thermostatId: 't1',
+          source: 'revision',
+          valueC: 29.5,
+          observedAt: DateTime.utc(2026, 1, 2),
+        ),
+      ]);
+      await setVersion(db, 11);
+      await db.close();
+
+      final upgraded = openDb();
+      expect(
+        (await upgraded.getThermostatState('t1'))!.lastStatus,
+        'outOfRange',
+      );
+      expect(
+        (await upgraded.getThermostatState('t1'))!.lastAlarmAt!.toUtc(),
+        DateTime.utc(2026, 1, 2),
+      );
+      expect(await upgraded.listTemperatureReadings('t1'), hasLength(1));
+      expect(
+        await upgraded.listDeviceEvents(
+          'device',
+          limit: 5,
+          cutoff: DateTime.utc(2026, 1, 1),
+        ),
+        isEmpty,
+      );
       await upgraded.close();
     },
   );

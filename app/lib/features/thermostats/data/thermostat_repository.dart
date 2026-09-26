@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:uuid/uuid.dart';
 
 import '../models/temperature_sample.dart';
+import '../models/device_diagnostics.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
 import 'thermostat_database.dart';
@@ -10,6 +11,8 @@ import 'thermostat_reading_utils.dart';
 final _uuid = const Uuid();
 const Duration _defaultRetentionMaxAge = Duration(days: 548);
 const int _defaultRetentionMaxEntries = 5000;
+const Duration _deviceEventRetention = Duration(days: 30);
+const int _deviceEventLimit = 10000;
 
 class ThermostatRepository {
   ThermostatRepository(this._database);
@@ -69,6 +72,8 @@ class ThermostatRepository {
       id: drift.Value(id),
       name: drift.Value(draft.name.trim()),
       rawUrl: drift.Value(draft.rawUrl.trim()),
+      diagnosticsGistId: const drift.Value(null),
+      deviceRef: const drift.Value(null),
       minC: drift.Value(draft.minC),
       maxC: drift.Value(draft.maxC),
       createdAt: drift.Value(now),
@@ -94,6 +99,8 @@ class ThermostatRepository {
       id: drift.Value(existing.id),
       name: drift.Value(draft.name.trim()),
       rawUrl: drift.Value(draft.rawUrl.trim()),
+      diagnosticsGistId: drift.Value(existing.diagnosticsGistId),
+      deviceRef: drift.Value(existing.deviceRef),
       minC: drift.Value(draft.minC),
       maxC: drift.Value(draft.maxC),
       hysteresisEnabled: drift.Value(existing.hysteresisEnabled),
@@ -126,6 +133,8 @@ class ThermostatRepository {
         id: drift.Value(thermostat.id),
         name: drift.Value(thermostat.name),
         rawUrl: drift.Value(thermostat.rawUrl),
+        diagnosticsGistId: drift.Value(thermostat.diagnosticsGistId),
+        deviceRef: drift.Value(thermostat.deviceRef),
         minC: drift.Value(thermostat.minC),
         maxC: drift.Value(thermostat.maxC),
         hysteresisEnabled: drift.Value(thermostat.hysteresisEnabled),
@@ -333,6 +342,104 @@ class ThermostatRepository {
   Future<Thermostat?> findById(String id) async {
     final entry = await _database.getThermostat(id);
     return entry != null ? Thermostat.fromEntry(entry) : null;
+  }
+
+  /// Associates an optional diagnostics Gist and immutable device reference.
+  /// Supplying null for both clears the association.
+  Future<void> saveDiagnosticsAssociation(
+    String thermostatId, {
+    String? gistId,
+    String? deviceRef,
+  }) async {
+    final current = await _database.getThermostat(thermostatId);
+    if (current == null) return;
+    await _database.upsertThermostat(
+      ThermostatEntriesCompanion(
+        id: drift.Value(current.id),
+        name: drift.Value(current.name),
+        rawUrl: drift.Value(current.rawUrl),
+        diagnosticsGistId: drift.Value(gistId),
+        deviceRef: drift.Value(deviceRef),
+        minC: drift.Value(current.minC),
+        maxC: drift.Value(current.maxC),
+        hysteresisEnabled: drift.Value(current.hysteresisEnabled),
+        monitoringEnabled: drift.Value(current.monitoringEnabled),
+        createdAt: drift.Value(current.createdAt),
+        updatedAt: drift.Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  /// Ingests only the bounded, allowlisted event projection from a validated
+  /// diagnostics snapshot. This intentionally does not touch thermostat state
+  /// or temperature history.
+  Future<void> ingestDeviceEvents({
+    required String thermostatId,
+    required DeviceDiagnosticsSnapshot snapshot,
+    DateTime? now,
+  }) async {
+    final thermostat = await _database.getThermostat(thermostatId);
+    if (thermostat == null || thermostat.deviceRef != snapshot.deviceRef) {
+      return;
+    }
+    final fetchedAt = snapshot.fetchedAt.toUtc();
+    final gistUpdatedAt = snapshot.gistUpdatedAt?.toUtc();
+    await _database.transaction(() async {
+      for (final event in snapshot.events) {
+        await _database.upsertDeviceEvent(
+          DeviceEventsCompanion.insert(
+            deviceRef: snapshot.deviceRef,
+            eventId: event.id,
+            thermostatId: thermostatId,
+            code: event.code,
+            count: event.count,
+            occurredAt: drift.Value(event.occurredAt?.toUtc()),
+            uptimeSeconds: drift.Value(event.uptimeSeconds),
+            gistUpdatedAt: drift.Value(gistUpdatedAt),
+            fetchedAt: fetchedAt,
+          ),
+        );
+      }
+      await _database.pruneDeviceEventsBefore(
+        (now ?? DateTime.now()).toUtc().subtract(_deviceEventRetention),
+      );
+      await _database.pruneDeviceEvents(
+        deviceRef: snapshot.deviceRef,
+        keepLatest: _deviceEventLimit,
+      );
+    });
+  }
+
+  Future<List<DeviceEvent>> loadDeviceEvents(
+    String deviceRef, {
+    int limit = 50,
+    DateTime? now,
+  }) async {
+    final cutoff = (now ?? DateTime.now()).toUtc().subtract(
+      _deviceEventRetention,
+    );
+    await _database.pruneDeviceEventsBefore(cutoff);
+    return _database.listDeviceEvents(deviceRef, limit: limit, cutoff: cutoff);
+  }
+
+  Stream<List<DeviceEvent>> watchDeviceEvents(
+    String deviceRef, {
+    int limit = 50,
+    DateTime? now,
+  }) async* {
+    final cutoff = (now ?? DateTime.now()).toUtc().subtract(
+      _deviceEventRetention,
+    );
+    await _database.pruneDeviceEventsBefore(cutoff);
+    yield* _database.watchDeviceEvents(deviceRef, limit: limit, cutoff: cutoff);
+  }
+
+  /// Opportunistic maintenance for expired events; called by history access.
+  Future<int> pruneExpiredDeviceEvents({DateTime? now}) {
+    final cutoff = (now ?? DateTime.now()).toUtc().subtract(
+      _deviceEventRetention,
+    );
+    return _database.pruneDeviceEventsBefore(cutoff);
   }
 
   Stream<List<TemperatureSample>> watchHistory(

@@ -6,6 +6,8 @@ import '../providers/thermostat_providers.dart';
 import '../widgets/history_range_selector.dart';
 import '../widgets/thermostat_card.dart';
 import '../widgets/thermostat_history_chart.dart';
+import '../widgets/device_diagnostics_panel.dart';
+import '../widgets/device_events_panel.dart';
 import '../../../core/format/error_messages.dart';
 import '../../../core/router/app_router.dart';
 
@@ -99,6 +101,10 @@ class _ThermostatDetailPageState extends ConsumerState<ThermostatDetailPage> {
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 ThermostatCard(summary: summary),
+                const SizedBox(height: 24),
+                DeviceDiagnosticsPanel(summary: summary),
+                const SizedBox(height: 12),
+                DeviceEventsPanel(deviceRef: summary.thermostat.deviceRef),
                 const SizedBox(height: 24),
                 Card(
                   child: Column(

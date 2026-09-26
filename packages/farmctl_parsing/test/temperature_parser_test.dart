@@ -3,6 +3,16 @@ import 'package:test/test.dart';
 
 void main() {
   group('parseCelsiusTemperature — valid readings', () {
+    test('accepts the legacy single-line temperature payload', () {
+      expect(parseCelsiusTemperature('21.5C'), 21.5);
+    });
+
+    test('parses Celsius-first telemetry with changing Sample markers', () {
+      const sample812 = '21.50°C\nSample: boot-42:812';
+      const sample813 = '21.50°C\nSample: boot-42:813';
+      expect(parseCelsiusTemperature(sample812), 21.5);
+      expect(parseCelsiusTemperature(sample813), 21.5);
+    });
     test('extracts Celsius value with degree symbol', () {
       expect(parseCelsiusTemperature('Temperature: 8.13°C'), equals(8.13));
     });

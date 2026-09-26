@@ -36,6 +36,34 @@ void main() {
     expect(stored.first.thermostat.id, created.id);
   });
 
+  test(
+    'diagnostics association is saved, summarized, and cleared independently',
+    () async {
+      final thermostat = await repository.create(
+        ThermostatDraft(
+          name: 'Diagnostics',
+          rawUrl: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          minC: 0,
+          maxC: 20,
+        ),
+      );
+      await repository.saveDiagnosticsAssociation(
+        thermostat.id,
+        gistId: 'b' * 32,
+        deviceRef: 'opaque-device-1',
+      );
+      var summary = (await repository.fetchThermostats()).single;
+      expect(summary.diagnosticsGistId, 'b' * 32);
+      expect(summary.deviceRef, 'opaque-device-1');
+      expect(summary.thermostat.rawUrl, thermostat.rawUrl);
+
+      await repository.saveDiagnosticsAssociation(thermostat.id);
+      summary = (await repository.fetchThermostats()).single;
+      expect(summary.diagnosticsGistId, isNull);
+      expect(summary.deviceRef, isNull);
+    },
+  );
+
   test('update applies changes', () async {
     final original = await repository.create(
       ThermostatDraft(

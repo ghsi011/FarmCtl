@@ -45,3 +45,8 @@ graphify-out/
 **/*.jks
 **/*.keystore
 *.keystore.base64
+
+# Local Pico provisioning credentials and Python test artifacts
+/wifi.txt
+**/__pycache__/
+*.py[cod]

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/settings/view/settings_page.dart';
+import '../../features/fleet/view/fleet_configuration_page.dart';
 import '../../features/thermostats/models/history_range.dart';
 import '../../features/thermostats/view/alarm_fullscreen_page.dart';
 import '../../features/thermostats/view/thermostat_detail_page.dart';
@@ -94,6 +95,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 name: SettingsRoute.name,
                 pageBuilder: (context, state) =>
                     const NoTransitionPage(child: SettingsPage()),
+                routes: [
+                  GoRoute(
+                    path: FleetConfigurationRoute.path,
+                    name: FleetConfigurationRoute.name,
+                    builder: (context, state) => const FleetConfigurationPage(),
+                  ),
+                ],
               ),
             ],
           ),
@@ -152,6 +160,11 @@ class ThermostatHistoryFullscreenRoute {
 class SettingsRoute {
   static const name = 'settings';
   static const path = '/settings';
+}
+
+class FleetConfigurationRoute {
+  static const name = 'fleet-configuration';
+  static const path = 'device-configuration';
 }
 
 class AlarmRoute {
