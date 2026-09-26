@@ -2,7 +2,7 @@ import io
 import json
 import unittest
 
-from fleet_config import FleetConfigError, MAX_BYTES, parse_fleet
+from fleet_config import FleetConfigError, MAX_BYTES, _Reader, parse_fleet
 
 
 REVISION = '11111111-1111-4111-8111-111111111111'
@@ -169,6 +169,37 @@ class FleetConfigTests(unittest.TestCase):
         self.assert_rejected(encoded(fleet()) + b' false')
         self.assert_rejected(encoded(fleet()), ref='not-present')
 
+    def test_trailing_commas_are_rejected_at_root_and_nested_levels(self):
+        content = encoded(fleet())
+        self.assert_rejected(b'{}')
+        self.assert_rejected(content[:-1] + b', \n}')
+        # A trailing comma in the devices object and one in a nested array.
+        self.assert_rejected(content[:-2] + b', }}')
+        nested_array = content.replace(
+            b'"password":"synthetic-pass"}]',
+            b'"password":"synthetic-pass"},]',
+            1,
+        )
+        self.assert_rejected(nested_array)
+
+    def test_device_refs_match_diagnostics_ref_bounds(self):
+        ref_64 = 'd' * 64
+        self.assertEqual(
+            self.parse(encoded(fleet({ref_64: device()})), ref_64).device.logical_id,
+            'monitor-a',
+        )
+        for ref in ('d' * 65, 'device:a'):
+            self.assert_rejected(encoded(fleet({ref: device()})), ref)
+
+    def test_gist_ids_are_exactly_32_hex_and_distinct(self):
+        for length in (33, 40):
+            value = fleet()
+            value['devices']['device-a']['temperature_gist_id'] = 'a' * length
+            self.assert_rejected(encoded(value))
+        value = fleet()
+        value['devices']['device-a']['diagnostics_gist_id'] = 'a' * 32
+        self.assert_rejected(encoded(value))
+
     def test_unknown_fields_in_addressed_and_non_addressed_devices_rejected(self):
         for ref in ('device-a', 'other'):
             value = fleet({'device-a': device(), 'other': device('monitor-b')})
@@ -197,6 +228,22 @@ class FleetConfigTests(unittest.TestCase):
         content = (b'{"schema_version":1,"fleet_revision":"' + REVISION.encode() +
                    b'","devices":{"device-a":' + b'[' * 8 + b'0' + b']' * 8 + b'}}')
         self.assert_rejected(content)
+
+    def test_reader_defaults_and_expanded_caps(self):
+        for content in (b'"' + b'x' * 2049 + b'"',
+                        b'{"a":0,"b":0,"c":0,"d":0,"e":0,'
+                        b'"f":0,"g":0,"h":0,"i":0,"j":0}'):
+            with self.assertRaises(FleetConfigError):
+                _Reader(io.BytesIO(content)).value()
+
+        expanded = _Reader(io.BytesIO(
+            b'{"a":0,"b":0,"c":0,"d":0,"e":0,"f":0,"g":0,'
+            b'"h":0,"i":0,"j":"' + b'x' * 3000 + b'"}'),
+            max_members=10, max_string=4096)
+        self.assertEqual(len(expanded.value()['j']), 3000)
+        with self.assertRaises(FleetConfigError):
+            _Reader(io.BytesIO(b'{"tag":"pico-5","ta\\u0067":"android-v5"}'),
+                    max_members=64, max_string=16384).value()
 
 
 if __name__ == '__main__':

@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import serialization
 from tool.pico_release import cli
 from tool.pico_release.manifest import (
     MAX_MANIFEST_BYTES,
+    MAX_RELEASE_ID,
     ManifestError,
     build_candidate,
     canonical_manifest_bytes,
@@ -51,22 +52,37 @@ class ManifestTests(unittest.TestCase):
             data, signature, self.files, self.public, 'RPI_PICO2_W',
             'v1.29.0', 'pico-23')['release_id'], 23)
 
+    def test_release_id_is_limited_to_twenty_decimal_digits(self):
+        data, signature = build_candidate(MAX_RELEASE_ID, 'v1.29.0', self.files, self.private)
+        self.assertEqual(verify_candidate(
+            data, signature, self.files, self.public, 'RPI_PICO2_W',
+            'v1.29.0', f'pico-{MAX_RELEASE_ID}')['release_id'], MAX_RELEASE_ID)
+        with self.assertRaisesRegex(ManifestError, '20 digits'):
+            build_candidate(MAX_RELEASE_ID + 1, 'v1.29.0', self.files, self.private)
+
+        oversized = json.loads(data)
+        oversized['release_id'] = MAX_RELEASE_ID + 1
+        oversized_bytes = canonical_manifest_bytes(oversized)
+        with self.assertRaisesRegex(ManifestError, '20 digits'):
+            verify_candidate(oversized_bytes, self.private.sign(oversized_bytes), self.files,
+                             self.public, 'RPI_PICO2_W', 'v1.29.0',
+                             f'pico-{MAX_RELEASE_ID + 1}')
+
     def test_exact_manifest_limit_is_accepted_and_one_byte_over_is_rejected(self):
-        # A large, valid release id makes an otherwise ordinary one-target
-        # candidate exactly fill the firmware verifier's fixed input buffer.
+        # A long runtime component fills the fixed input buffer while keeping
+        # the release identifier inside its bounded metadata range.
         base, _ = build_candidate(1, 'v1.29.0', {'app.mpy': b'app'}, self.private)
-        digits = MAX_MANIFEST_BYTES - len(base) + 1
-        release_id = int('1' * digits)
-        data, signature = build_candidate(release_id, 'v1.29.0', {'app.mpy': b'app'}, self.private)
+        digits = MAX_MANIFEST_BYTES - len(base)
+        min_runtime = 'v1.' + '1' * (digits + 2) + '.0'
+        data, signature = build_candidate(1, min_runtime, {'app.mpy': b'app'}, self.private)
         self.assertEqual(len(data), MAX_MANIFEST_BYTES)
         self.assertEqual(verify_candidate(data, signature, {'app.mpy': b'app'}, self.public,
-                                          'RPI_PICO2_W', 'v1.29.0', f'pico-{release_id}')['release_id'],
-                         release_id)
+                                          'RPI_PICO2_W', min_runtime, 'pico-1')['release_id'], 1)
         with self.assertRaisesRegex(ManifestError, 'byte limit'):
             verify_candidate(data + b' ', signature, {'app.mpy': b'app'}, self.public,
-                             'RPI_PICO2_W', 'v1.29.0', f'pico-{release_id}')
+                             'RPI_PICO2_W', min_runtime, 'pico-1')
         with self.assertRaisesRegex(ManifestError, 'byte limit'):
-            build_candidate(int('1' * (digits + 1)), 'v1.29.0', {'app.mpy': b'app'}, self.private)
+            build_candidate(1, min_runtime[:-2] + '0.0', {'app.mpy': b'app'}, self.private)
 
     def test_tampered_manifest_bytes_and_signature_fail(self):
         with self.assertRaisesRegex(ManifestError, 'signature'):

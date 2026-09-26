@@ -8,6 +8,11 @@ from native_https import (
     NativeHttpsTransport,
     TransportFailure as _RequestFailure,
 )
+from gist_readback import (
+    GistReadback,
+    MAX_DIAGNOSTICS_BYTES,
+    MAX_THERMOSTAT_BYTES,
+)
 
 THERMOSTAT_FILENAME = 'thermostat.txt'
 DIAGNOSTICS_FILENAME = 'diagnostics.json'
@@ -16,12 +21,23 @@ MAX_BACKOFF_MS = 300000
 MAX_RETRY_HINT_MS = 3600000
 
 
+class GistPublishProofFailure(Exception):
+    """Safe result classification for an explicit configuration-trial PATCH."""
+
+    def __init__(self, kind):
+        if kind not in ('definite', 'authentication_failed', 'destination_failed',
+                        'inconclusive'):
+            kind = 'inconclusive'
+        self.kind = kind
+        super().__init__(kind)
+
+
 class GistPublisher:
     """Publish telemetry to its two pre-registered Gists."""
 
     def __init__(self, temperature_gist_id, diagnostics_gist_id, token, root_bytes,
-                 tls_module, select_module, socket_module, clock, resolver=None,
-                 time_is_trusted=None, timeout_ms=15000):
+                 tls_module, select_module, socket_module, clock, dns_server_ip, resolver=None,
+                 time_is_trusted=None, timeout_ms=15000, service=None):
         if not _is_hex_identifier(temperature_gist_id) or not _is_hex_identifier(diagnostics_gist_id):
             raise ValueError('invalid Gist identifier')
         if temperature_gist_id.lower() == diagnostics_gist_id.lower():
@@ -37,28 +53,94 @@ class GistPublisher:
         }
         self.transport = NativeHttpsTransport(
             (temperature_gist_id, diagnostics_gist_id), token_bytes, root_bytes,
-            tls_module, select_module, socket_module, clock, resolver, timeout_ms,
+            tls_module, select_module, socket_module, clock, dns_server_ip,
+            resolver, timeout_ms,
         )
-        # Preserve the prior inspectable mutable token buffer for close/scrub.
-        self._token = self.transport.token
-        self.root_bytes = root_bytes
-        self.tls = tls_module
-        self.select = select_module
-        self.socket = socket_module
-        self.clock = clock
-        self.time_is_trusted = time_is_trusted
-        self.timeout_ms = timeout_ms
-        self._closed = False
-        self._backoff = {name: {'failures': 0, 'last_failure': None, 'delay': 0}
-                         for name in self.gist_ids}
-        self._server_not_before = None
-        self._failure_count = 0
+        try:
+            # Preserve the prior inspectable mutable token buffer for close/scrub.
+            self._token = self.transport.token
+            self.readback = GistReadback(self.transport, temperature_gist_id,
+                                         diagnostics_gist_id)
+            self.root_bytes = root_bytes
+            self.tls = tls_module
+            self.select = select_module
+            self.socket = socket_module
+            self.clock = clock
+            self.time_is_trusted = time_is_trusted
+            self.service = service
+            self.timeout_ms = timeout_ms
+            self._closed = False
+            self._backoff = {name: {'failures': 0, 'last_failure': None, 'delay': 0}
+                             for name in self.gist_ids}
+            self._server_not_before = None
+            self._failure_count = 0
+        except Exception:
+            try:
+                self.transport.close()
+            except Exception:
+                pass
+            raise RuntimeError('unable to initialize Gist publisher') from None
 
     def publish_temperature(self, payload):
         return self._publish(THERMOSTAT_FILENAME, payload)
 
     def publish_diagnostics(self, payload):
         return self._publish(DIAGNOSTICS_FILENAME, payload)
+
+    def patch_exact_for_trial(self, filename, exact_content, service=None):
+        """Write one exact registered file for a configuration trial.
+
+        Unlike telemetry publication this path intentionally bypasses retry and
+        backoff state: its result is evidence for the current trial only.
+        """
+        if self._closed:
+            raise GistPublishProofFailure('definite')
+        if filename not in (THERMOSTAT_FILENAME, DIAGNOSTICS_FILENAME):
+            raise GistPublishProofFailure('definite')
+        if not isinstance(exact_content, str):
+            raise GistPublishProofFailure('definite')
+        try:
+            content_bytes = exact_content.encode('utf-8')
+        except Exception:
+            raise GistPublishProofFailure('definite') from None
+        limit = (MAX_THERMOSTAT_BYTES if filename == THERMOSTAT_FILENAME
+                 else MAX_DIAGNOSTICS_BYTES)
+        if len(content_bytes) > limit:
+            raise GistPublishProofFailure('definite')
+        if self.time_is_trusted is None:
+            raise GistPublishProofFailure('inconclusive')
+        try:
+            trusted = self.time_is_trusted()
+        except Exception:
+            raise GistPublishProofFailure('inconclusive') from None
+        if not trusted:
+            raise GistPublishProofFailure('inconclusive')
+        try:
+            body = _encode_payload(filename, {'files': {filename: {'content': exact_content}}})
+        except Exception:
+            raise GistPublishProofFailure('inconclusive') from None
+        if len(body) > MAX_REQUEST_BYTES:
+            raise GistPublishProofFailure('definite')
+        try:
+            self.transport.patch_gist(
+                self.gist_ids[filename], body,
+                service=self.service if service is None else service)
+        except _HttpFailure as error:
+            if error.status == 401:
+                kind = 'authentication_failed'
+            elif error.status in (404, 422):
+                kind = 'destination_failed'
+            else:
+                kind = 'inconclusive'
+            raise GistPublishProofFailure(kind) from None
+        except Exception:
+            raise GistPublishProofFailure('inconclusive') from None
+        return exact_content
+
+    def confirm_file(self, gist_id, filename, expected_content, service=None):
+        return self.readback.confirm_file(
+            gist_id, filename, expected_content,
+            service=self.service if service is None else service)
 
     def close(self):
         self.transport.close()
@@ -81,7 +163,7 @@ class GistPublisher:
             body = _encode_payload(filename, payload)
             # The transport accepts only registered Gist IDs and builds its
             # own fixed PATCH path, host, authorization, and headers.
-            self.transport.patch_gist(self.gist_ids[filename], body)
+            self.transport.patch_gist(self.gist_ids[filename], body, service=self.service)
         except _HttpFailure as error:
             self._failed(filename, error)
             return False
@@ -101,12 +183,10 @@ class GistPublisher:
         # Bounded deterministic jitter avoids adding a random dependency on-device.
         delay = min(MAX_BACKOFF_MS, delay + (self._failure_count % 5) * min(1000, delay // 8))
         hint = self._retry_hint_ms(http_error) if http_error else None
-        if http_error is not None and http_error.status == 429:
+        if http_error is not None and http_error.status in (403, 429):
             shared_delay = max(60000, hint or 0)
             self._server_not_before = self._ticks_add(self.clock.ticks_ms(), shared_delay)
-        elif hint is not None:
-            delay = max(delay, hint)
-            self._server_not_before = self._ticks_add(self.clock.ticks_ms(), delay)
+            delay = max(delay, shared_delay)
         backoff['delay'] = delay
         # Timestamp completion, not the attempt's start.
         backoff['last_failure'] = self.clock.ticks_ms()

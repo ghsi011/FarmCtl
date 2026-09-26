@@ -19,6 +19,7 @@ MAX_TARGETS = 8  # app.mpy plus at most seven flat library modules.
 MAX_TARGET_NAME_LENGTH = 64
 MAX_ASSET_BYTES = 512 * 1024
 MAX_TOTAL_ASSET_BYTES = 1024 * 1024
+MAX_RELEASE_ID = 10**20 - 1
 _MANIFEST_FIELDS = {'algorithm', 'board', 'format_version', 'min_runtime', 'release_id', 'targets'}
 _TARGET_FIELDS = {'name', 'path', 'size_bytes', 'sha256'}
 _RUNTIME_PATTERN = re.compile(r'^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')
@@ -96,8 +97,8 @@ def _validate(manifest: dict, files: Mapping[str, bytes], tag_name: str,
     if manifest['board'] != BOARD or actual_board != BOARD:
         raise ManifestError('wrong board')
     release_id = manifest['release_id']
-    if type(release_id) is not int or release_id <= 0:
-        raise ManifestError('release_id must be a positive integer')
+    if type(release_id) is not int or release_id <= 0 or release_id > MAX_RELEASE_ID:
+        raise ManifestError('release_id must be a positive integer of at most 20 digits')
     if tag_name != f'pico-{release_id}':
         raise ManifestError('tag does not match release_id')
     if applied_id is not None and (type(applied_id) is not int or applied_id < 0):
@@ -190,8 +191,8 @@ def verify_candidate(manifest_bytes: bytes, signature: bytes, files: Mapping[str
 def build_candidate(release_id: int, min_runtime: str, files: Mapping[str, bytes],
                     private_key: Ed25519PrivateKey) -> tuple[bytes, bytes]:
     """Build canonical v1 manifest and detached signature using an Ed25519 key."""
-    if type(release_id) is not int or release_id <= 0:
-        raise ManifestError('release_id must be a positive integer')
+    if type(release_id) is not int or release_id <= 0 or release_id > MAX_RELEASE_ID:
+        raise ManifestError('release_id must be a positive integer of at most 20 digits')
     _runtime_version(min_runtime)
     targets = []
     normalized: set[str] = set()

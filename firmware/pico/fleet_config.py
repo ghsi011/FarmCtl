@@ -30,9 +30,14 @@ class FleetConfigError(ValueError):
 
 
 class _Reader:
-    def __init__(self, stream, service=None):
+    def __init__(self, stream, service=None, max_bytes=MAX_BYTES,
+                 max_array=MAX_PROFILES, max_members=9, max_string=2048):
         self.stream = stream
         self.service = service
+        self.max_bytes = max_bytes
+        self.max_array = max_array
+        self.max_members = max_members
+        self.max_string = max_string
         self.buf = b''
         self.pos = 0
         self.total = 0
@@ -50,7 +55,7 @@ class _Reader:
                 self.total += len(block)
             if self.service is not None:
                 self._service()
-            if self.total > MAX_BYTES:
+            if self.total > self.max_bytes:
                 raise FleetConfigError('Fleet configuration exceeds size limit.')
             if not block:
                 self.eof = True
@@ -109,7 +114,7 @@ class _Reader:
                 out.append(text)
                 length += len(text)
                 raw[:] = b''
-                if length > 2048:
+                if length > self.max_string:
                     raise FleetConfigError('Fleet string exceeds size limit.')
 
         while True:
@@ -123,7 +128,7 @@ class _Reader:
                 raise FleetConfigError('Malformed fleet configuration.')
             if byte != 92:
                 raw.append(byte)
-                if len(raw) > 8192:
+                if len(raw) > self.max_string * 4:
                     raise FleetConfigError('Fleet string exceeds size limit.')
                 continue
             flush()
@@ -147,7 +152,7 @@ class _Reader:
             else:
                 raise FleetConfigError('Malformed string escape.')
             length += len(text)
-            if length > 2048:
+            if length > self.max_string:
                 raise FleetConfigError('Fleet string exceeds size limit.')
             out.append(text)
 
@@ -188,7 +193,7 @@ class _Reader:
                 if key in keys:
                     raise FleetConfigError('Duplicate object key.')
                 keys.add(key)
-                if len(keys) > 9:
+                if len(keys) > self.max_members:
                     raise FleetConfigError('Object member limit exceeded.')
                 self.space()
                 self.take(58)
@@ -208,7 +213,7 @@ class _Reader:
                 return result
             while True:
                 result.append(self.value(depth + 1))
-                if len(result) > MAX_PROFILES:
+                if len(result) > self.max_array:
                     raise FleetConfigError('Array item limit exceeded.')
                 self.space()
                 ch = self._byte()
@@ -248,6 +253,8 @@ class _Reader:
         else:
             raise FleetConfigError('Malformed number.')
         if self.peek() in (46, 69, 101):
+            # Schema values in fleet and the release API are integer-only;
+            # fail closed rather than accepting fractional/exponent numbers.
             raise FleetConfigError('Expected integer value.')
         try:
             return int(''.join(chars))
@@ -326,6 +333,9 @@ class _Parser:
                 break
             if ch != 44:
                 raise FleetConfigError('Malformed fleet configuration.')
+            r.space()
+            if r.peek() == 125:
+                raise FleetConfigError('Malformed fleet configuration.')
         r.space()
         if r._byte() != -1:
             raise FleetConfigError('Malformed data after fleet configuration.')
@@ -356,7 +366,7 @@ class _Parser:
             refs.add(ref); count += 1
             if count > MAX_DEVICES:
                 raise FleetConfigError('Invalid device count.')
-            if not _matches(ref, 1, 256) or not _chars(ref, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-'):
+            if not _matches(ref, 1, 64) or not _chars(ref, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-'):
                 raise FleetConfigError('Invalid device reference.')
             r.space(); r.take(58)
             raw = r.value(2)
@@ -407,10 +417,14 @@ def _device(raw):
         raise FleetConfigError('Invalid sampling intervals.')
     read_credential = _credential(raw['config_read_credential'])
     write_credential = _credential(raw['gist_write_credential'])
+    temperature_gist_id = _gist(raw['temperature_gist_id'])
+    diagnostics_gist_id = _gist(raw['diagnostics_gist_id'])
+    if temperature_gist_id == diagnostics_gist_id:
+        raise FleetConfigError('Gist IDs must be distinct.')
     return DeviceConfiguration(
         _uuid(raw['change_id'], 'change_id'), logical, tuple(parsed),
-        read_credential, _gist(raw['temperature_gist_id']),
-        _gist(raw['diagnostics_gist_id']), write_credential, sample, publication)
+        read_credential, temperature_gist_id,
+        diagnostics_gist_id, write_credential, sample, publication)
 
 
 def _fields(value, expected):
@@ -450,7 +464,7 @@ def _uuid(value, field):
 
 
 def _gist(value):
-    value = _string(value, 32, 40)
+    value = _string(value, 32, 32)
     if any(c not in '0123456789abcdefABCDEF' for c in value):
         raise FleetConfigError('Invalid Gist ID.')
     return value
