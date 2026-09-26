@@ -52,6 +52,16 @@ jobs:
       - name: Enforce parsing coverage threshold
         run: bash tool/check_coverage.sh 85 packages/farmctl_parsing/coverage/lcov.info
 
+      - name: Test Pico telemetry on host
+        run: python3 -m unittest discover -s tests -v
+        working-directory: firmware/pico
+
+      - name: Install host-only Pico signature test dependency
+        run: python3 -m pip install --disable-pip-version-check cryptography==49.0.0
+
+      - name: Test signed Pico release manifests on host
+        run: python3 -m unittest discover -s tool/pico_release/tests -v
+
       - name: Run Flutter tests with coverage
         run: flutter test --coverage
         working-directory: app
