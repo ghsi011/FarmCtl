@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:farmctl/features/thermostats/data/device_diagnostics_client.dart';
+import 'package:farmctl/features/thermostats/models/device_diagnostics.dart';
 
 class _FakeAdapter implements HttpClientAdapter {
   _FakeAdapter(this.handler);
@@ -25,6 +26,8 @@ class _FakeAdapter implements HttpClientAdapter {
 const _gist = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _token = 'secret-token-not-for-errors';
 const _deviceRef = 'opaque-42';
+const _revisionId = '123e4567-e89b-42d3-a456-426614174000';
+const _changeId = '223e4567-e89b-42d3-a456-426614174000';
 
 String _payload({String? content, String updatedAt = '2026-01-02T03:04:05Z'}) =>
     jsonEncode({
@@ -116,6 +119,225 @@ void main() {
       expect(snapshot.events.single.uptimeSeconds, 120);
       expect(snapshot.droppedEvents, 2);
       expect(snapshot.toString(), isNot(contains(_token)));
+    },
+  );
+
+  test(
+    'legacy snapshots leave optional compatibility and acknowledgement unknown',
+    () async {
+      final content = jsonEncode({
+        'schema_version': 1,
+        'device_ref': _deviceRef,
+        'heartbeat_seq': 1,
+        'firmware': {'running': '1.2.3'},
+        'sensor': {
+          'state': 'ok',
+          'consecutive_failures': 0,
+          'last_sample_ref': null,
+        },
+        'reported_at': null,
+        'events': [],
+      });
+      final snapshot = await GitHubDeviceDiagnosticsClient(
+        dio: clientDio(
+          status: 200,
+          bytes: utf8.encode(_payload(content: content)),
+        ),
+        githubToken: _token,
+      ).fetch(gistId: _gist, deviceRef: _deviceRef);
+
+      expect(snapshot.firmwareRetainedGood, isNull);
+      expect(snapshot.firmwareRunningConfigSchema, isNull);
+      expect(snapshot.firmwareRetainedConfigSchema, isNull);
+      expect(snapshot.configurationStatus, isNull);
+      expect(snapshot.supportsFleetSchema1, isFalse);
+      expect(snapshot.isApplied(_changeId, isFresh: true), isFalse);
+    },
+  );
+
+  test(
+    'requires both schema markers and retained firmware for schema support',
+    () async {
+      Future<DeviceDiagnosticsSnapshot> parseFirmware(
+        Map<String, Object?> extra,
+      ) {
+        final content = jsonEncode({
+          'schema_version': 1,
+          'device_ref': _deviceRef,
+          'heartbeat_seq': 1,
+          'firmware': {'running': '1.2.3', ...extra},
+          'sensor': {
+            'state': 'ok',
+            'consecutive_failures': 0,
+            'last_sample_ref': null,
+          },
+          'reported_at': null,
+          'events': [],
+        });
+        return GitHubDeviceDiagnosticsClient(
+          dio: clientDio(
+            status: 200,
+            bytes: utf8.encode(_payload(content: content)),
+          ),
+          githubToken: _token,
+        ).fetch(gistId: _gist, deviceRef: _deviceRef);
+      }
+
+      final qualified = await parseFirmware({
+        'retained_good': '1.2.2',
+        'running_config_schema': 1,
+        'retained_config_schema': 1,
+      });
+      expect(qualified.supportsFleetSchema1, isTrue);
+      expect(qualified.firmwareRetainedGood, '1.2.2');
+      expect(
+        (await parseFirmware({
+          'retained_good': '1.2.2',
+          'running_config_schema': 1,
+        })).supportsFleetSchema1,
+        isFalse,
+      );
+      await expectLater(
+        parseFirmware({
+          'retained_good': '1.2.2',
+          'running_config_schema': 2,
+          'retained_config_schema': 1,
+        }),
+        throwsA(
+          isA<DeviceDiagnosticsException>().having(
+            (error) => error.kind,
+            'kind',
+            DeviceDiagnosticsErrorKind.invalidFields,
+          ),
+        ),
+      );
+      expect(
+        (await parseFirmware({
+          'running_config_schema': 1,
+          'retained_config_schema': 1,
+        })).supportsFleetSchema1,
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'acknowledgement requires exact applied ID and caller-confirmed freshness',
+    () async {
+      final content = jsonEncode({
+        'schema_version': 1,
+        'device_ref': _deviceRef,
+        'heartbeat_seq': 1,
+        'firmware': {'running': '1.2.3'},
+        'sensor': {
+          'state': 'ok',
+          'consecutive_failures': 0,
+          'last_sample_ref': null,
+        },
+        'reported_at': null,
+        'configuration': {
+          'applied_id': _changeId,
+          'last_attempt': {
+            'fleet_revision': _revisionId,
+            'change_id': '323e4567-e89b-42d3-a456-426614174000',
+            'state': 'applied',
+            'reason': null,
+          },
+        },
+        'events': [],
+      });
+      final snapshot = await GitHubDeviceDiagnosticsClient(
+        dio: clientDio(
+          status: 200,
+          bytes: utf8.encode(_payload(content: content)),
+        ),
+        githubToken: _token,
+      ).fetch(gistId: _gist, deviceRef: _deviceRef);
+
+      expect(snapshot.isApplied(_changeId, isFresh: true), isTrue);
+      expect(
+        snapshot.isApplied(_changeId.toUpperCase(), isFresh: true),
+        isFalse,
+      );
+      expect(snapshot.isApplied(_changeId, isFresh: false), isFalse);
+      // A newer-looking attempted acknowledgement never substitutes for applied_id.
+      expect(
+        snapshot.isApplied(
+          '323e4567-e89b-42d3-a456-426614174000',
+          isFresh: true,
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'invalid optional config fields fail closed without exposing their values',
+    () async {
+      for (final configuration in <Object>[
+        {'applied_id': 'not-a-uuid', 'last_attempt': null},
+        {
+          'applied_id': null,
+          'last_attempt': {
+            'fleet_revision': _revisionId,
+            'change_id': _changeId,
+            'state': 'applied',
+            'reason': 'private ssid secret',
+          },
+        },
+        {'applied_id': null, 'last_attempt': null, 'secret': _token},
+        {
+          'applied_id': null,
+          'last_attempt': {
+            'fleet_revision': 'bad-revision',
+            'change_id': _changeId,
+            'state': 'applied',
+            'reason': null,
+          },
+        },
+      ]) {
+        final content = jsonEncode({
+          'schema_version': 1,
+          'device_ref': _deviceRef,
+          'heartbeat_seq': 1,
+          'firmware': {'running': '1.2.3'},
+          'sensor': {
+            'state': 'ok',
+            'consecutive_failures': 0,
+            'last_sample_ref': null,
+          },
+          'reported_at': null,
+          'configuration': configuration,
+          'events': [],
+        });
+        await expectLater(
+          GitHubDeviceDiagnosticsClient(
+            dio: clientDio(
+              status: 200,
+              bytes: utf8.encode(_payload(content: content)),
+            ),
+            githubToken: _token,
+          ).fetch(gistId: _gist, deviceRef: _deviceRef),
+          throwsA(
+            isA<DeviceDiagnosticsException>()
+                .having(
+                  (error) => error.kind,
+                  'kind',
+                  DeviceDiagnosticsErrorKind.invalidFields,
+                )
+                .having(
+                  (error) => error.toString(),
+                  'safe error',
+                  isNot(contains(_token)),
+                )
+                .having(
+                  (error) => error.toString(),
+                  'safe error',
+                  isNot(contains('private ssid')),
+                ),
+          ),
+        );
+      }
     },
   );
 

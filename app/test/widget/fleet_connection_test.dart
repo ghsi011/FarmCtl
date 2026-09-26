@@ -6,6 +6,9 @@ import 'package:farmctl/features/fleet/data/fleet_connection_store.dart';
 import 'package:farmctl/features/fleet/data/fleet_contents_client.dart';
 import 'package:farmctl/features/fleet/providers/fleet_providers.dart';
 import 'package:farmctl/features/fleet/view/fleet_configuration_page.dart';
+import 'package:farmctl/features/settings/models/alert_config.dart';
+import 'package:farmctl/features/settings/providers/settings_providers.dart';
+import 'package:farmctl/features/thermostats/providers/thermostat_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +101,19 @@ void main() {
               dio: Dio()..httpClientAdapter = adapter,
             ),
           ),
+          thermostatsProvider.overrideWith((ref) => Stream.value([])),
+          alertConfigProvider.overrideWith(
+            (ref) => Stream.value(
+              const AlertConfig(
+                pollInterval: Duration(minutes: 5),
+                soundUri: null,
+                vibrate: true,
+                volumeBoost: false,
+                pauseAllUntil: null,
+                githubToken: null,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: FleetConfigurationPage()),
       ),
@@ -119,15 +135,19 @@ void main() {
     await tester.tap(find.text('Save connection'));
     await tester.pumpAndSettle();
 
-    expect(storage.values.values, contains('farm-owner'));
-    expect(storage.values.values, contains('private-fleet'));
-    expect(storage.values.values, contains('secret-writer-token'));
+    expect(storage.values.keys, ['fleet_connection_v2_record']);
+    final saved =
+        jsonDecode(storage.values['fleet_connection_v2_record']!)
+            as Map<String, dynamic>;
+    expect(saved['owner'], 'farm-owner');
+    expect(saved['repo'], 'private-fleet');
+    expect(saved['writer_token'], 'secret-writer-token');
     final tokenField = tester.widget<TextFormField>(
       find.widgetWithText(TextFormField, 'Writer token'),
     );
     expect(tokenField.controller!.text, isEmpty);
     expect(
-      find.text('Connection saved securely on this phone.'),
+      find.text('Connection is saved securely on this phone.'),
       findsOneWidget,
     );
     expect(
@@ -165,20 +185,33 @@ void main() {
       });
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [fleetConnectionStorageProvider.overrideWithValue(storage)],
+        overrides: [
+          fleetConnectionStorageProvider.overrideWithValue(storage),
+          thermostatsProvider.overrideWith((ref) => Stream.value([])),
+          alertConfigProvider.overrideWith(
+            (ref) => Stream.value(
+              const AlertConfig(
+                pollInterval: Duration(minutes: 5),
+                soundUri: null,
+                vibrate: true,
+                volumeBoost: false,
+                pauseAllUntil: null,
+                githubToken: null,
+              ),
+            ),
+          ),
+        ],
         child: const MaterialApp(home: FleetConfigurationPage()),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Editing unlocks after compatibility check'),
+      find.text('Editing is guarded by a fresh compatibility check'),
       findsOneWidget,
     );
     expect(
-      find.text(
-        'Device-applied status is not available yet. Changes cannot be submitted from FarmCtl.',
-      ),
+      find.textContaining('Device-applied status is separate.'),
       findsOneWidget,
     );
     expect(find.text('private-token'), findsNothing);
@@ -186,7 +219,11 @@ void main() {
     await tester.ensureVisible(find.text('Clear connection'));
     await tester.tap(find.text('Clear connection'));
     await tester.pumpAndSettle();
-    expect(storage.values, isEmpty);
+    expect(storage.values.keys, ['fleet_connection_v2_record']);
+    expect(jsonDecode(storage.values['fleet_connection_v2_record']!), {
+      'version': 2,
+      'state': 'cleared',
+    });
     expect(find.text('Saved connection cleared.'), findsOneWidget);
   });
 }

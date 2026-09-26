@@ -1,9 +1,10 @@
 import 'dart:convert';
 
-/// Schema-v1 bounds: 1-16 devices; 1-3 profiles/device; device refs 1-256 ASCII chars;
+/// Schema-v1 bounds: 1-16 devices; 1-3 profiles/device; device refs 1-64 ASCII
+/// chars from `A-Z`, `a-z`, `0-9`, `.`, `_`, or `-`;
 /// logical/profile IDs 1-64/1-32 ASCII chars; SSIDs 1-32 UTF-8 bytes;
 /// WPA passphrases 8-63 UTF-8 bytes or 64 hex PSK; credentials 1-2048 visible
-/// ASCII chars without whitespace/control; gist IDs 32-40 hex chars.
+/// ASCII chars without whitespace/control; distinct gist IDs of exactly 32 hex chars.
 /// The envelope limit is 65,536 UTF-8 bytes (not characters).
 class FleetConfiguration {
   const FleetConfiguration({required this.revision, required this.devices});
@@ -40,8 +41,8 @@ class FleetConfiguration {
     final logicalIds = <String>{};
     for (final entry in rawDevices.entries) {
       final ref = entry.key;
-      if (!_bounded(ref, 1, 256) ||
-          !RegExp(r'^[A-Za-z0-9._:-]+$').hasMatch(ref)) {
+      if (!_bounded(ref, 1, 64) ||
+          !RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(ref)) {
         _invalid('Invalid device reference.');
       }
       final raw = _object(entry.value, 'device');
@@ -103,13 +104,18 @@ class FleetConfiguration {
           sample > publication) {
         _invalid('Invalid sampling intervals.');
       }
+      final temperatureGistId = _gist(raw['temperature_gist_id']);
+      final diagnosticsGistId = _gist(raw['diagnostics_gist_id']);
+      if (temperatureGistId == diagnosticsGistId) {
+        _invalid('Gist IDs must be distinct.');
+      }
       devices[ref] = FleetDeviceConfiguration(
         changeId: _uuid(raw['change_id'], 'change_id'),
         logicalId: logical,
         wifiProfiles: List.unmodifiable(parsedProfiles),
         configReadCredential: _credential(raw['config_read_credential']),
-        temperatureGistId: _gist(raw['temperature_gist_id']),
-        diagnosticsGistId: _gist(raw['diagnostics_gist_id']),
+        temperatureGistId: temperatureGistId,
+        diagnosticsGistId: diagnosticsGistId,
         gistWriteCredential: _credential(raw['gist_write_credential']),
         sampleIntervalSeconds: sample,
         publicationIntervalSeconds: publication,
@@ -172,8 +178,8 @@ class FleetConfiguration {
   }
 
   static String _gist(Object? value) {
-    final string = _string(value, 'Gist ID', 32, 40);
-    if (!RegExp(r'^[0-9a-fA-F]+$').hasMatch(string)) {
+    final string = _string(value, 'Gist ID', 32, 32);
+    if (!RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(string)) {
       _invalid('Invalid Gist ID.');
     }
     return string;

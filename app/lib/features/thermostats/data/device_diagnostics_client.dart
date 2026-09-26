@@ -215,6 +215,32 @@ class GitHubDeviceDiagnosticsClient {
           kind: DeviceDiagnosticsErrorKind.invalidFields,
         );
       }
+      final retainedGood = _optionalFirmwareString(
+        firmware is Map<String, dynamic> ? firmware['retained_good'] : null,
+        present:
+            firmware is Map<String, dynamic> &&
+            firmware.containsKey('retained_good'),
+      );
+      final runningConfigSchema = _optionalConfigSchema(
+        firmware is Map<String, dynamic>
+            ? firmware['running_config_schema']
+            : null,
+        present:
+            firmware is Map<String, dynamic> &&
+            firmware.containsKey('running_config_schema'),
+      );
+      final retainedConfigSchema = _optionalConfigSchema(
+        firmware is Map<String, dynamic>
+            ? firmware['retained_config_schema']
+            : null,
+        present:
+            firmware is Map<String, dynamic> &&
+            firmware.containsKey('retained_config_schema'),
+      );
+      final configurationStatus = _parseConfiguration(
+        snapshotData['configuration'],
+        present: snapshotData.containsKey('configuration'),
+      );
       final lastSampleRef = _optionalOpaque(rawSampleRef);
       if (sensor is! Map<String, dynamic> ||
           !sensor.containsKey('last_sample_ref') ||
@@ -255,6 +281,10 @@ class GitHubDeviceDiagnosticsClient {
         reportedAt: reportedAt,
         events: events,
         droppedEvents: droppedEvents,
+        firmwareRetainedGood: retainedGood,
+        firmwareRunningConfigSchema: runningConfigSchema,
+        firmwareRetainedConfigSchema: retainedConfigSchema,
+        configurationStatus: configurationStatus,
       );
     } on DeviceDiagnosticsException {
       rethrow;
@@ -287,6 +317,108 @@ class GitHubDeviceDiagnosticsClient {
     'sensor_failed',
     'temperature_publish_failed',
   };
+
+  static const _allowedAttemptStates = <String>{
+    'received',
+    'rejected',
+    'trial',
+    'applied',
+    'rolled_back',
+  };
+
+  static final _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+  );
+
+  static String? _optionalFirmwareString(
+    Object? value, {
+    required bool present,
+  }) {
+    if (!present || value == null) return null;
+    if (value is String &&
+        value.isNotEmpty &&
+        value.length <= 64 &&
+        RegExp(r'^[A-Za-z0-9._+-]+$').hasMatch(value)) {
+      return value;
+    }
+    _invalidDiagnosticsFields();
+  }
+
+  static int? _optionalConfigSchema(Object? value, {required bool present}) {
+    if (!present || value == null) return null;
+    if (value == 1) return 1;
+    _invalidDiagnosticsFields();
+  }
+
+  static DeviceDiagnosticsConfigurationStatus? _parseConfiguration(
+    Object? raw, {
+    required bool present,
+  }) {
+    if (!present) return null;
+    if (raw is! Map<String, dynamic> ||
+        raw.keys.any((key) => !{'applied_id', 'last_attempt'}.contains(key)) ||
+        !raw.containsKey('applied_id') ||
+        !raw.containsKey('last_attempt')) {
+      _invalidDiagnosticsFields();
+    }
+    final rawAppliedId = raw['applied_id'];
+    if (rawAppliedId != null &&
+        (rawAppliedId is! String || !_uuidPattern.hasMatch(rawAppliedId))) {
+      _invalidDiagnosticsFields();
+    }
+    final rawAttempt = raw['last_attempt'];
+    DeviceDiagnosticsConfigurationAttempt? attempt;
+    if (rawAttempt != null) {
+      if (rawAttempt is! Map<String, dynamic> ||
+          rawAttempt.keys.any(
+            (key) => !{
+              'fleet_revision',
+              'change_id',
+              'state',
+              'reason',
+            }.contains(key),
+          ) ||
+          !rawAttempt.containsKey('fleet_revision') ||
+          !rawAttempt.containsKey('change_id') ||
+          !rawAttempt.containsKey('state') ||
+          !rawAttempt.containsKey('reason')) {
+        _invalidDiagnosticsFields();
+      }
+      final fleetRevision = rawAttempt['fleet_revision'];
+      final changeId = rawAttempt['change_id'];
+      final state = rawAttempt['state'];
+      final reason = rawAttempt['reason'];
+      if (fleetRevision is! String ||
+          !_uuidPattern.hasMatch(fleetRevision) ||
+          changeId is! String ||
+          !_uuidPattern.hasMatch(changeId) ||
+          state is! String ||
+          !_allowedAttemptStates.contains(state) ||
+          (reason != null &&
+              (reason is! String ||
+                  reason.isEmpty ||
+                  reason.length > 64 ||
+                  !RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(reason)))) {
+        _invalidDiagnosticsFields();
+      }
+      attempt = DeviceDiagnosticsConfigurationAttempt(
+        fleetRevision: fleetRevision,
+        changeId: changeId,
+        state: state,
+        reason: reason as String?,
+      );
+    }
+    return DeviceDiagnosticsConfigurationStatus(
+      appliedId: rawAppliedId as String?,
+      lastAttempt: attempt,
+    );
+  }
+
+  static Never _invalidDiagnosticsFields() =>
+      throw const DeviceDiagnosticsException(
+        'Diagnostics fields are invalid.',
+        kind: DeviceDiagnosticsErrorKind.invalidFields,
+      );
 
   static List<DeviceDiagnosticsEvent> _parseEvents(Object? raw) {
     if (raw is! List || raw.length > 100) {

@@ -145,6 +145,35 @@ void main() {
     expect(utf8.encode('éééé'), hasLength(8));
   });
 
+  test('enforces diagnostic device-ref bounds and Gist publisher contract', () {
+    final ref64 = 'd' * 64;
+    final acceptedRef = _valid().replaceFirst('"device-a"', '"$ref64"');
+    expect(FleetConfiguration.parse(acceptedRef).devices, contains(ref64));
+    for (final ref in ['d' * 65, 'device:a']) {
+      final invalidRef = _valid().replaceFirst('"device-a"', '"$ref"');
+      expect(() => FleetConfiguration.parse(invalidRef), throwsFormatException);
+    }
+
+    for (final length in [33, 40]) {
+      final invalidGist = _valid().replaceFirst(
+        '"${'a' * 32}"',
+        '"${'a' * length}"',
+      );
+      expect(
+        () => FleetConfiguration.parse(invalidGist),
+        throwsFormatException,
+      );
+    }
+    final duplicateGists = _valid().replaceFirst(
+      '"${'b' * 32}"',
+      '"${'a' * 32}"',
+    );
+    expect(
+      () => FleetConfiguration.parse(duplicateGists),
+      throwsFormatException,
+    );
+  });
+
   test('rejects duplicate IDs and malformed trailing JSON', () {
     final duplicateLogical = _valid()
         .replaceAll('"monitor-a"', '"monitor-a"')

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/widgets.dart';
@@ -63,6 +64,7 @@ class FleetConnectionStore with WidgetsBindingObserver {
   }
 
   static const _prefix = 'fleet_connection_v1_';
+  static const _recordKey = 'fleet_connection_v2_record';
   final FleetConnectionStorage _storage;
   final FleetClientFactory _clientFactory;
   final FleetClock _clock;
@@ -71,6 +73,7 @@ class FleetConnectionStore with WidgetsBindingObserver {
   FleetEditSession? _session;
   bool _disposed = false;
   int _generation = 0;
+  Future<void> _persistenceTail = Future<void>.value();
 
   static FleetContentsClient defaultClientFactory(FleetConnection connection) =>
       FleetContentsClient(
@@ -90,38 +93,38 @@ class FleetConnectionStore with WidgetsBindingObserver {
   ) async {
     _ensureOpen();
     final connection = _validated(owner, repo, branch, path, writerToken);
-    try {
-      await _storage.write('${_prefix}owner', connection.owner);
-      await _storage.write('${_prefix}repo', connection.repo);
-      await _storage.write('${_prefix}branch', connection.branch);
-      await _storage.write('${_prefix}path', connection.path);
-      await _storage.write('${_prefix}writer_token', connection.writerToken);
-    } catch (_) {
-      throw const FleetConnectionException('Unable to save connection.');
-    }
+    // A validated save replaces the connection context, even if persistence
+    // subsequently fails. Do not leave an editor for the old repository usable
+    // while the new connection is being written.
+    closeSession();
+    await _serializePersistence(() async {
+      try {
+        await _storage.write(
+          _recordKey,
+          jsonEncode({
+            'version': 2,
+            'state': 'connected',
+            'owner': connection.owner,
+            'repo': connection.repo,
+            'branch': connection.branch,
+            'path': connection.path,
+            'writer_token': connection.writerToken,
+          }),
+        );
+      } catch (_) {
+        throw const FleetConnectionException('Unable to save connection.');
+      }
+    });
   }
 
   Future<FleetConnection?> loadConnection() async {
     _ensureOpen();
     try {
-      final values = await Future.wait([
-        _storage.read('${_prefix}owner'),
-        _storage.read('${_prefix}repo'),
-        _storage.read('${_prefix}branch'),
-        _storage.read('${_prefix}path'),
-        _storage.read('${_prefix}writer_token'),
-      ]);
-      if (values.every((value) => value == null)) return null;
-      if (values.any((value) => value == null)) {
-        throw const FleetConnectionException('Saved connection is incomplete.');
-      }
-      return _validated(
-        values[0]!,
-        values[1]!,
-        values[2]!,
-        values[3]!,
-        values[4]!,
-      );
+      return await _serializePersistence(() async {
+        final record = await _storage.read(_recordKey);
+        if (record != null) return _decodeRecord(record);
+        return _loadLegacyConnection();
+      });
     } on FleetConnectionException {
       rethrow;
     } catch (_) {
@@ -132,7 +135,18 @@ class FleetConnectionStore with WidgetsBindingObserver {
   Future<void> clearConnection() async {
     _ensureOpen();
     closeSession();
-    try {
+    await _serializePersistence(() async {
+      try {
+        await _storage.write(
+          _recordKey,
+          jsonEncode({'version': 2, 'state': 'cleared'}),
+        );
+      } catch (_) {
+        throw const FleetConnectionException(
+          'Unable to clear saved connection.',
+        );
+      }
+      var deletionFailed = false;
       for (final field in const [
         'owner',
         'repo',
@@ -140,10 +154,96 @@ class FleetConnectionStore with WidgetsBindingObserver {
         'path',
         'writer_token',
       ]) {
-        await _storage.delete('$_prefix$field');
+        try {
+          await _storage.delete('$_prefix$field');
+        } catch (_) {
+          deletionFailed = true;
+        }
       }
+      if (deletionFailed) {
+        throw const FleetConnectionException(
+          'Could not remove all old saved values. Try again.',
+        );
+      }
+    });
+  }
+
+  Future<T> _serializePersistence<T>(Future<T> Function() action) {
+    final result = _persistenceTail.then((_) => action());
+    _persistenceTail = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  Future<FleetConnection?> _loadLegacyConnection() async {
+    final values = await Future.wait([
+      _storage.read('${_prefix}owner'),
+      _storage.read('${_prefix}repo'),
+      _storage.read('${_prefix}branch'),
+      _storage.read('${_prefix}path'),
+      _storage.read('${_prefix}writer_token'),
+    ]);
+    if (values.every((value) => value == null)) return null;
+    if (values.any((value) => value == null)) {
+      throw const FleetConnectionException('Saved connection is incomplete.');
+    }
+    return _validated(
+      values[0]!,
+      values[1]!,
+      values[2]!,
+      values[3]!,
+      values[4]!,
+    );
+  }
+
+  FleetConnection? _decodeRecord(String record) {
+    try {
+      final decoded = jsonDecode(record);
+      if (decoded is! Map<String, dynamic> || decoded['version'] != 2) {
+        throw const FormatException();
+      }
+      final state = decoded['state'];
+      if (state == 'cleared' &&
+          decoded.keys.toSet().difference({'version', 'state'}).isEmpty &&
+          decoded.keys.length == 2) {
+        return null;
+      }
+      const keys = {
+        'version',
+        'state',
+        'owner',
+        'repo',
+        'branch',
+        'path',
+        'writer_token',
+      };
+      if (state != 'connected' ||
+          decoded.keys.toSet().difference(keys).isNotEmpty ||
+          decoded.keys.length != keys.length ||
+          decoded['owner'] is! String ||
+          decoded['repo'] is! String ||
+          decoded['branch'] is! String ||
+          decoded['path'] is! String ||
+          decoded['writer_token'] is! String) {
+        throw const FormatException();
+      }
+      return _validated(
+        decoded['owner'] as String,
+        decoded['repo'] as String,
+        decoded['branch'] as String,
+        decoded['path'] as String,
+        decoded['writer_token'] as String,
+      );
+    } on FleetConnectionException {
+      throw const FleetConnectionException(
+        'Saved connection record is invalid.',
+      );
     } catch (_) {
-      throw const FleetConnectionException('Unable to clear saved connection.');
+      throw const FleetConnectionException(
+        'Saved connection record is invalid.',
+      );
     }
   }
 
@@ -286,7 +386,7 @@ class FleetEditSession {
     _snapshot = snapshot;
   }
 
-  Future<FleetSubmissionStatus> submitChange({
+  Future<FleetSubmissionResult> submitChange({
     required String deviceRef,
     required FleetDeviceConfiguration editedDeviceConfig,
     String Function()? uuidV4,
@@ -298,8 +398,9 @@ class FleetEditSession {
       deviceRef: deviceRef,
       editedDeviceConfig: editedDeviceConfig,
     );
-    _ensureActive();
-    return result.status;
+    // Once submission starts, closing the session closes its client and can
+    // make the write ambiguous. Preserve the service's reconciliation result.
+    return result;
   }
 
   void _ensureActive() {
