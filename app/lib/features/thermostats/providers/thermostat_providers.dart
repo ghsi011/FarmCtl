@@ -1,11 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:dio/dio.dart';
 
 import '../data/thermostat_client.dart';
+import '../data/device_diagnostics_client.dart';
 import '../data/thermostat_database.dart';
 import '../data/thermostat_repository.dart';
 import '../data/thermostat_service.dart';
 import '../models/history_range.dart';
+import '../models/device_diagnostics.dart';
 import '../models/temperature_sample.dart';
 import '../models/thermostat.dart';
 import '../models/thermostat_state.dart';
@@ -22,6 +25,37 @@ final thermostatRepositoryProvider = Provider<ThermostatRepository>((ref) {
   final database = ref.watch(thermostatDatabaseProvider);
   return ThermostatRepository(database);
 });
+
+final deviceDiagnosticsProvider = FutureProvider.autoDispose
+    .family<DeviceDiagnosticsSnapshot?, String>((ref, thermostatId) async {
+      final cancelToken = CancelToken();
+      ref.onDispose(() => cancelToken.cancel('Diagnostics view disposed.'));
+      final repository = ref.watch(thermostatRepositoryProvider);
+      final alertRepository = ref.watch(alertConfigRepositoryProvider);
+      final thermostat = await repository.findById(thermostatId);
+      final gistId = thermostat?.diagnosticsGistId;
+      final deviceRef = thermostat?.deviceRef;
+      if (gistId == null ||
+          gistId.isEmpty ||
+          deviceRef == null ||
+          deviceRef.isEmpty) {
+        return null;
+      }
+      final config = await alertRepository.loadConfig();
+      final client = GitHubDeviceDiagnosticsClient(
+        githubToken: config.githubToken,
+      );
+      final snapshot = await client.fetch(
+        gistId: gistId,
+        deviceRef: deviceRef,
+        cancelToken: cancelToken,
+      );
+      await repository.ingestDeviceEvents(
+        thermostatId: thermostatId,
+        snapshot: snapshot,
+      );
+      return snapshot;
+    });
 
 final _githubTokenProvider = StreamProvider<String?>((ref) {
   // Resolve via the repository so the token comes from secure storage rather
@@ -68,6 +102,14 @@ final thermostatSummaryProvider =
       final repository = ref.watch(thermostatRepositoryProvider);
       return repository.watchThermostat(thermostatId);
     });
+
+final deviceEventsProvider = StreamProvider.family<List<DeviceEvent>, String>((
+  ref,
+  deviceRef,
+) {
+  final repository = ref.watch(thermostatRepositoryProvider);
+  return repository.watchDeviceEvents(deviceRef, limit: 20);
+});
 
 /// The history time-range currently selected for a thermostat. Shared so the
 /// detail page and the full-screen chart stay in sync in both directions.

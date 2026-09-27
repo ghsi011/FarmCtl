@@ -8,6 +8,8 @@ class Thermostat {
     required this.id,
     required this.name,
     required this.rawUrl,
+    this.diagnosticsGistId,
+    this.deviceRef,
     required this.minC,
     required this.maxC,
     required this.hysteresisEnabled,
@@ -19,6 +21,8 @@ class Thermostat {
   final String id;
   final String name;
   final String rawUrl; // Holds the Gist ID (API-backed)
+  final String? diagnosticsGistId;
+  final String? deviceRef;
   final double minC;
   final double maxC;
   final bool hysteresisEnabled;
@@ -40,6 +44,8 @@ class Thermostat {
       id: id,
       name: name ?? this.name,
       rawUrl: rawUrl ?? this.rawUrl,
+      diagnosticsGistId: diagnosticsGistId,
+      deviceRef: deviceRef,
       minC: minC ?? this.minC,
       maxC: maxC ?? this.maxC,
       hysteresisEnabled: hysteresisEnabled ?? this.hysteresisEnabled,
@@ -54,6 +60,8 @@ class Thermostat {
       id: entry.id,
       name: entry.name,
       rawUrl: entry.rawUrl,
+      diagnosticsGistId: entry.diagnosticsGistId,
+      deviceRef: entry.deviceRef,
       minC: entry.minC,
       maxC: entry.maxC,
       hysteresisEnabled: entry.hysteresisEnabled,
@@ -70,6 +78,8 @@ class Thermostat {
           other.id == id &&
           other.name == name &&
           other.rawUrl == rawUrl &&
+          other.diagnosticsGistId == diagnosticsGistId &&
+          other.deviceRef == deviceRef &&
           other.minC == minC &&
           other.maxC == maxC &&
           other.hysteresisEnabled == hysteresisEnabled &&
@@ -82,6 +92,8 @@ class Thermostat {
     id,
     name,
     rawUrl,
+    diagnosticsGistId,
+    deviceRef,
     minC,
     maxC,
     hysteresisEnabled,

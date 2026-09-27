@@ -18,6 +18,10 @@ class ThermostatEntries extends Table {
 
   TextColumn get rawUrl => text()();
 
+  TextColumn get diagnosticsGistId => text().nullable()();
+
+  TextColumn get deviceRef => text().nullable()();
+
   RealColumn get minC => real()();
 
   RealColumn get maxC => real()();
@@ -111,6 +115,26 @@ class TemperatureReadings extends Table {
   @override
   Set<Column>? get primaryKey => {id};
 }
+
+@TableIndex(
+  name: 'device_events_device_fetched_idx',
+  columns: {#deviceRef, #fetchedAt},
+)
+class DeviceEvents extends Table {
+  TextColumn get deviceRef => text()();
+  TextColumn get eventId => text()();
+  TextColumn get thermostatId =>
+      text().references(ThermostatEntries, #id, onDelete: KeyAction.cascade)();
+  TextColumn get code => text()();
+  IntColumn get count => integer()();
+  DateTimeColumn get occurredAt => dateTime().nullable()();
+  IntColumn get uptimeSeconds => integer().nullable()();
+  DateTimeColumn get gistUpdatedAt => dateTime().nullable()();
+  DateTimeColumn get fetchedAt => dateTime()();
+
+  @override
+  Set<Column>? get primaryKey => {deviceRef, eventId};
+}
 // coverage:ignore-end
 
 LazyDatabase _openConnection() {
@@ -142,6 +166,7 @@ typedef ThermostatWithStateRow = ({
     AlertConfigEntries,
     ThermostatStateEntries,
     TemperatureReadings,
+    DeviceEvents,
   ],
 )
 class ThermostatDatabase extends _$ThermostatDatabase {
@@ -150,7 +175,7 @@ class ThermostatDatabase extends _$ThermostatDatabase {
   ThermostatDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -233,6 +258,16 @@ class ThermostatDatabase extends _$ThermostatDatabase {
         // of a foreground service, which polls reliably without needing this
         // permission; the column it configured is now unused.
         await m.dropColumn(alertConfigEntries, 'exact_alarms_enabled');
+      }
+      if (from < 11) {
+        await m.addColumn(
+          thermostatEntries,
+          thermostatEntries.diagnosticsGistId,
+        );
+        await m.addColumn(thermostatEntries, thermostatEntries.deviceRef);
+      }
+      if (from < 12) {
+        await m.createTable(deviceEvents);
       }
     },
   );
@@ -348,6 +383,111 @@ class ThermostatDatabase extends _$ThermostatDatabase {
     await batch((batch) {
       batch.insertAllOnConflictUpdate(temperatureReadings, rows);
     });
+  }
+
+  Future<void> upsertDeviceEvent(DeviceEventsCompanion event) async {
+    await transaction(() async {
+      final existing =
+          await (select(deviceEvents)
+                ..where((row) => row.deviceRef.equals(event.deviceRef.value))
+                ..where((row) => row.eventId.equals(event.eventId.value)))
+              .getSingleOrNull();
+      final incomingGistAt = event.gistUpdatedAt.value;
+      final existingGistAt = existing?.gistUpdatedAt;
+      final isLatestSource =
+          existing == null ||
+          (incomingGistAt != null &&
+              (existingGistAt == null ||
+                  !incomingGistAt.isBefore(existingGistAt))) ||
+          (incomingGistAt == null &&
+              existingGistAt == null &&
+              !event.fetchedAt.value.isBefore(existing.fetchedAt));
+      await into(deviceEvents).insertOnConflictUpdate(
+        event.copyWith(
+          // Event ID and code are immutable. If a malformed/coalesced source
+          // reuses an ID with a different code, retain the original code.
+          code: Value(existing?.code ?? event.code.value),
+          count: Value(
+            existing == null || event.count.value > existing.count
+                ? event.count.value
+                : existing.count,
+          ),
+          occurredAt:
+              isLatestSource &&
+                  event.occurredAt.present &&
+                  event.occurredAt.value != null
+              ? event.occurredAt
+              : Value(existing?.occurredAt),
+          uptimeSeconds:
+              isLatestSource &&
+                  event.uptimeSeconds.present &&
+                  event.uptimeSeconds.value != null
+              ? event.uptimeSeconds
+              : Value(existing?.uptimeSeconds),
+          gistUpdatedAt:
+              isLatestSource &&
+                  event.gistUpdatedAt.present &&
+                  event.gistUpdatedAt.value != null
+              ? event.gistUpdatedAt
+              : Value(existing?.gistUpdatedAt),
+          fetchedAt: Value(
+            !isLatestSource
+                ? existing.fetchedAt
+                : existing != null &&
+                      existing.fetchedAt.isAfter(event.fetchedAt.value)
+                ? existing.fetchedAt
+                : event.fetchedAt.value,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<List<DeviceEvent>> listDeviceEvents(
+    String deviceRef, {
+    int limit = 50,
+    required DateTime cutoff,
+  }) {
+    return (select(deviceEvents)
+          ..where((row) => row.deviceRef.equals(deviceRef))
+          ..where((row) => row.fetchedAt.isBiggerOrEqualValue(cutoff))
+          ..orderBy([(row) => OrderingTerm.desc(row.fetchedAt)])
+          ..limit(limit.clamp(1, 100)))
+        .get();
+  }
+
+  Stream<List<DeviceEvent>> watchDeviceEvents(
+    String deviceRef, {
+    int limit = 50,
+    required DateTime cutoff,
+  }) {
+    return (select(deviceEvents)
+          ..where((row) => row.deviceRef.equals(deviceRef))
+          ..where((row) => row.fetchedAt.isBiggerOrEqualValue(cutoff))
+          ..orderBy([(row) => OrderingTerm.desc(row.fetchedAt)])
+          ..limit(limit.clamp(1, 100)))
+        .watch();
+  }
+
+  Future<int> pruneDeviceEventsBefore(DateTime cutoff) {
+    return (delete(
+      deviceEvents,
+    )..where((row) => row.fetchedAt.isSmallerThanValue(cutoff))).go();
+  }
+
+  Future<void> pruneDeviceEvents({
+    required String deviceRef,
+    required int keepLatest,
+  }) async {
+    await customStatement(
+      '''
+      DELETE FROM device_events WHERE device_ref = ? AND event_id NOT IN (
+        SELECT event_id FROM device_events WHERE device_ref = ?
+        ORDER BY fetched_at DESC, event_id DESC LIMIT ?
+      )
+    ''',
+      [deviceRef, deviceRef, keepLatest],
+    );
   }
 
   Future<DateTime?> getNewestReadingTime(String thermostatId) async {

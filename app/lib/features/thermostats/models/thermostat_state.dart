@@ -125,6 +125,10 @@ class ThermostatSummary {
   final Thermostat thermostat;
   final ThermostatState? state;
 
+  String? get diagnosticsGistId => thermostat.diagnosticsGistId;
+
+  String? get deviceRef => thermostat.deviceRef;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
