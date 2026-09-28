@@ -1,40 +1,65 @@
-# Pico spare offline preflight
+# Pico spare inventory and identity harness
 
-This standard-library-only command checks the format of an independently authorized,
-operator-supplied spare-board inventory. It is **offline only**: it does not open the
-port, inspect a board, derive an identity, or authorize a probe. The inventory must be
-a regular file outside this repository and no larger than 4096 bytes. Do not put
-inventory files, credentials, or other secrets in the repository.
+The default `preflight` command is offline: it validates an operator-supplied external
+inventory and explicit literal Windows COM-port syntax. It does not open a port, inspect
+a board, derive an identity, or authorize a probe. Inventory files must be regular files
+outside this repository and no larger than 4096 bytes. Do not put inventory files,
+credentials, or other secrets in the repository.
 
-Example inventory (the digest is synthetic and is not a real board identity):
+Version 1 inventories retain the original schema. Version 2 adds exact expected
+`uname()` machine and release strings for identity comparison:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "purpose": "authorized_spare",
   "uid_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "board": "RPI_PICO2_W",
   "runtime": "v1.29.0",
-  "authorization_reference": "ISSUE-43"
+  "authorization_reference": "CHANGE-123",
+  "expected_uname_machine": "synthetic-machine",
+  "expected_uname_release": "synthetic-release"
 }
 ```
 
-Run with an explicit literal Windows COM port (syntax is validated only; no connection
-is made):
+All sample identity values are synthetic. The required exact v2 `uname()` machine and
+release values are **unknown** here and must come from an independently verified owner
+inventory; do not infer or guess them. The authorization reference is bounded metadata,
+not evidence of authorization. In particular, issue #43 supplies no permission, and
+neither it nor any reference string in this file grants permission.
+
+Offline preflight (accepts v1 or v2):
 
 ```text
 python tool/pico_spare/harness.py preflight --inventory <external-json> --port <COMn>
 ```
 
-`OFFLINE_PREFLIGHT_PASS` means only that the external inventory has the required
-format and the explicit port string has accepted syntax. `BLOCKED` means validation
-failed. Neither result qualifies a board or signals that a hardware action is safe.
-This preflight does not pass or resolve issue #43. There is no probe command and no
-device runner.
+`OFFLINE_PREFLIGHT_PASS` means only that the inventory format and explicit port syntax
+were accepted. `BLOCKED` means validation failed. Neither result qualifies a board or
+signals that a hardware action is safe.
 
-Before any later probe is considered, obtain owner approval, physically isolate the
-device, and independently confirm a complete UID inventory against the authorized
-spare identity. Be aware that official MicroPython v1.29 `mpremote connect ... exec`
-enters raw REPL and can interrupt a running program and automatically soft-reset the
-board. In particular, this harness makes **no COM4 interaction**. Keep production
-auto-updates disabled during spare qualification.
+An optional, tightly scoped identity probe accepts **only v2** and requires explicit
+interruption acknowledgement:
+
+```text
+python tool/pico_spare/harness.py probe --inventory <external-json> --port <COMn> --ack-interruption
+```
+
+`--ack-interruption` acknowledges the risk; it is not owner approval or permission. The
+probe executes one fixed `mpremote connect port:<COMn> resume exec ...` command and
+follows output from only the fixed query, with a 10-second host timeout; it does not
+retry, scan ports, or perform follow-on operations. `resume` suppresses the automatic
+soft reset, but entering raw REPL sends Ctrl-C and can interrupt running
+board code. It may therefore disrupt a device. The command reads the UID and `uname()`
+identity only, compares the full SHA-256 UID digest and both exact expected strings, and
+prints only `IDENTITY_MATCH` on a match; failures print only `BLOCKED`. A match is not
+physical-spare authentication, owner approval, permission, or an issue #43 pass.
+
+The command behavior described here was reviewed against host `mpremote` v1.29.0; other
+host CLI versions are not qualified. An operator must confirm the host CLI version
+before any separately authorized live use. `mpremote` is not installed in this
+development environment. No live command may be run during development. In particular,
+COM4 cannot prove that a connected board is the spare. All tests mock the subprocess
+boundary; no device, serial connection, or production `main.py` operation is needed.
+Keep production `main.py` and auto flags untouched, with automatic updates disabled
+during any separately authorized spare qualification.
