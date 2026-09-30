@@ -292,6 +292,12 @@ class SessionTests(unittest.TestCase):
         def interrupt():
             raise KeyboardInterrupt
 
+        sleep_calls = []
+
+        def interrupted_sleep(duration):
+            sleep_calls.append(duration)
+            interrupt()
+
         self.assertEqual(self.run_session(stop_requested=interrupt), 'SESSION_FAILED')
         self.assertEqual(self.created, 0)
 
@@ -309,9 +315,11 @@ class SessionTests(unittest.TestCase):
                         interrupt()
 
                     self.close = interrupted_close
-                kwargs = {'sleep_ms': interrupt} if mode == 'sleep' else {}
+                kwargs = {'sleep_ms': interrupted_sleep} if mode == 'sleep' else {}
                 self.assertEqual(self.run_session(**kwargs), expected)
                 self.assertEqual(self.closed, 1)
+                if mode == 'sleep':
+                    self.assertEqual(sleep_calls, [1000])
 
     def test_suspend_returning_false_is_cleanup_failure_but_close_is_attempted(self):
         self.instance.suspend_publication = lambda: False
