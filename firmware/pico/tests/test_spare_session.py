@@ -165,10 +165,111 @@ class SessionTests(unittest.TestCase):
         self.sensor.values = [20.0]
         self.publisher.fail_diagnostics = False
         result = self.run_session()
-        self.assertEqual(result, 'STEP_FAILED')
+        self.assertEqual(result, 'DURATION_ENDED')
         self.assertEqual(len(self.publisher.temperatures), 1)
-        self.assertEqual(self.sensor.reads, 2)
-        self.assertEqual(len(self.publisher.diagnostics), 2)
+        self.assertEqual(self.sensor.reads, 7)
+        self.assertGreaterEqual(len(self.publisher.diagnostics), 2)
+        self.assertEqual(self.closed, 1)
+
+    def test_sensor_failure_recovery_continues_and_publishes_fresh_due_sample(self):
+        class FailAtTenSensor(Sensor):
+            def read_celsius(self):
+                self.reads += 1
+                if self.reads == 2:
+                    raise OSError('sensor failure')
+                return 19.0 + self.reads
+
+        self.sensor = FailAtTenSensor()
+        self.instance.sensor = self.sensor
+        self.publisher.fail_diagnostics = False
+        self.assertEqual(self.run_session(), 'DURATION_ENDED')
+        contents = [item['files']['thermostat.txt']['content']
+                    for item in self.publisher.temperatures]
+        self.assertEqual(len(contents), 2)
+        self.assertTrue(contents[0].endswith('Sample: boot-1:1'))
+        self.assertTrue(contents[1].endswith('Sample: boot-1:6'))
+        event_codes = [event['code'] for event in self.instance.diagnostics['events']]
+        self.assertEqual(event_codes[-2:], ['sensor_failed', 'sensor_recovered'])
+        self.assertEqual(self.sensor.reads, 7)
+        self.assertEqual(self.closed, 1)
+
+    def test_temperature_publish_failure_retries_with_new_sample(self):
+        class FailOncePublisher(Publisher):
+            def __init__(self):
+                super().__init__(fail_diagnostics=False)
+                self.attempts = []
+
+            def publish_temperature(self, payload):
+                content = payload['files']['thermostat.txt']['content']
+                self.attempts.append(content)
+                if len(self.attempts) == 1:
+                    raise OSError('private publish failure')
+                self.temperatures.append(payload)
+
+        self.publisher = FailOncePublisher()
+        self.instance.publisher = self.publisher
+        self.sensor = Sensor([20.0 + index for index in range(100)])
+        self.instance.sensor = self.sensor
+        self.assertEqual(self.run_session(), 'DURATION_ENDED')
+        self.assertTrue(self.publisher.attempts[0].endswith('Sample: boot-1:1'))
+        self.assertTrue(self.publisher.attempts[1].endswith('Sample: boot-1:2'))
+        self.assertEqual(len(self.publisher.temperatures), 1)
+        self.assertIn('temperature_publish_failed',
+                      [event['code'] for event in self.instance.diagnostics['events']])
+        self.assertEqual(self.closed, 1)
+
+    def test_persistent_sensor_failure_is_bounded_and_cleans_once(self):
+        class BrokenSensor:
+            def __init__(self):
+                self.reads = 0
+
+            def read_celsius(self):
+                self.reads += 1
+                raise OSError('broken')
+
+        self.sensor = BrokenSensor()
+        self.instance.sensor = self.sensor
+        self.publisher.fail_diagnostics = False
+        self.assertEqual(self.run_session(), 'DURATION_ENDED')
+        self.assertEqual(self.sensor.reads, 7)
+        self.assertEqual(self.publisher.temperatures, [])
+        self.assertEqual(self.closed, 1)
+
+    def test_failure_at_sixty_seconds_does_not_extend_deadline(self):
+        original_step = self.instance.step
+        calls = []
+
+        def fail_at_sixty(*args):
+            calls.append(self.clock.now)
+            if self.clock.now == 60000:
+                return False
+            return original_step(*args)
+
+        self.instance.step = fail_at_sixty
+        self.assertEqual(self.run_session(), 'DURATION_ENDED')
+        self.assertEqual(self.clock.now, 70000)
+        self.assertEqual(max(calls), 69000)
+        self.assertEqual(self.closed, 1)
+
+    def test_backward_clock_after_handled_failure_blocks_without_retry(self):
+        class BackwardAfterSleep(Clock):
+            def __init__(self):
+                super().__init__()
+                self.sleep_count = 0
+
+            def sleep(self):
+                self.sleep_count += 1
+                self.now = 1000 if self.sleep_count == 1 else -1
+
+        clock = BackwardAfterSleep()
+        self.instance.step = lambda *_: False
+        result = self.run_session(
+            clock=clock,
+            sleep_ms=lambda _: clock.sleep(),
+        )
+        self.assertEqual(result, 'BLOCKED_CLOCK')
+        self.assertEqual(clock.sleep_count, 2)
+        self.assertEqual(self.closed, 1)
 
     def test_step_failure_closes_once_and_returns_redacted_status(self):
         self.instance.step = lambda *_: (_ for _ in ()).throw(
@@ -178,6 +279,39 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(self.closed, 1)
         self.assertTrue(self.instance._publication_suspended)
         self.assertNotIn('secret', status)
+
+    def test_none_and_non_boolean_step_results_are_terminal(self):
+        for result in (None, 0, 1, 'handled'):
+            with self.subTest(result=result):
+                self.setUp()
+                self.instance.step = lambda *_, result=result: result
+                self.assertEqual(self.run_session(), 'STEP_FAILED')
+                self.assertEqual(self.closed, 1)
+
+    def test_keyboard_interrupts_map_to_fixed_status_and_cleanup_once(self):
+        def interrupt():
+            raise KeyboardInterrupt
+
+        self.assertEqual(self.run_session(stop_requested=interrupt), 'SESSION_FAILED')
+        self.assertEqual(self.created, 0)
+
+        for mode, expected in (('step', 'STEP_FAILED'), ('sleep', 'SESSION_FAILED'),
+                               ('suspend', 'CLEANUP_FAILED'), ('close', 'CLEANUP_FAILED')):
+            with self.subTest(mode=mode):
+                self.setUp()
+                if mode == 'step':
+                    self.instance.step = lambda *_: interrupt()
+                elif mode == 'suspend':
+                    self.instance.suspend_publication = interrupt
+                elif mode == 'close':
+                    def interrupted_close():
+                        self.closed += 1
+                        interrupt()
+
+                    self.close = interrupted_close
+                kwargs = {'sleep_ms': interrupt} if mode == 'sleep' else {}
+                self.assertEqual(self.run_session(**kwargs), expected)
+                self.assertEqual(self.closed, 1)
 
     def test_suspend_returning_false_is_cleanup_failure_but_close_is_attempted(self):
         self.instance.suspend_publication = lambda: False

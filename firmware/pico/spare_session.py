@@ -74,12 +74,8 @@ def run_spare_session(expected_uid_sha256, expected_uname_machine,
             return None
 
     try:
-        try:
-            if stopped():
-                status = 'STOPPED'
-                return status
-        except BaseException:
-            status = 'SESSION_FAILED'
+        if stopped():
+            status = 'STOPPED'
             return status
 
         try:
@@ -94,12 +90,8 @@ def run_spare_session(expected_uid_sha256, expected_uname_machine,
                 identity[2] == expected_uname_release):
             return _BLOCKED_IDENTITY
 
-        try:
-            if stopped():
-                status = 'STOPPED'
-                return status
-        except BaseException:
-            status = 'SESSION_FAILED'
+        if stopped():
+            status = 'STOPPED'
             return status
 
         # Establish and validate the clock before constructing hardware/network
@@ -128,12 +120,8 @@ def run_spare_session(expected_uid_sha256, expected_uname_machine,
         previous = start
         status = 'DURATION_ENDED'
         for _ in range(MAX_STEPS):
-            try:
-                if stopped():
-                    status = 'STOPPED'
-                    break
-            except BaseException:
-                status = 'SESSION_FAILED'
+            if stopped():
+                status = 'STOPPED'
                 break
             state = clock_state(previous, start)
             if state is None:
@@ -144,27 +132,19 @@ def run_spare_session(expected_uid_sha256, expected_uname_machine,
             if elapsed >= DURATION_MS:
                 status = 'DURATION_ENDED'
                 break
-            try:
-                if stopped():
-                    status = 'STOPPED'
-                    break
-            except BaseException:
-                status = 'SESSION_FAILED'
+            if stopped():
+                status = 'STOPPED'
                 break
             try:
                 result = monitor.step(10, 60)
             except BaseException:
                 status = 'STEP_FAILED'
                 break
-            if result is not True:
+            if result is not True and result is not False:
                 status = 'STEP_FAILED'
                 break
-            try:
-                if stopped():
-                    status = 'STOPPED'
-                    break
-            except BaseException:
-                status = 'SESSION_FAILED'
+            if stopped():
+                status = 'STOPPED'
                 break
             state = clock_state(previous, start)
             if state is None:
@@ -175,24 +155,12 @@ def run_spare_session(expected_uid_sha256, expected_uname_machine,
             if elapsed >= DURATION_MS:
                 status = 'DURATION_ENDED'
                 break
-            try:
-                if stopped():
-                    status = 'STOPPED'
-                    break
-            except BaseException:
-                status = 'SESSION_FAILED'
+            if stopped():
+                status = 'STOPPED'
                 break
-            try:
-                sleep_ms(min(SLEEP_MS, DURATION_MS - elapsed))
-            except BaseException:
-                status = 'SESSION_FAILED'
-                break
-            try:
-                if stopped():
-                    status = 'STOPPED'
-                    break
-            except BaseException:
-                status = 'SESSION_FAILED'
+            sleep_ms(min(SLEEP_MS, DURATION_MS - elapsed))
+            if stopped():
+                status = 'STOPPED'
                 break
         else:
             status = 'ITERATION_LIMIT'
