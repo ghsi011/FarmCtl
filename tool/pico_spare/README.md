@@ -78,6 +78,23 @@ and test-account-owned disposable Gists with that account's locally supplied tes
 The previously created host-owned synthetic Gists are not writable with a test-account
 token. Never place credentials in source or this repository.
 
+Run the deterministic host-only checks from `firmware/pico` with:
+
+```text
+python -m unittest discover -s tests -p test_spare_session.py -v
+python -m unittest discover -s tests -p test_telemetry.py -v
+```
+
+The rehearsal invokes the real `run_spare_session` and `Monitor` with synthetic identity,
+sensor, clock, and in-memory transport adapters. It opens no serial port and makes no
+network connection. The `test_telemetry.py` fake-clock regressions exercise the real
+`Monitor.step` heartbeat boundary: baseline at 0 ms, no heartbeat at 299,999 ms, and
+one at 300,000 ms while sampling and temperature publication are not due (including
+a steady sensor-failure case). That synthetic 300-second scheduler PASS is separate from
+the coordinator's 70-second session limit, which cannot establish a five-minute
+heartbeat. Physical hardware qualification is **NOT RUN**; no TLS/Gist or physical-board
+behavior is established.
+
 The command behavior described here was reviewed against host `mpremote` v1.29.0; other
 host CLI versions are not qualified. An operator must confirm the host CLI version
 before any separately authorized live use. `mpremote` is not installed in this

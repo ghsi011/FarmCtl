@@ -98,6 +98,57 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(self.instance._publication_suspended)
         self.assertEqual(self.closed, 1)
 
+    def test_real_session_rehearses_fresh_constant_temperature_and_independent_diagnostics(
+            self):
+        import json
+
+        class IsolatedTransport:
+            def __init__(self):
+                self.temperature_attempts = []
+                self.temperatures = []
+                self.diagnostics_attempts = []
+                self.diagnostics = []
+
+            def publish_temperature(self, payload):
+                content = payload['files']['thermostat.txt']['content']
+                self.temperature_attempts.append(content)
+                self.temperatures.append(payload)
+
+            def publish_diagnostics(self, payload):
+                self.diagnostics_attempts.append(payload)
+                if len(self.diagnostics_attempts) == 1:
+                    raise OSError('synthetic diagnostics failure')
+                self.diagnostics.append(payload)
+
+        self.sensor = Sensor([21.25] * 7)
+        self.publisher = IsolatedTransport()
+        self.instance = Monitor(self.sensor, self.publisher, self.clock,
+                                'boot-1', 'device', '1.0')
+
+        self.assertEqual(self.run_session(), 'DURATION_ENDED')
+
+        self.assertEqual(self.sensor.reads, 7)
+        self.assertEqual(self.publisher.temperature_attempts, [
+            '21.25°C\nSample: boot-1:1',
+            '21.25°C\nSample: boot-1:7',
+        ])
+        self.assertEqual([
+            item['files']['thermostat.txt']['content']
+            for item in self.publisher.temperatures
+        ], [
+            '21.25°C\nSample: boot-1:1',
+            '21.25°C\nSample: boot-1:7',
+        ])
+        self.assertEqual(len(self.publisher.diagnostics_attempts), 2)
+        self.assertEqual(len(self.publisher.diagnostics), 1)
+        diagnostic_content = self.publisher.diagnostics[0][
+            'files']['diagnostics.json']['content'
+        ]
+        diagnostics = json.loads(diagnostic_content)
+        self.assertEqual(diagnostics['heartbeat_seq'], 2)
+        self.assertNotIn('21.25', diagnostic_content)
+        self.assertEqual(self.closed, 1)
+
     def test_identity_mismatch_or_malformed_fields_never_construct_monitor(self):
         for bad in ((b'x' * 32, 'RP2', '1.29'), (b'x' * 31, 'RP2', '1.29'),
                     (bytes.fromhex(UID), 'RP2\n', '1.29'),

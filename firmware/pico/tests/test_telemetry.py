@@ -137,6 +137,80 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(len(publisher.temperatures), 1)
         self.assertEqual(len(publisher.diagnostics), 2)
 
+    def test_step_heartbeat_at_300_seconds_while_sample_and_publication_are_not_due(self):
+        clock, sensor, publisher = FakeClock(), FakeSensor(), FakePublisher()
+        monitor = Monitor(sensor, publisher, clock, 'boot', 'opaque', '1.0')
+
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 0)
+        self.assertEqual(len(publisher.diagnostics), 1)
+        clock.now = 299000
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(len(publisher.temperatures), 2)
+
+        clock.now = 299999
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 0)
+        self.assertEqual(len(publisher.diagnostics), 1)
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(len(publisher.temperatures), 2)
+
+        clock.now = 300000
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 300000)
+        self.assertEqual(len(publisher.diagnostics), 2)
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(len(publisher.temperatures), 2)
+        heartbeat_sequences = [
+            json.loads(item['files'][DIAGNOSTICS_FILENAME]['content'])['heartbeat_seq']
+            for item in publisher.diagnostics
+        ]
+        self.assertEqual(heartbeat_sequences, [1, 2])
+
+    def test_failed_sensor_heartbeat_waits_300_seconds_without_stale_publication(self):
+        clock, sensor, publisher = FakeClock(), FakeSensor(), FakePublisher()
+        sensor.fail = True
+        monitor = Monitor(sensor, publisher, clock, 'boot', 'opaque', '1.0')
+
+        self.assertFalse(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 0)
+        self.assertEqual(len(publisher.diagnostics), 1)
+        initial_diagnostics = json.loads(
+            publisher.diagnostics[0]['files'][DIAGNOSTICS_FILENAME]['content']
+        )
+        self.assertEqual(initial_diagnostics['heartbeat_seq'], 1)
+        self.assertEqual(initial_diagnostics['sensor']['state'], 'error')
+        self.assertEqual(publisher.temperatures, [])
+        self.assertEqual(monitor.diagnostics['sensor']['state'], 'error')
+
+        clock.now = 299000
+        self.assertFalse(monitor.step(299, 299))
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(len(publisher.diagnostics), 1)
+        self.assertEqual(publisher.temperatures, [])
+
+        clock.now = 299999
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 0)
+        self.assertEqual(len(publisher.diagnostics), 1)
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(publisher.temperatures, [])
+
+        clock.now = 300000
+        self.assertTrue(monitor.step(299, 299))
+        self.assertEqual(monitor.last_report_ms, 300000)
+        self.assertEqual(len(publisher.diagnostics), 2)
+        self.assertEqual(sensor.reads, 2)
+        self.assertEqual(publisher.temperatures, [])
+        heartbeat_sequences = [
+            json.loads(item['files'][DIAGNOSTICS_FILENAME]['content'])['heartbeat_seq']
+            for item in publisher.diagnostics
+        ]
+        self.assertEqual(heartbeat_sequences, [1, 2])
+        self.assertEqual(monitor.diagnostics['sensor']['state'], 'error')
+        self.assertEqual(monitor.diagnostics['sensor']['consecutive_failures'], 2)
+
     def test_step_failed_patch_retries_with_new_sample_after_sample_interval(self):
         clock, sensor, publisher = FakeClock(), FakeSensor(), FakePublisher()
         monitor = Monitor(sensor, publisher, clock, 'boot', 'opaque', '1.0')
