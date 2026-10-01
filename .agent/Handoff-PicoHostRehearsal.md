@@ -30,6 +30,13 @@ Physical acceptance: **NOT RUN in this lane**. These results do not establish li
 
 ## Context and next action
 
-External coordinator exposes actual completed-request input + cache.read + cache.write counts, monitored every ten seconds. Latest supplied parent count is 57,575; worker maximum is 92,338 over 35 requests. Do not reuse that implementation child for more broad tasks. The coordinator interrupts at the 160,000 checkpoint guard. Completed-request counts are available; limitations concern in-flight/tool-result growth and absence of a proven runtime-enforced hard cap. All children receive concise scopes and bounded tool-round budgets; checkpoint at 160,000, stop expansion by 180,000, remain below 200,000.
+External coordinator exposes actual completed-request input + cache.read + cache.write counts, monitored every ten seconds. Latest supplied parent count is 63,660; validator 26,916; worker 100,376. The implementation worker is retired from further requests. The coordinator interrupts at the 160,000 checkpoint guard. Completed-request counts are available; limitations concern in-flight/tool-result growth and absence of a proven runtime-enforced hard cap. All children receive concise scopes and bounded tool-round budgets; checkpoint at 160,000, stop expansion by 180,000, remain below 200,000.
 
-Next executable action: reconcile final third validation, then publish only this validated slice as a stacked draft PR based on `feat/pico-spare-telemetry` and inspect CI for its exact head. There is no production or physical action in this lane.
+## Publication and remaining blockers
+
+- Implementation commit: `a0ab40a0fb0cc82eff5a07eefd5a65e911b5781d`, pushed to `origin/feat/pico-host-rehearsal`.
+- Stacked draft PR: [#49](https://github.com/ghsi011/FarmCtl/pull/49), base `feat/pico-spare-telemetry`. PR #48 verified OPEN/draft with unchanged head `06d785f3f1c871a37d8dd8f6b5ed24c90ed30e35`.
+- CI inspected for implementation commit: [run 36855491122](https://github.com/ghsi011/FarmCtl/actions/runs/36855491122), `build-test` IN_PROGRESS at inspection. CI PASS is not claimed. This publication-record commit is documentation-only and requires its own head check.
+- Review disposition: Standards zero findings; Spec one P2; third validator confirmed the finding and then confirmed it closed in final code. No unaddressed source findings remain.
+
+Next executable action: `gh pr checks 49` and `gh run list --branch feat/pico-host-rehearsal --limit 5`, matching the current head before reporting CI PASS. Keep PR draft; do not merge or perform physical/production actions. If later physical acceptance is requested, permissions and exact independent inventory, wiring/recovery procedure, isolated test-account-owned Gist pair/token and operation budget belong to a separately authorized lane; this PR grants none.

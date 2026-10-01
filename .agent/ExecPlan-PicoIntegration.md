@@ -1,6 +1,6 @@
 # Pico integration: working slices to release-ready PR
 
-Latest bounded host checkpoint (2026-10-01): final third validation confirms the scheduler heartbeat P2 closed, with no other worthwhile fixes. Standards PASS; Spec finding fixed and validated. Host **461 tests PASS**, physical **NOT RUN**. Publication evidence is recorded in [the focused handoff](Handoff-PicoHostRehearsal.md); no production source changes.
+Latest bounded host checkpoint (2026-10-01): final third validation confirms the scheduler heartbeat P2 closed, with no other worthwhile fixes. Standards PASS; Spec finding fixed and validated. Host **461 tests PASS**, physical **NOT RUN**. Commit `a0ab40a` pushed on `feat/pico-host-rehearsal`; [stacked draft PR #49](https://github.com/ghsi011/FarmCtl/pull/49) targets `feat/pico-spare-telemetry`, leaving PR #48 unchanged. CI run `36855491122` was IN_PROGRESS for the implementation commit when inspected; CI PASS is not claimed. Publication evidence and next head-check command are recorded in [the focused handoff](Handoff-PicoHostRehearsal.md); no production source changes.
 
 ## Goal and boundaries
 
