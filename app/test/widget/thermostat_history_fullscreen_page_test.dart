@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/native.dart';
 
+import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
 import 'package:farmctl/features/thermostats/models/history_range.dart';
 import 'package:farmctl/features/thermostats/models/temperature_sample.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
@@ -90,6 +92,128 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets(
+    'real fullscreen history rolls while open and is fresh after navigation',
+    (tester) async {
+      final db = ThermostatDatabase.forTesting(NativeDatabase.memory());
+      final initialNow = DateTime.utc(2025, 1, 1, 12);
+      var now = initialNow;
+      await tester.runAsync(() async {
+        await db.upsertThermostat(
+          ThermostatEntriesCompanion.insert(
+            id: _id,
+            name: 'Greenhouse',
+            rawUrl: 'a' * 32,
+            minC: 10,
+            maxC: 20,
+          ),
+        );
+        await db.insertTemperatureReadings([
+          TemperatureReadingsCompanion.insert(
+            id: 'edge',
+            thermostatId: _id,
+            source: 'revision',
+            valueC: 15,
+            observedAt: initialNow.subtract(const Duration(minutes: 59)),
+          ),
+        ]);
+      });
+      final container = ProviderContainer(
+        overrides: [
+          thermostatDatabaseProvider.overrideWithValue(db),
+          nowProvider.overrideWithValue(() => now),
+          thermostatHistoryRefreshProvider((
+            thermostatId: _id,
+            prioritizeLastHour: true,
+          )).overrideWith((ref) async {}),
+        ],
+      );
+      final provider = thermostatHistoryProvider((
+        thermostatId: _id,
+        range: ThermostatHistoryRange.hour,
+      ));
+      final navigator = GlobalKey<NavigatorState>();
+      Future<void> open() async {
+        await tester.tap(find.text('Open history'));
+        await tester.pumpAndSettle();
+        await tester.runAsync(() => container.read(provider.future));
+        await tester.pumpAndSettle();
+      }
+
+      try {
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              navigatorKey: navigator,
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ThermostatHistoryFullscreenPage(
+                            thermostatId: _id,
+                            initialRange: ThermostatHistoryRange.hour,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Open history'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await open();
+        expect(
+          tester
+              .widget<ThermostatHistoryChart>(
+                find.byType(ThermostatHistoryChart),
+              )
+              .samples
+              .single
+              .valueC,
+          15,
+        );
+        now = initialNow.add(const Duration(minutes: 2));
+        await tester.pump(const Duration(minutes: 2));
+        await tester.pump();
+        await tester.runAsync(() => container.read(provider.future));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('No history available for this range yet.'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byTooltip('Close full-screen chart'));
+        await tester.pumpAndSettle();
+        expect(find.text('Open history'), findsOneWidget);
+        now = initialNow.add(const Duration(hours: 2));
+        await tester.pump(const Duration(hours: 2));
+        await open();
+        expect(
+          find.text('No history available for this range yet.'),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<ThermostatHistoryChart>(
+                find.byType(ThermostatHistoryChart),
+              )
+              .samples,
+          isEmpty,
+        );
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(() async {
+          container.dispose();
+          await db.close();
+        });
+      }
+    },
+  );
+
   testWidgets('renders the chart with the named title and close button', (
     tester,
   ) async {

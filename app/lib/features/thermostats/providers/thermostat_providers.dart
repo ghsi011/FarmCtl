@@ -118,23 +118,36 @@ final selectedHistoryRangeProvider =
       (ref, thermostatId) => ThermostatHistoryRange.day,
     );
 
-final thermostatHistoryProvider =
-    StreamProvider.family<
+/// Limited history windows advance at most one minute after a sample expires.
+/// Auto-disposal stops ticking when the last limited-range view closes; All
+/// never subscribes to this clock or causes time-driven database queries.
+final _historyRefreshTickProvider = StreamProvider.autoDispose<int>((ref) {
+  return Stream<int>.periodic(const Duration(minutes: 1), (count) => count);
+});
+
+final thermostatHistoryProvider = StreamProvider.autoDispose
+    .family<
       List<TemperatureSample>,
       ({String thermostatId, ThermostatHistoryRange range})
     >((ref, args) {
       final repository = ref.watch(thermostatRepositoryProvider);
       final window = args.range.window;
-      final since = window != null
-          ? DateTime.now().toUtc().subtract(window)
-          : null;
+      DateTime Function()? clock;
+      if (window != null) {
+        ref.watch(_historyRefreshTickProvider);
+        clock = ref.watch(nowProvider);
+      }
+      final since = clock?.call().toUtc().subtract(window!);
       return repository.watchHistory(args.thermostatId, since: since).map((
         samples,
       ) {
-        final filtered = since == null
+        // Also advance the cutoff on writes between ticks, rather than retaining
+        // the query's initial cutoff in the in-memory filter.
+        final cutoff = clock?.call().toUtc().subtract(window!);
+        final filtered = cutoff == null
             ? samples
             : samples
-                  .where((sample) => !sample.observedAt.isBefore(since))
+                  .where((sample) => !sample.observedAt.isBefore(cutoff))
                   .toList();
         return ThermostatHistoryDownsampler.downsample(filtered, args.range);
       });

@@ -15,6 +15,9 @@ abstract class ThermostatNetworkDataSource {
     int page = 1,
     int perPage = 100,
   });
+
+  /// Null means unusable revision content; HTTP/transport failures throw so
+  /// incremental history callers can retry without acknowledging the position.
   Future<double?> fetchRevisionValue(String gistId, String revisionId);
   Future<String> testToken();
 }
@@ -422,8 +425,19 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
   }
 
   @override
-  Future<double?> fetchRevisionValue(String gistId, String revisionId) {
-    return _fetchRevisionValue(gistId, revisionId);
+  Future<double?> fetchRevisionValue(String gistId, String revisionId) async {
+    // Incremental callers must distinguish unusable content from HTTP failures
+    // before acknowledging a revision. Legacy bulk fetchHistory keeps its
+    // existing best-effort HTTP skipping through the private helper's default.
+    try {
+      return await _fetchRevisionValue(
+        gistId,
+        revisionId,
+        skipHttpErrors: false,
+      );
+    } on DioException catch (error) {
+      throw _mapDioException(error, 'Failed to fetch Gist revision.');
+    }
   }
 
   bool _looksLikeGistId(String input) {
@@ -580,7 +594,11 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
     return DateTime.tryParse(raw)?.toUtc();
   }
 
-  Future<double?> _fetchRevisionValue(String gistId, String revisionId) async {
+  Future<double?> _fetchRevisionValue(
+    String gistId,
+    String revisionId, {
+    bool skipHttpErrors = true,
+  }) async {
     try {
       final snapshot = await _fetchSnapshot(
         'https://api.github.com/gists/$gistId/$revisionId',
@@ -588,7 +606,8 @@ class ThermostatHttpClient implements ThermostatNetworkDataSource {
       return snapshot.value;
     } on ThermostatFetchException catch (error) {
       if (error.status == ThermostatReadingStatus.parseError ||
-          error.status == ThermostatReadingStatus.httpError) {
+          (skipHttpErrors &&
+              error.status == ThermostatReadingStatus.httpError)) {
         return null;
       }
       rethrow;

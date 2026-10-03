@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import '../../../core/background/thermostat_monitor.dart'
     show cancelAlarmNotification;
@@ -31,6 +30,8 @@ class ThermostatService {
   final Future<String?> Function()? _tokenSupplier;
   final Future<Duration?> Function()? _pollIntervalSupplier;
   final DateTime Function() _clock;
+  final _historyRuns = <String, Future<void>>{};
+  final _historyCursors = <String, _HistoryCursor>{};
 
   static DateTime _defaultClock() => DateTime.now().toUtc();
 
@@ -306,32 +307,66 @@ class ThermostatService {
     String thermostatId, {
     bool prioritizeLastHour = false,
   }) async {
+    final previous = _historyRuns[thermostatId];
+    final run = () async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {
+          // A failed run must not poison the serialization queue.
+        }
+      }
+      await _refreshHistory(thermostatId, prioritizeLastHour);
+    }();
+    _historyRuns[thermostatId] = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_historyRuns[thermostatId], run)) {
+        _historyRuns.remove(thermostatId);
+      }
+    }
+  }
+
+  Future<void> _refreshHistory(
+    String thermostatId,
+    bool prioritizeLastHour,
+  ) async {
     final thermostat = await _repository.findById(thermostatId);
     if (thermostat == null) {
+      _historyCursors.remove(thermostatId);
       throw StateError('Thermostat not found for id $thermostatId');
     }
 
     final gistId = thermostat.rawUrl.trim();
-    final now = DateTime.now().toUtc();
+    final now = _clock().toUtc();
     final twentyFourHoursAgo = now.subtract(const Duration(hours: 24));
     final sevenDaysAgo = now.subtract(const Duration(days: 7));
     final oneYearAgo = now.subtract(const Duration(days: 365));
 
-    final newestLocal = await _repository.getNewestReadingTime(thermostatId);
-    final oldestLocal = await _repository.getOldestReadingTime(thermostatId);
+    final previousCursor = _historyCursors.remove(thermostatId);
+    final cursor = previousCursor != null && previousCursor.source == gistId
+        ? previousCursor
+        : _HistoryCursor(gistId, sourceCoverageOnly: previousCursor != null);
+    _historyCursors[thermostatId] = cursor;
+    while (_historyCursors.length > 64) {
+      _historyCursors.remove(_historyCursors.keys.first);
+    }
+    // Retained samples from another gist do not establish this gist's coverage.
+    // After a source change, keep bounds from this source's successful writes
+    // across runs rather than reading the mixed-source database extrema.
+    final newestLocal = cursor.sourceCoverageOnly
+        ? cursor.newestPersisted
+        : await _repository.getNewestReadingTime(thermostatId);
+    final oldestLocal = cursor.sourceCoverageOnly
+        ? cursor.oldestPersisted
+        : await _repository.getOldestReadingTime(thermostatId);
     final knownRevisionIds = await _repository.listKnownRevisionIds(
       thermostatId,
     );
 
-    bool hasToken;
-    if (_network is ThermostatHttpClient) {
-      hasToken = (_network).hasGithubToken;
-    } else {
-      hasToken =
-          (Platform.environment['FARMCTL_GITHUB_TOKEN'] ??
-              Platform.environment['GITHUB_TOKEN']) !=
-          null;
-    }
+    final client = await _resolveNetworkWithToken();
+    final hasToken = client is ThermostatHttpClient && client.hasGithubToken;
     // Increase budget when token present; be more aggressive for the last 24h
     final perRunBudget = hasToken ? 400 : 20;
     final interRequestDelay = hasToken
@@ -343,120 +378,225 @@ class ThermostatService {
     final stage1Interval = const Duration(minutes: 60); // last 24h: 1 per 60m
     final stage2Interval = const Duration(minutes: 300); // last 7d: 1 per 300m
 
-    // Page through commits, newest first
-    var page = 1;
     const perPage = 100;
-    final selected = <GistCommit>[];
     final pickedByBucket = <String, bool>{};
-    while (selected.length < perRunBudget) {
-      final client = await _resolveNetworkWithToken();
+    final pages = <int, List<GistCommit>>{};
+    var listAttempts = 0;
+    var revisionAttempts = 0;
+    // Head, sweep, and deep each receive reserved work. Cached pages are shared,
+    // but every actual list attempt (including a failure) consumes this cap.
+    Future<List<GistCommit>?> loadPage(int page, int ceiling) async {
+      if (pages.containsKey(page)) return pages[page];
+      if (listAttempts >= ceiling) return null;
+      listAttempts++;
       final commits = await client.listCommits(
         gistId,
         page: page,
         perPage: perPage,
       );
-      if (commits.isEmpty) {
-        break;
+      pages[page] = commits;
+      return commits;
+    }
+
+    Future<bool> acknowledge(
+      GistCommit commit,
+      int ceiling,
+      bool recent,
+    ) async {
+      final rev = commit.revisionId;
+      final observedAt = commit.observedAt;
+      if (knownRevisionIds.contains(rev)) {
+        return true;
       }
 
-      for (final commit in commits) {
-        if (selected.length >= perRunBudget) break;
-        final rev = commit.revisionId;
-        final t = commit.observedAt;
-        if (knownRevisionIds.contains(rev)) {
-          // Already cached
-          continue;
+      // Always include commits newer than newest local reading
+      final isNewerThanLocal =
+          newestLocal == null || observedAt.isAfter(newestLocal);
+      // Backfill older than oldest local reading
+      final isOlderThanLocal =
+          oldestLocal == null || observedAt.isBefore(oldestLocal);
+
+      bool accept = false;
+      String? selectedBucket;
+      if (isNewerThanLocal ||
+          (recent &&
+              (cursor.sweepFloor == null ||
+                  observedAt.isAfter(cursor.sweepFloor!)))) {
+        // For latest window, keep density by time buckets. If requested,
+        // prioritize 5-minute resolution in the last hour.
+        final interval =
+            (prioritizeLastHour &&
+                observedAt.isAfter(now.subtract(const Duration(hours: 1))))
+            ? focusInterval
+            : stage1Interval;
+        final bucketKey = _timeBucketKey(observedAt, interval);
+        if (!pickedByBucket.containsKey(bucketKey)) {
+          selectedBucket = bucketKey;
+          accept = true;
         }
-
-        // Always include commits newer than newest local reading
-        final isNewerThanLocal = newestLocal == null || t.isAfter(newestLocal);
-        // Backfill older than oldest local reading
-        final isOlderThanLocal = oldestLocal == null || t.isBefore(oldestLocal);
-
-        bool accept = false;
-        if (isNewerThanLocal) {
-          // For latest window, keep density by time buckets. If requested,
-          // prioritize 5-minute resolution in the last hour.
-          final interval =
-              (prioritizeLastHour &&
-                  t.isAfter(now.subtract(const Duration(hours: 1))))
-              ? focusInterval
-              : stage1Interval;
-          final bucketKey = _timeBucketKey(t, interval);
+      } else if (isOlderThanLocal) {
+        // Stage 0: ensure ~1/5m in last hour when prioritized
+        if (prioritizeLastHour &&
+            observedAt.isAfter(now.subtract(const Duration(hours: 1)))) {
+          final bucketKey = _timeBucketKey(observedAt, focusInterval);
           if (!pickedByBucket.containsKey(bucketKey)) {
-            pickedByBucket[bucketKey] = true;
+            selectedBucket = bucketKey;
             accept = true;
           }
-        } else if (isOlderThanLocal) {
-          // Stage 0: ensure ~1/5m in last hour when prioritized
-          if (prioritizeLastHour &&
-              t.isAfter(now.subtract(const Duration(hours: 1)))) {
-            final bucketKey = _timeBucketKey(t, focusInterval);
-            if (!pickedByBucket.containsKey(bucketKey)) {
-              pickedByBucket[bucketKey] = true;
-              accept = true;
-            }
-          }
-          // Stage 1: ensure ~1/60m in last 24h
-          else if (t.isAfter(twentyFourHoursAgo)) {
-            final bucketKey = _timeBucketKey(t, stage1Interval);
-            if (!pickedByBucket.containsKey(bucketKey)) {
-              pickedByBucket[bucketKey] = true;
-              accept = true;
-            }
-          }
-          // Stage 2: ensure ~1/300m up to 7d
-          else if (t.isAfter(sevenDaysAgo)) {
-            final bucketKey = _timeBucketKey(t, stage2Interval);
-            if (!pickedByBucket.containsKey(bucketKey)) {
-              pickedByBucket[bucketKey] = true;
-              accept = true;
-            }
-          }
-          // Stage 3+: beyond 7d, sample lightly to build long tail
-          else if (t.isAfter(oneYearAgo)) {
-            final stride = 60; // ~1 in 60
-            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
-          } else {
-            final stride = 600; // very sparse for >1y
-            accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+        }
+        // Stage 1: ensure ~1/60m in last 24h
+        else if (observedAt.isAfter(twentyFourHoursAgo)) {
+          final bucketKey = _timeBucketKey(observedAt, stage1Interval);
+          if (!pickedByBucket.containsKey(bucketKey)) {
+            selectedBucket = bucketKey;
+            accept = true;
           }
         }
-
-        if (accept) {
-          selected.add(commit);
+        // Stage 2: ensure ~1/300m up to 7d
+        else if (observedAt.isAfter(sevenDaysAgo)) {
+          final bucketKey = _timeBucketKey(observedAt, stage2Interval);
+          if (!pickedByBucket.containsKey(bucketKey)) {
+            selectedBucket = bucketKey;
+            accept = true;
+          }
+        }
+        // Stage 3+: beyond 7d, sample lightly to build long tail
+        else if (observedAt.isAfter(oneYearAgo)) {
+          final stride = 60; // ~1 in 60
+          accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
+        } else {
+          final stride = 600; // very sparse for >1y
+          accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
         }
       }
 
-      if (commits.length < perPage) {
-        break; // no more pages
-      }
-      page += 1;
-    }
-
-    final samples = <TemperatureSample>[];
-    for (final commit in selected) {
-      if (!hasToken && interRequestDelay > Duration.zero) {
-        await Future<void>.delayed(interRequestDelay);
-      }
-      final client = await _resolveNetworkWithToken();
-      final value = await client.fetchRevisionValue(gistId, commit.revisionId);
-      if (value == null) continue;
-      samples.add(
-        TemperatureSample.revision(
+      if (accept) {
+        if (revisionAttempts >= ceiling) {
+          return false;
+        }
+        revisionAttempts++;
+        if (interRequestDelay > Duration.zero) {
+          await Future<void>.delayed(interRequestDelay);
+        }
+        final value = await client.fetchRevisionValue(gistId, rev);
+        if (value == null) {
+          // An immutable revision without a usable temperature is a safe
+          // skip, not a transport/store failure. Count the attempt, but do
+          // not cache a sample or consume its sampling bucket.
+          return true;
+        }
+        await _repository.upsertHistory(
           thermostatId: thermostatId,
-          revisionId: commit.revisionId,
-          valueC: value,
-          observedAt: commit.observedAt,
-        ),
-      );
-      if (samples.length >= perRunBudget) break;
+          samples: [
+            TemperatureSample.revision(
+              thermostatId: thermostatId,
+              revisionId: rev,
+              valueC: value,
+              observedAt: observedAt,
+            ),
+          ],
+        );
+        knownRevisionIds.add(rev);
+        if (cursor.sourceCoverageOnly) {
+          if (cursor.newestPersisted == null ||
+              observedAt.isAfter(cursor.newestPersisted!)) {
+            cursor.newestPersisted = observedAt;
+          }
+          if (cursor.oldestPersisted == null ||
+              observedAt.isBefore(cursor.oldestPersisted!)) {
+            cursor.oldestPersisted = observedAt;
+          }
+        }
+        if (selectedBucket != null) pickedByBucket[selectedBucket] = true;
+      }
+      return true;
     }
 
-    await _repository.upsertHistory(
-      thermostatId: thermostatId,
-      samples: samples,
-    );
+    Future<bool> scan(
+      _HistoryLane lane,
+      int listCeiling,
+      int revisionCeiling, {
+      String? target,
+      bool recent = false,
+    }) async {
+      var page = lane.searchPage ?? lane.pageHint;
+      var searching = lane.anchor != null;
+      while (true) {
+        final commits = await loadPage(page, listCeiling);
+        if (commits == null) return false;
+        var start = 0;
+        if (searching) {
+          final index = commits.indexWhere(
+            (commit) => commit.revisionId == lane.anchor,
+          );
+          if (index < 0) {
+            if (commits.length < perPage) {
+              // Rewritten/deleted anchor: replay from the head, never jump an
+              // unverified offset. Missing targets complete only at the end.
+              lane.reset();
+              return false;
+            }
+            lane.searchPage = ++page;
+            continue;
+          }
+          searching = false;
+          lane.searchPage = null;
+          start = index + 1;
+        }
+        for (final commit in commits.skip(start)) {
+          if (commit.revisionId == target) return true;
+          if (!await acknowledge(commit, revisionCeiling, recent)) return false;
+          // Persisted, cached, sampling-rejected, and invalid-content positions
+          // are safe; HTTP/transport/store failures never reach this point.
+          lane.anchor = commit.revisionId;
+          lane.pageHint = page;
+        }
+        if (commits.length < perPage) return true;
+        page++;
+      }
+    }
+
+    final head = await loadPage(1, 1);
+    if (head == null || head.isEmpty) {
+      cursor.reset();
+      return;
+    }
+    final headId = head.first.revisionId;
+    if (cursor.sweepHead == null && cursor.highWater != headId) {
+      cursor.sweepHead = headId;
+      cursor.sweepHeadTime = head.first.observedAt;
+      cursor.sweepTarget = cursor.highWater;
+      cursor.sweepFloor = cursor.highWaterTime ?? newestLocal;
+      cursor.sweep.reset();
+    }
+    for (final commit in head) {
+      if (!await acknowledge(commit, perRunBudget ~/ 5, false)) break;
+    }
+    // The captured sweep is not reset by new prepends. The next sweep covers
+    // everything between the next head and this captured head.
+    if (cursor.sweepHead != null &&
+        await scan(
+          cursor.sweep,
+          4,
+          perRunBudget ~/ 2,
+          target: cursor.sweepTarget,
+          recent: true,
+        )) {
+      cursor.highWater = cursor.sweepHead;
+      cursor.highWaterTime = cursor.sweepHeadTime;
+      cursor.sweepHead = null;
+      cursor.sweep.reset();
+    }
+    if (cursor.deepEndHead != headId) {
+      if (cursor.deepEndHead != null) {
+        cursor.deep.reset();
+        cursor.deepEndHead = null;
+      }
+      if (await scan(cursor.deep, 8, perRunBudget)) {
+        cursor.deepEndHead = headId;
+        cursor.deep.reset();
+      }
+    }
 
     try {
       await _repository.pruneRetention(thermostatId: thermostatId);
@@ -481,6 +621,51 @@ class ThermostatService {
       return ThermostatHttpClient(githubToken: token);
     }
     return _network;
+  }
+}
+
+/// Constant-size continuation, scoped to one service instance and source.
+class _HistoryLane {
+  String? anchor;
+  int pageHint = 1;
+  int? searchPage;
+
+  void reset() {
+    anchor = null;
+    pageHint = 1;
+    searchPage = null;
+  }
+}
+
+class _HistoryCursor {
+  _HistoryCursor(this.source, {this.sourceCoverageOnly = false});
+
+  final String source;
+  final bool sourceCoverageOnly;
+  DateTime? newestPersisted;
+  DateTime? oldestPersisted;
+  final sweep = _HistoryLane();
+  final deep = _HistoryLane();
+  String? highWater;
+  String? sweepHead;
+  String? sweepTarget;
+  String? deepEndHead;
+  DateTime? highWaterTime;
+  DateTime? sweepHeadTime;
+  DateTime? sweepFloor;
+
+  void reset() {
+    sweep.reset();
+    deep.reset();
+    highWater = null;
+    sweepHead = null;
+    sweepTarget = null;
+    deepEndHead = null;
+    highWaterTime = null;
+    sweepHeadTime = null;
+    sweepFloor = null;
+    newestPersisted = null;
+    oldestPersisted = null;
   }
 }
 
