@@ -344,8 +344,23 @@ class ThermostatService {
     final sevenDaysAgo = now.subtract(const Duration(days: 7));
     final oneYearAgo = now.subtract(const Duration(days: 365));
 
-    final newestLocal = await _repository.getNewestReadingTime(thermostatId);
-    final oldestLocal = await _repository.getOldestReadingTime(thermostatId);
+    final previousCursor = _historyCursors.remove(thermostatId);
+    final cursor = previousCursor != null && previousCursor.source == gistId
+        ? previousCursor
+        : _HistoryCursor(gistId, sourceCoverageOnly: previousCursor != null);
+    _historyCursors[thermostatId] = cursor;
+    while (_historyCursors.length > 64) {
+      _historyCursors.remove(_historyCursors.keys.first);
+    }
+    // Retained samples from another gist do not establish this gist's coverage.
+    // After a source change, keep bounds from this source's successful writes
+    // across runs rather than reading the mixed-source database extrema.
+    final newestLocal = cursor.sourceCoverageOnly
+        ? cursor.newestPersisted
+        : await _repository.getNewestReadingTime(thermostatId);
+    final oldestLocal = cursor.sourceCoverageOnly
+        ? cursor.oldestPersisted
+        : await _repository.getOldestReadingTime(thermostatId);
     final knownRevisionIds = await _repository.listKnownRevisionIds(
       thermostatId,
     );
@@ -363,14 +378,6 @@ class ThermostatService {
     final stage1Interval = const Duration(minutes: 60); // last 24h: 1 per 60m
     final stage2Interval = const Duration(minutes: 300); // last 7d: 1 per 300m
 
-    final previousCursor = _historyCursors.remove(thermostatId);
-    final cursor = previousCursor != null && previousCursor.source == gistId
-        ? previousCursor
-        : _HistoryCursor(gistId);
-    _historyCursors[thermostatId] = cursor;
-    while (_historyCursors.length > 64) {
-      _historyCursors.remove(_historyCursors.keys.first);
-    }
     const perPage = 100;
     final pickedByBucket = <String, bool>{};
     final pages = <int, List<GistCommit>>{};
@@ -397,29 +404,32 @@ class ThermostatService {
       bool recent,
     ) async {
       final rev = commit.revisionId;
-      final t = commit.observedAt;
+      final observedAt = commit.observedAt;
       if (knownRevisionIds.contains(rev)) {
         return true;
       }
 
       // Always include commits newer than newest local reading
-      final isNewerThanLocal = newestLocal == null || t.isAfter(newestLocal);
+      final isNewerThanLocal =
+          newestLocal == null || observedAt.isAfter(newestLocal);
       // Backfill older than oldest local reading
-      final isOlderThanLocal = oldestLocal == null || t.isBefore(oldestLocal);
+      final isOlderThanLocal =
+          oldestLocal == null || observedAt.isBefore(oldestLocal);
 
       bool accept = false;
       String? selectedBucket;
       if (isNewerThanLocal ||
           (recent &&
-              (cursor.sweepFloor == null || t.isAfter(cursor.sweepFloor!)))) {
+              (cursor.sweepFloor == null ||
+                  observedAt.isAfter(cursor.sweepFloor!)))) {
         // For latest window, keep density by time buckets. If requested,
         // prioritize 5-minute resolution in the last hour.
         final interval =
             (prioritizeLastHour &&
-                t.isAfter(now.subtract(const Duration(hours: 1))))
+                observedAt.isAfter(now.subtract(const Duration(hours: 1))))
             ? focusInterval
             : stage1Interval;
-        final bucketKey = _timeBucketKey(t, interval);
+        final bucketKey = _timeBucketKey(observedAt, interval);
         if (!pickedByBucket.containsKey(bucketKey)) {
           selectedBucket = bucketKey;
           accept = true;
@@ -427,31 +437,31 @@ class ThermostatService {
       } else if (isOlderThanLocal) {
         // Stage 0: ensure ~1/5m in last hour when prioritized
         if (prioritizeLastHour &&
-            t.isAfter(now.subtract(const Duration(hours: 1)))) {
-          final bucketKey = _timeBucketKey(t, focusInterval);
+            observedAt.isAfter(now.subtract(const Duration(hours: 1)))) {
+          final bucketKey = _timeBucketKey(observedAt, focusInterval);
           if (!pickedByBucket.containsKey(bucketKey)) {
             selectedBucket = bucketKey;
             accept = true;
           }
         }
         // Stage 1: ensure ~1/60m in last 24h
-        else if (t.isAfter(twentyFourHoursAgo)) {
-          final bucketKey = _timeBucketKey(t, stage1Interval);
+        else if (observedAt.isAfter(twentyFourHoursAgo)) {
+          final bucketKey = _timeBucketKey(observedAt, stage1Interval);
           if (!pickedByBucket.containsKey(bucketKey)) {
             selectedBucket = bucketKey;
             accept = true;
           }
         }
         // Stage 2: ensure ~1/300m up to 7d
-        else if (t.isAfter(sevenDaysAgo)) {
-          final bucketKey = _timeBucketKey(t, stage2Interval);
+        else if (observedAt.isAfter(sevenDaysAgo)) {
+          final bucketKey = _timeBucketKey(observedAt, stage2Interval);
           if (!pickedByBucket.containsKey(bucketKey)) {
             selectedBucket = bucketKey;
             accept = true;
           }
         }
         // Stage 3+: beyond 7d, sample lightly to build long tail
-        else if (t.isAfter(oneYearAgo)) {
+        else if (observedAt.isAfter(oneYearAgo)) {
           final stride = 60; // ~1 in 60
           accept = ((rev.hashCode & 0x7fffffff) % stride) == 0;
         } else {
@@ -482,11 +492,21 @@ class ThermostatService {
               thermostatId: thermostatId,
               revisionId: rev,
               valueC: value,
-              observedAt: t,
+              observedAt: observedAt,
             ),
           ],
         );
         knownRevisionIds.add(rev);
+        if (cursor.sourceCoverageOnly) {
+          if (cursor.newestPersisted == null ||
+              observedAt.isAfter(cursor.newestPersisted!)) {
+            cursor.newestPersisted = observedAt;
+          }
+          if (cursor.oldestPersisted == null ||
+              observedAt.isBefore(cursor.oldestPersisted!)) {
+            cursor.oldestPersisted = observedAt;
+          }
+        }
         if (selectedBucket != null) pickedByBucket[selectedBucket] = true;
       }
       return true;
@@ -506,7 +526,9 @@ class ThermostatService {
         if (commits == null) return false;
         var start = 0;
         if (searching) {
-          final index = commits.indexWhere((c) => c.revisionId == lane.anchor);
+          final index = commits.indexWhere(
+            (commit) => commit.revisionId == lane.anchor,
+          );
           if (index < 0) {
             if (commits.length < perPage) {
               // Rewritten/deleted anchor: replay from the head, never jump an
@@ -524,7 +546,8 @@ class ThermostatService {
         for (final commit in commits.skip(start)) {
           if (commit.revisionId == target) return true;
           if (!await acknowledge(commit, revisionCeiling, recent)) return false;
-          // Only persisted, cached, or sampling-rejected positions are safe.
+          // Persisted, cached, sampling-rejected, and invalid-content positions
+          // are safe; HTTP/transport/store failures never reach this point.
           lane.anchor = commit.revisionId;
           lane.pageHint = page;
         }
@@ -615,9 +638,12 @@ class _HistoryLane {
 }
 
 class _HistoryCursor {
-  _HistoryCursor(this.source);
+  _HistoryCursor(this.source, {this.sourceCoverageOnly = false});
 
   final String source;
+  final bool sourceCoverageOnly;
+  DateTime? newestPersisted;
+  DateTime? oldestPersisted;
   final sweep = _HistoryLane();
   final deep = _HistoryLane();
   String? highWater;
@@ -638,6 +664,8 @@ class _HistoryCursor {
     highWaterTime = null;
     sweepHeadTime = null;
     sweepFloor = null;
+    newestPersisted = null;
+    oldestPersisted = null;
   }
 }
 

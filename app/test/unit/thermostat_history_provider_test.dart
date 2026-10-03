@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -191,7 +193,14 @@ void main() {
         thermostatId: 't1',
         range: range,
       ));
-      final subscription = container.listen(provider, (_, _) {});
+      final freshDelivered = Completer<void>();
+      final subscription = container.listen(provider, (_, value) {
+        if (!freshDelivered.isCompleted &&
+            (value.asData?.value.any((sample) => sample.valueC == 17) ??
+                false)) {
+          freshDelivered.complete();
+        }
+      });
       try {
         await tester.pump();
         final initial = await tester.runAsync(
@@ -201,22 +210,10 @@ void main() {
         // Advance the injectable clock only: no periodic tick has fired yet.
         now = now.add(const Duration(seconds: 30));
         await tester.runAsync(() => seed([(id: 'fresh', at: now, v: 17)]));
-        // Drift delivers asynchronously; pump Riverpod's scheduler without
-        // advancing fake time to the minute tick.
-        for (var attempt = 0; attempt < 20; attempt++) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 5)),
-          );
-          await tester.pump();
-          if (container
-                  .read(provider)
-                  .asData
-                  ?.value
-                  .any((sample) => sample.valueC == 17) ??
-              false) {
-            break;
-          }
-        }
+        // Wait for the actual provider emission, without advancing fake time
+        // to the periodic tick or imposing a wall-clock delivery allowance.
+        await tester.pump();
+        await tester.runAsync(() => freshDelivered.future);
         expect(
           container.read(provider).requireValue.map((sample) => sample.valueC),
           [17],

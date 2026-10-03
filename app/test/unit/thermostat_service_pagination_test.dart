@@ -11,6 +11,7 @@ import 'package:farmctl/features/thermostats/data/thermostat_repository.dart';
 import 'package:farmctl/features/thermostats/data/thermostat_service.dart';
 import 'package:farmctl/features/thermostats/models/temperature_sample.dart';
 import 'package:farmctl/features/thermostats/models/thermostat.dart';
+import 'package:farmctl/features/thermostats/models/thermostat_state.dart';
 
 class _SyntheticCommitAdapter implements HttpClientAdapter {
   _SyntheticCommitAdapter(this.commits);
@@ -22,7 +23,11 @@ class _SyntheticCommitAdapter implements HttpClientAdapter {
   int? failPage;
   String? failRevision;
   String? nullRevision;
+  String? rawRevision;
+  int rawStatusCode = 200;
+  final List<String> requestedRawRevisions = [];
   Completer<void>? gate;
+  Completer<void>? entered;
   int active = 0;
   int maxActive = 0;
 
@@ -35,7 +40,12 @@ class _SyntheticCommitAdapter implements HttpClientAdapter {
     active++;
     if (active > maxActive) maxActive = active;
     try {
+      if (entered != null && !entered!.isCompleted) entered!.complete();
       if (gate != null) await gate!.future;
+      if (options.path.startsWith('https://synthetic.invalid/raw/')) {
+        requestedRawRevisions.add(options.path.split('/').last);
+        return ResponseBody.fromString('20 C', rawStatusCode);
+      }
       if (!options.path.endsWith('/commits')) {
         revisionRequests += 1;
         final revision = options.path.split('/').last;
@@ -47,6 +57,10 @@ class _SyntheticCommitAdapter implements HttpClientAdapter {
           jsonEncode({
             'files': {
               'temperature.txt': {
+                if (revision == rawRevision) ...{
+                  'truncated': true,
+                  'raw_url': 'https://synthetic.invalid/raw/$revision',
+                },
                 'content': revision == nullRevision
                     ? 'not a temperature'
                     : '20 C',
@@ -177,8 +191,8 @@ void main() {
         fixture.adapter.commits.addAll(
           List.generate(
             2100,
-            (i) => GistCommit(
-              revisionId: 'skipped-$i',
+            (index) => GistCommit(
+              revisionId: 'skipped-$index',
               observedAt: fixture.now.subtract(const Duration(minutes: 30)),
             ),
           ),
@@ -186,9 +200,9 @@ void main() {
         if (mode != 'rejected') {
           await fixture.cache(
             fixture.adapter.commits.where(
-              (c) =>
+              (commit) =>
                   mode == 'cached' ||
-                  int.parse(c.revisionId.split('-').last).isEven,
+                  int.parse(commit.revisionId.split('-').last).isEven,
             ),
           );
         }
@@ -217,8 +231,8 @@ void main() {
     fixture.adapter.commits.addAll(
       List.generate(
         2100,
-        (i) => GistCommit(
-          revisionId: 'cached-$i',
+        (index) => GistCommit(
+          revisionId: 'cached-$index',
           observedAt: fixture.now.subtract(const Duration(minutes: 30)),
         ),
       ),
@@ -252,8 +266,8 @@ void main() {
       fixture.adapter.commits.addAll(
         List.generate(
           1800,
-          (i) => GistCommit(
-            revisionId: 'base-$i',
+          (index) => GistCommit(
+            revisionId: 'base-$index',
             observedAt: fixture.now.subtract(const Duration(minutes: 30)),
           ),
         ),
@@ -268,9 +282,9 @@ void main() {
       await fixture.service.refreshHistory(fixture.thermostat.id);
       final burst = List.generate(
         950,
-        (i) => GistCommit(
-          revisionId: 'burst-$i',
-          observedAt: fixture.now.add(Duration(hours: 950 - i)),
+        (index) => GistCommit(
+          revisionId: 'burst-$index',
+          observedAt: fixture.now.add(Duration(hours: 950 - index)),
         ),
       );
       fixture.adapter.commits.insertAll(0, burst);
@@ -290,7 +304,7 @@ void main() {
         );
       }
       final known = await fixture.known();
-      expect(known, containsAll(burst.map((c) => c.revisionId)));
+      expect(known, containsAll(burst.map((commit) => commit.revisionId)));
       expect(known, contains('burst-deep'));
     },
   );
@@ -302,9 +316,9 @@ void main() {
       fixture.adapter.commits.addAll(
         List.generate(
           650,
-          (i) => GistCommit(
-            revisionId: 'selected-$i',
-            observedAt: fixture.now.add(Duration(hours: 650 - i)),
+          (index) => GistCommit(
+            revisionId: 'selected-$index',
+            observedAt: fixture.now.add(Duration(hours: 650 - index)),
           ),
         ),
       );
@@ -316,7 +330,7 @@ void main() {
       }
       expect(
         await fixture.known(),
-        containsAll(fixture.adapter.commits.map((c) => c.revisionId)),
+        containsAll(fixture.adapter.commits.map((commit) => commit.revisionId)),
       );
     },
   );
@@ -328,9 +342,9 @@ void main() {
       fixture.adapter.commits.addAll(
         List.generate(
           25,
-          (i) => GistCommit(
-            revisionId: 'anonymous-$i',
-            observedAt: fixture.now.add(Duration(hours: 25 - i)),
+          (index) => GistCommit(
+            revisionId: 'anonymous-$index',
+            observedAt: fixture.now.add(Duration(hours: 25 - index)),
           ),
         ),
       );
@@ -340,7 +354,7 @@ void main() {
       await fixture.service.refreshHistory(fixture.thermostat.id);
       expect(
         await fixture.known(),
-        containsAll(fixture.adapter.commits.map((c) => c.revisionId)),
+        containsAll(fixture.adapter.commits.map((commit) => commit.revisionId)),
       );
     },
   );
@@ -353,8 +367,8 @@ void main() {
       fixture.adapter.commits.addAll(
         List.generate(
           1100,
-          (i) => GistCommit(
-            revisionId: 'before-list-error-$i',
+          (index) => GistCommit(
+            revisionId: 'before-list-error-$index',
             observedAt: fixture.now.subtract(const Duration(minutes: 30)),
           ),
         ),
@@ -399,8 +413,8 @@ void main() {
         ),
         ...List.generate(
           1100,
-          (i) => GistCommit(
-            revisionId: 'skipped-after-null-$i',
+          (index) => GistCommit(
+            revisionId: 'skipped-after-null-$index',
             observedAt: fixture.now.subtract(const Duration(minutes: 30)),
           ),
         ),
@@ -456,6 +470,121 @@ void main() {
     });
   }
 
+  for (final statusCode in [503, 429]) {
+    test(
+      'HTTP $statusCode on a page-two revision is not acknowledged and recovers',
+      () async {
+        final fixture = await _Fixture.create();
+        await fixture.seedSpan();
+        fixture.adapter.commits.addAll([
+          ...List.generate(
+            100,
+            (index) => GistCommit(
+              revisionId: 'before-http-error-$index',
+              observedAt: fixture.now.subtract(const Duration(minutes: 30)),
+            ),
+          ),
+          GistCommit(
+            revisionId: 'retryable-deep',
+            observedAt: fixture.now.subtract(
+              const Duration(hours: 2, minutes: 1),
+            ),
+          ),
+          GistCommit(
+            revisionId: 'after-retryable-deep',
+            observedAt: fixture.now.subtract(
+              const Duration(hours: 3, minutes: 1),
+            ),
+          ),
+        ]);
+        // Exercise actual HTTP -> Dio -> ThermostatFetchException conversion for
+        // truncated raw content, which formerly became null and a permanent skip.
+        fixture.adapter.rawRevision = 'retryable-deep';
+        fixture.adapter.rawStatusCode = statusCode;
+        await expectLater(
+          fixture.service.refreshHistory(fixture.thermostat.id),
+          throwsA(
+            isA<ThermostatFetchException>()
+                .having(
+                  (error) => error.status,
+                  'status',
+                  ThermostatReadingStatus.httpError,
+                )
+                .having((error) => error.statusCode, 'HTTP status', statusCode),
+          ),
+        );
+        expect(fixture.adapter.requestedPages, contains(2));
+        expect(
+          fixture.adapter.requestedRawRevisions,
+          contains('retryable-deep'),
+        );
+        expect(await fixture.known(), isNot(contains('retryable-deep')));
+        expect(await fixture.known(), isNot(contains('after-retryable-deep')));
+        fixture.adapter.rawStatusCode = 200;
+        await fixture.service.refreshHistory(fixture.thermostat.id);
+        expect(
+          await fixture.known(),
+          containsAll(['retryable-deep', 'after-retryable-deep']),
+        );
+        await fixture.service.refreshHistory(fixture.thermostat.id);
+        expect(await fixture.known(), contains('retryable-deep'));
+      },
+    );
+  }
+
+  test(
+    'source reset ignores old-source coverage across successive refreshes',
+    () async {
+      final fixture = await _Fixture.create();
+      fixture.adapter.commits.addAll([
+        GistCommit(
+          revisionId: 'source-a-newest',
+          observedAt: fixture.now.add(const Duration(hours: 500)),
+        ),
+        GistCommit(
+          revisionId: 'source-a-oldest',
+          observedAt: fixture.now.subtract(const Duration(hours: 1)),
+        ),
+      ]);
+      await fixture.service.refreshHistory(fixture.thermostat.id);
+      await fixture.repository.update(
+        fixture.thermostat,
+        ThermostatDraft(
+          name: 'Source B',
+          rawUrl: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          minC: 0,
+          maxC: 30,
+        ),
+      );
+      // Every B revision lies inside A's retained span, including a partial-page
+      // tail that must be selected on a later run rather than marked covered by A.
+      final sourceCommits = List.generate(
+        450,
+        (index) => GistCommit(
+          revisionId: 'source-b-$index',
+          observedAt: fixture.now.add(Duration(hours: 450 - index)),
+        ),
+      );
+      fixture.adapter.commits
+        ..clear()
+        ..addAll(sourceCommits);
+      await fixture.service.refreshHistory(fixture.thermostat.id);
+      expect(await fixture.known(), contains('source-b-0'));
+      expect(await fixture.known(), isNot(contains('source-b-449')));
+      for (var run = 0; run < 5; run++) {
+        await fixture.service.refreshHistory(fixture.thermostat.id);
+      }
+      expect(
+        await fixture.known(),
+        containsAll(sourceCommits.map((commit) => commit.revisionId)),
+      );
+      expect(
+        await fixture.known(),
+        containsAll(['source-a-newest', 'source-a-oldest']),
+      );
+    },
+  );
+
   test('end of history and source change restart safely', () async {
     final fixture = await _Fixture.create();
     await fixture.service.refreshHistory(fixture.thermostat.id);
@@ -501,8 +630,8 @@ void main() {
     fixture.adapter.commits.addAll(
       List.generate(
         1100,
-        (i) => GistCommit(
-          revisionId: 'removed-$i',
+        (index) => GistCommit(
+          revisionId: 'removed-$index',
           observedAt: fixture.now.subtract(const Duration(minutes: 30)),
         ),
       ),
@@ -513,8 +642,8 @@ void main() {
       ..addAll(
         List.generate(
           950,
-          (i) => GistCommit(
-            revisionId: 'replacement-$i',
+          (index) => GistCommit(
+            revisionId: 'replacement-$index',
             observedAt: fixture.now.subtract(const Duration(minutes: 30)),
           ),
         ),
@@ -542,15 +671,17 @@ void main() {
       GistCommit(revisionId: 'serialized', observedAt: fixture.now),
     );
     fixture.adapter.gate = Completer<void>();
+    fixture.adapter.entered = Completer<void>();
     final first = fixture.service.refreshHistory(fixture.thermostat.id);
     final second = fixture.service.refreshHistory(fixture.thermostat.id);
-    // Yield through the repository reads to the controlled transport gate.
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await fixture.adapter.entered!.future;
     fixture.adapter.gate!.complete();
     await Future.wait([first, second]);
     expect(fixture.adapter.maxActive, 1);
     expect(
-      fixture.adapter.requestedRevisions.where((r) => r == 'serialized').length,
+      fixture.adapter.requestedRevisions
+          .where((revision) => revision == 'serialized')
+          .length,
       1,
     );
     fixture.adapter.failPage = 1;
@@ -573,7 +704,7 @@ class _FailingRepository extends ThermostatRepository {
     required Iterable<TemperatureSample> samples,
   }) async {
     if (samples.any(
-      (s) => s.sourceId == failRevision && failRevision != null,
+      (sample) => sample.sourceId == failRevision && failRevision != null,
     )) {
       throw StateError('Synthetic store failure');
     }
@@ -630,12 +761,12 @@ class _Fixture {
   Future<void> cache(Iterable<GistCommit> commits) => repository.upsertHistory(
     thermostatId: thermostat.id,
     samples: [
-      for (final c in commits)
+      for (final commit in commits)
         TemperatureSample.revision(
           thermostatId: thermostat.id,
-          revisionId: c.revisionId,
+          revisionId: commit.revisionId,
           valueC: 20,
-          observedAt: c.observedAt,
+          observedAt: commit.observedAt,
         ),
     ],
   );
