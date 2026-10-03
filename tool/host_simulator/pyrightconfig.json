@@ -1,0 +1,6 @@
+{
+  "include": ["gist_service.py", "processes.py", "run.py", "serve.py", "windows_job.py"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportImplicitRelativeImport": false
+}

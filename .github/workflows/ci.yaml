@@ -6,6 +6,35 @@ on:
   pull_request:
 
 jobs:
+  host-simulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.7'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare app sources
+        working-directory: app
+        run: |
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+      - name: Build pinned official MicroPython Unix
+        run: bash tool/host_simulator/build_micropython.sh "$RUNNER_TEMP/farmctl-micropython"
+      - name: Join firmware publication and Flutter persistence
+        run: |
+          python3 tool/host_simulator/run.py \
+            --micropython "$RUNNER_TEMP/farmctl-micropython/micropython-1.29.0/ports/unix/build-standard/micropython" \
+            --verify-regression
+      - name: Test fixture boundaries and subprocess outcomes
+        run: |
+          python3 -m pip install --disable-pip-version-check pytest==9.1.1
+          python3 -m pytest -q -p no:cacheprovider tool/host_simulator
+
   build-test:
     runs-on: ubuntu-latest
     steps:
