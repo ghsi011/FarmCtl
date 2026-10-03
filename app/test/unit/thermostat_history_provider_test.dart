@@ -4,19 +4,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farmctl/features/thermostats/data/thermostat_database.dart';
+import 'package:farmctl/features/thermostats/data/thermostat_repository.dart';
 import 'package:farmctl/features/thermostats/models/history_range.dart';
 import 'package:farmctl/features/thermostats/models/temperature_sample.dart';
 import 'package:farmctl/features/thermostats/providers/thermostat_providers.dart';
 
 void main() {
   late ThermostatDatabase db;
+  late bool databaseClosed;
 
   setUp(() {
     db = ThermostatDatabase.forTesting(NativeDatabase.memory());
+    databaseClosed = false;
   });
 
   tearDown(() async {
-    await db.close();
+    if (!databaseClosed) await db.close();
   });
 
   Future<void> seed(List<({String id, DateTime at, double v})> readings) async {
@@ -85,12 +88,18 @@ void main() {
   });
 
   test('filters out samples older than the requested window', () async {
-    final now = DateTime.now().toUtc();
+    final now = DateTime.utc(2025, 1, 1, 12);
     await seed([
       (id: 'recent', at: now.subtract(const Duration(minutes: 10)), v: 18),
       (id: 'ancient', at: DateTime.utc(2000, 1, 1), v: 1),
     ]);
-    final container = containerWithDb();
+    final container = ProviderContainer(
+      overrides: [
+        thermostatDatabaseProvider.overrideWithValue(db),
+        nowProvider.overrideWithValue(() => now),
+      ],
+    );
+    addTearDown(container.dispose);
 
     final samples = await readHistory(container, ThermostatHistoryRange.hour);
 
@@ -99,4 +108,279 @@ void main() {
     expect(samples, hasLength(1));
     expect(samples.single.valueC, 18);
   });
+
+  testWidgets('Last hour expires samples without a database emission', (
+    tester,
+  ) async {
+    // A fixed future instant also keeps the initial sample inside the baseline
+    // provider's wall-clock cutoff, so the failure is stale data, not empty data.
+    final initialNow = DateTime.utc(2100, 1, 1);
+    final startedAt = tester.binding.clock.now();
+    await tester.runAsync(
+      () => seed([
+        (
+          id: 'expiring',
+          at: initialNow.subtract(const Duration(minutes: 59)),
+          v: 18,
+        ),
+      ]),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        thermostatDatabaseProvider.overrideWithValue(db),
+        nowProvider.overrideWithValue(
+          () =>
+              initialNow.add(tester.binding.clock.now().difference(startedAt)),
+        ),
+      ],
+    );
+    final provider = thermostatHistoryProvider((
+      thermostatId: 't1',
+      range: ThermostatHistoryRange.hour,
+    ));
+    final subscription = container.listen(provider, (_, _) {});
+    try {
+      await tester.pump();
+      final initialSamples = await tester.runAsync(
+        () => container.read(provider.future),
+      );
+      expect(initialSamples, hasLength(1));
+      expect(initialSamples!.single.valueC, 18);
+
+      // Keep the same subscription and make no further database writes.
+      await tester.pump(const Duration(minutes: 2));
+      await tester.pump();
+      final samples = await tester.runAsync(
+        () => container.read(provider.future),
+      );
+      expect(
+        samples,
+        isEmpty,
+        reason:
+            'Last hour must drop the now-61-minute-old sample without a '
+            'database emission or resubscription.',
+      );
+    } finally {
+      await tester.runAsync(() async {
+        subscription.close();
+        container.dispose();
+        await db.close();
+        databaseClosed = true;
+      });
+    }
+  });
+
+  for (final range in [
+    ThermostatHistoryRange.hour,
+    ThermostatHistoryRange.day,
+  ]) {
+    testWidgets('${range.name} advances cutoff on writes between ticks', (
+      tester,
+    ) async {
+      var now = DateTime.utc(2025, 1, 1, 12);
+      await tester.runAsync(
+        () => seed([(id: 'boundary', at: now.subtract(range.window!), v: 11)]),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          thermostatDatabaseProvider.overrideWithValue(db),
+          nowProvider.overrideWithValue(() => now),
+        ],
+      );
+      final provider = thermostatHistoryProvider((
+        thermostatId: 't1',
+        range: range,
+      ));
+      final subscription = container.listen(provider, (_, _) {});
+      try {
+        await tester.pump();
+        final initial = await tester.runAsync(
+          () => container.read(provider.future),
+        );
+        expect(initial!.single.valueC, 11);
+        // Advance the injectable clock only: no periodic tick has fired yet.
+        now = now.add(const Duration(seconds: 30));
+        await tester.runAsync(() => seed([(id: 'fresh', at: now, v: 17)]));
+        // Drift delivers asynchronously; pump Riverpod's scheduler without
+        // advancing fake time to the minute tick.
+        for (var attempt = 0; attempt < 20; attempt++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+          if (container
+                  .read(provider)
+                  .asData
+                  ?.value
+                  .any((sample) => sample.valueC == 17) ??
+              false) {
+            break;
+          }
+        }
+        expect(
+          container.read(provider).requireValue.map((sample) => sample.valueC),
+          [17],
+        );
+      } finally {
+        await tester.runAsync(() async {
+          subscription.close();
+          container.dispose();
+          await db.close();
+          databaseClosed = true;
+        });
+      }
+    });
+
+    testWidgets('${range.name} includes cutoff, rolls, and reopens fresh', (
+      tester,
+    ) async {
+      final initialNow = DateTime.utc(2025, 1, 1, 12);
+      final startedAt = tester.binding.clock.now();
+      var clockReads = 0;
+      await tester.runAsync(
+        () => seed([
+          (id: 'boundary', at: initialNow.subtract(range.window!), v: 11),
+          (
+            id: 'outside',
+            at: initialNow
+                .subtract(range.window!)
+                .subtract(const Duration(seconds: 1)),
+            v: 99,
+          ),
+        ]),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          thermostatDatabaseProvider.overrideWithValue(db),
+          nowProvider.overrideWithValue(() {
+            clockReads++;
+            return initialNow.add(
+              tester.binding.clock.now().difference(startedAt),
+            );
+          }),
+        ],
+      );
+      final provider = thermostatHistoryProvider((
+        thermostatId: 't1',
+        range: range,
+      ));
+      var subscription = container.listen(provider, (_, _) {});
+      try {
+        await tester.pump();
+        final initial = await tester.runAsync(
+          () => container.read(provider.future),
+        );
+        expect(initial!.map((sample) => sample.valueC), [11]);
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump();
+        final expired = await tester.runAsync(
+          () => container.read(provider.future),
+        );
+        expect(expired, isEmpty);
+
+        subscription.close();
+        await tester.pump();
+        await tester.pump();
+        final readsAfterClose = clockReads;
+        await tester.pump(const Duration(minutes: 5));
+        expect(
+          clockReads,
+          readsAfterClose,
+          reason: 'No ticking survives the last subscription',
+        );
+        await tester.runAsync(
+          () => seed([
+            (
+              id: 'fresh',
+              at: initialNow.add(const Duration(minutes: 6)),
+              v: 17,
+            ),
+          ]),
+        );
+        subscription = container.listen(provider, (_, _) {});
+        await tester.pump();
+        final reopened = await tester.runAsync(
+          () => container.read(provider.future),
+        );
+        expect(reopened!.map((sample) => sample.valueC), [17]);
+      } finally {
+        await tester.runAsync(() async {
+          subscription.close();
+          container.dispose();
+          await db.close();
+          databaseClosed = true;
+        });
+      }
+    });
+  }
+
+  testWidgets('All neither reads the clock nor re-queries on time changes', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => seed([
+        (id: 'old', at: DateTime.utc(2000, 1, 1), v: 11),
+        (id: 'new', at: DateTime.utc(2025, 1, 1), v: 17),
+      ]),
+    );
+    final repository = _CountingRepository(db);
+    var clockReads = 0;
+    var emissions = 0;
+    final container = ProviderContainer(
+      overrides: [
+        thermostatRepositoryProvider.overrideWithValue(repository),
+        nowProvider.overrideWithValue(() {
+          clockReads++;
+          return DateTime.utc(2025, 1, 1);
+        }),
+      ],
+    );
+    final provider = thermostatHistoryProvider((
+      thermostatId: 't1',
+      range: ThermostatHistoryRange.all,
+    ));
+    final subscription = container.listen(provider, (_, value) {
+      if (value.asData != null) emissions++;
+    });
+    try {
+      await tester.pump();
+      final initial = await tester.runAsync(
+        () => container.read(provider.future),
+      );
+      expect(initial!.map((sample) => sample.valueC), [11, 17]);
+      final initialEmissions = emissions;
+      container.invalidate(nowProvider);
+      await tester.pump(const Duration(days: 2));
+      await tester.pump();
+      expect(clockReads, 0);
+      expect(repository.historyQueries, 1);
+      expect(emissions, initialEmissions);
+      expect(
+        container.read(provider).requireValue.map((sample) => sample.valueC),
+        [11, 17],
+      );
+    } finally {
+      await tester.runAsync(() async {
+        subscription.close();
+        container.dispose();
+        await db.close();
+        databaseClosed = true;
+      });
+    }
+  });
+}
+
+class _CountingRepository extends ThermostatRepository {
+  _CountingRepository(super.database);
+
+  int historyQueries = 0;
+
+  @override
+  Stream<List<TemperatureSample>> watchHistory(
+    String thermostatId, {
+    DateTime? since,
+  }) {
+    historyQueries++;
+    return super.watchHistory(thermostatId, since: since);
+  }
 }
