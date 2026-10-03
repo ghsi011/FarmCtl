@@ -50,3 +50,7 @@ graphify-out/
 /wifi.txt
 **/__pycache__/
 *.py[cod]
+.coverage
+.pytest_cache/
+.ruff_cache/
+.agent/scratch/
