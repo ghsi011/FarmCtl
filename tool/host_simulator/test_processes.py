@@ -1,7 +1,9 @@
 import ctypes
 import os
+import re
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -88,14 +90,49 @@ def test_descendant_is_terminated_when_its_leader_exits_first() -> None:
                 kernel.CloseHandle(handle)
     else:
         # A terminated orphan may remain a zombie until its host init reaps it.
-        from pathlib import Path
-
         status = Path(f"/proc/{descendant}/stat")
+
+        def stopped() -> bool:
+            try:
+                return status.read_text().split()[2] == "Z"
+            except FileNotFoundError:
+                return True
+
         deadline = time.monotonic() + 2
-        while (
-            status.exists()
-            and status.read_text().split()[2] != "Z"
-            and time.monotonic() < deadline
-        ):
+        while not stopped() and time.monotonic() < deadline:
             time.sleep(0.01)
-        assert not status.exists() or status.read_text().split()[2] == "Z"
+        assert stopped()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Linux /proc disappearance race")
+@pytest.mark.parametrize(
+    "failure", (FileNotFoundError, PermissionError), ids=("reaped", "permission-denied")
+)
+def test_proc_stat_disappearance_does_not_fail_or_hide_other_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[OSError],
+) -> None:
+    observed: list[Path] = []
+    original_exists, original_read = Path.exists, Path.read_text
+
+    def exists(path: Path) -> bool:
+        return (
+            True
+            if re.fullmatch(r"/proc/\d+/stat", str(path))
+            else original_exists(path)
+        )
+
+    def read(path: Path, *args, **kwargs) -> str:
+        if re.fullmatch(r"/proc/\d+/stat", str(path)):
+            observed.append(path)
+            raise failure(str(path))
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    monkeypatch.setattr(Path, "read_text", read)
+    if failure is FileNotFoundError:
+        test_descendant_is_terminated_when_its_leader_exits_first()
+    else:
+        with pytest.raises(failure):
+            test_descendant_is_terminated_when_its_leader_exits_first()
+    assert observed, "the disappearing proc read must be exercised"
