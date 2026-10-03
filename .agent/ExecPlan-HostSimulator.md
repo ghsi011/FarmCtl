@@ -11,7 +11,7 @@ Implement the smallest deterministic host-only slice of [Add MicroPython Unix an
 - App clients accept Dio but use absolute GitHub URLs. A test-only adapter must reject all unsupported destinations and route allowed requests to a loopback socket. Changing baseUrl alone cannot work.
 - Existing CPython and Flutter suites do not join firmware publication to app parsing and persistence. The initial lane will do this without an Android emulator or production API.
 - WSL Ubuntu 22.04 and Flutter 3.41.7/Dart 3.11.5 are installed. WSL has make/Python/binutils but no compiler or development headers. Download and extract official Ubuntu build packages locally; do not install system packages or change authentication/network settings.
-- The prior spare 64 KiB failure remains unresolved in issue 50. Exercise the host byte envelope independently; never claim this diagnoses or corrects the device failure. Do not read devices or retry the blocked Pico transport operation.
+- Issue 50 was unresolved at initial inspection; it is now closed by verified staged offline delivery. See the dated correction below. Exercise the host byte envelope independently; do not read devices or retry the blocked Pico transport operation.
 
 ## Pre-agreed public test seams
 
@@ -25,9 +25,11 @@ The requested parser-to-Monitor-to-publisher and real app consumption flow defin
 
 ## Evidence and limits
 
-Record commands, base/build/fixture identity, phase results, measured coverage denominator, and substituted boundaries. Loopback HTTP proves host socket/application behavior. It does not prove native verified TLS, DNS deadlines, RP2350 heap/stack, CYW43/Wi-Fi, peripherals, watchdog/power loss, Android platform behavior, or live GitHub semantics. TLS/fault expansion and Android integration_test remain later slices; issues 43, 45, 50 and the unimplemented issue-51 criteria stay open.
+Record commands, base/build/fixture identity, phase results, measured coverage denominator, and substituted boundaries. Loopback HTTP proves host socket/application behavior. It does not prove native verified TLS, DNS deadlines, RP2350 heap/stack, CYW43/Wi-Fi, peripherals, watchdog/power loss, Android platform behavior, or live GitHub semantics. TLS/fault expansion and Android integration_test remain later slices; issues 43, 45 and the unimplemented issue-51 criteria stay open.
 
 ## Progress
+
+- 2026-10-03 correction: [issue 50's staged offline run](https://github.com/ghsi011/FarmCtl/issues/50#issuecomment-5970793168) completed 125 commands through one persistent connection, all six complete-fixture assertions, exit 0/no host stderr, `COMBINED_RESULT:PASS`, and `OWNED_CLEANUP_PASS` with five files removed and the directory absent. The original 110,586-byte source command failed before top-level execution with MemoryError; the precise allocator/size cause was not established. This resolves the delivery investigation, without establishing a parser defect or advancing `native.UNQUALIFIED` / issues 43 and 45 / sensor, Wi-Fi, TLS, watchdog, durability or timing gates. No device access occurs in this host extension.
 
 - 2026-10-03: read-only source/research/guidance inspection completed; isolated bare clone and worktree created; runtime/build prerequisite assessment completed.
 - Built official MicroPython Unix 1.29.0 standard with FFI disabled using workspace-only Ubuntu compiler/header packages. No system package installation or configuration changes. Binary SHA-256: `e476be4f6d857d71254849a35ee2bcb253e2018233950cb961389b659369d3d2`; default frozen modules contain no FarmCtl code.
