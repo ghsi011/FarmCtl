@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from clock_case import clock_case
 from fixture import fleet_bytes
 from processes import OwnedProcess, Result, run
 
@@ -49,7 +50,7 @@ def main() -> None:
     parser.add_argument(
         "--verify-regression",
         action="store_true",
-        help="Prove a seeded Unix sockaddr regression is rejected",
+        help="Prove seeded Unix sockaddr and untrusted-clock regressions are rejected",
     )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
@@ -190,6 +191,19 @@ def main() -> None:
                 os.chdir(original)
                 service.stop_input()
                 service.finish(5).require_success(b"FARMCTL_SERVICE_STOPPED")
+    if options.verify_regression:
+        clock_case(
+            root,
+            prefix,
+            interpreter,
+            options.micropython,
+            flutter_command,
+            linux_path,
+            seeded=True,
+        )
+    clock_case(
+        root, prefix, interpreter, options.micropython, flutter_command, linux_path
+    )
     print(
         json.dumps(
             {

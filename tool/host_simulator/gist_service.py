@@ -57,6 +57,7 @@ class GistHandler(BaseHTTPRequestHandler):
         if path != "/gists/" + gist or gist not in GISTS:
             self.respond(404, b"{}")
             return
+        self.fixture.patch_attempts[gist] += 1
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_BODY:
@@ -102,6 +103,9 @@ class GistHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlsplit(self.path)
+        if url.path == "/simulator/stats" and not url.query:
+            self.respond(200, json.dumps(self.fixture.patch_attempts).encode())
+            return
         match = re.fullmatch(r"/gists/([ab]{32})(?:/(commits|[0-9a-f]{40}))?", url.path)
         if match is None or match[1] not in GISTS:
             self.respond(404, b"{}")
@@ -156,6 +160,7 @@ class GistService(HTTPServer):
 
     def __init__(self) -> None:
         self.revisions: dict[str, list[Revision]] = {gist: [] for gist in GISTS}
+        self.patch_attempts: dict[str, int] = dict.fromkeys(GISTS, 0)
         super().__init__(("127.0.0.1", 0), GistHandler)
 
     def get_request(self):

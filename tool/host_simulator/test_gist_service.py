@@ -96,6 +96,19 @@ def test_injected_faults_never_mutate_observation(client: HTTPConnection) -> Non
     assert len(request(client, "GET", PATH + "/commits")[1]) == 1
 
 
+def test_counts_registered_patch_attempts_including_rejections(
+    client: HTTPConnection,
+) -> None:
+    assert request(client, "GET", "/simulator/stats")[1] == {"a" * 32: 0, "b" * 32: 0}
+    assert publish(client, "first")[0] == 200
+    assert publish(client, "lost", HEADERS | {"X-Simulator-Fault": "503"})[0] == 503
+    assert request(client, "PATCH", body="{")[0] == 400
+    assert request(client, "PATCH", headers={})[0] == 401
+    assert request(client, "PATCH", "/gists/unknown")[0] == 404
+    assert request(client, "GET", "/simulator/stats")[1] == {"a" * 32: 3, "b" * 32: 0}
+    assert request(client, "GET", "/simulator/stats?extra=1")[0] == 404
+
+
 @pytest.mark.parametrize(
     "method,path,body,headers,status",
     [
