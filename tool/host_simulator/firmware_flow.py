@@ -65,6 +65,12 @@ class LoopbackTransport:
             "X-Simulator-At: %s\r\nX-Simulator-Fault: %s\r\n"
             "Connection: close\r\n\r\n" % (gist, len(body), at, "503" if fault else "")
         ).encode() + body
+        response = self.exchange(request)
+        status = int(response.split(b"\r\n", 1)[0].split()[1])
+        if status != 200:
+            raise HttpFailure(status, {})
+
+    def exchange(self, request):
         connection = socket.socket()
         try:
             connection.settimeout(3)
@@ -86,9 +92,7 @@ class LoopbackTransport:
                 response.extend(chunk)
                 if len(response) > 32768:
                     raise OSError("loopback response exceeded bound")
-            status = int(bytes(response).split(b"\r\n", 1)[0].split()[1])
-            if status != 200:
-                raise HttpFailure(status, {})
+            return bytes(response)
         finally:
             connection.close()
 
@@ -210,4 +214,5 @@ def main():
     print("FARMCTL_HOST_OK")
 
 
-main()
+if __name__ == "__main__":
+    main()
