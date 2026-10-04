@@ -13,7 +13,16 @@ from gist_service import GistService
 
 
 def main() -> None:
-    with GistService() as server:
+    match sys.argv[1:]:
+        case []:
+            server = GistService()
+        case ["interrupted"]:
+            from interrupted_service import InterruptedService
+
+            server = InterruptedService()
+        case _:
+            raise RuntimeError("unsupported fixture profile")
+    with server:
         worker = Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:

@@ -34,7 +34,9 @@ class CountingTransport(LoopbackTransport):
         return json.loads(response.split(b"\r\n\r\n", 1)[1])
 
 
-def checkpoint(directory, phase, clock, sensor, monitor, transport, results):
+def checkpoint(
+    directory, phase, clock, sensor, monitor, transport, results, extra=None
+):
     evidence = {
         "phase": phase,
         "trusted": clock.trusted,
@@ -44,6 +46,8 @@ def checkpoint(directory, phase, clock, sensor, monitor, transport, results):
         "transport_attempts": transport.attempts,
         "wire_attempts": transport.wire_attempts(),
     }
+    if extra is not None:
+        evidence.update(extra)
     text = json.dumps(evidence)
     with open(directory + "/" + phase + ".json", "w") as stream:
         stream.write(text)

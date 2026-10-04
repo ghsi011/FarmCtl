@@ -15,8 +15,9 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from clock_case import clock_case, coordinated_case
+from clock_case import CLOCK_SCENARIO, coordinated_case
 from fixture import fleet_bytes
+from interrupted_case import INTERRUPTED_SCENARIO
 from processes import OwnedProcess, Result, run
 from rate_case import RATE_SCENARIO
 
@@ -51,7 +52,7 @@ def main() -> None:
     parser.add_argument(
         "--verify-regression",
         action="store_true",
-        help="Prove seeded Unix sockaddr, clock and Retry-After regressions are rejected",
+        help="Reject seeded Unix sockaddr, clock, Retry-After and native deadline regressions",
     )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
@@ -192,20 +193,18 @@ def main() -> None:
                 os.chdir(original)
                 service.stop_input()
                 service.finish(5).require_success(b"FARMCTL_SERVICE_STOPPED")
-    if options.verify_regression:
-        clock_case(
-            root,
-            prefix,
-            interpreter,
-            options.micropython,
-            flutter_command,
-            linux_path,
-            seeded=True,
-        )
-    clock_case(
-        root, prefix, interpreter, options.micropython, flutter_command, linux_path
-    )
-    if options.verify_regression:
+    for scenario in (CLOCK_SCENARIO, RATE_SCENARIO, INTERRUPTED_SCENARIO):
+        if options.verify_regression:
+            coordinated_case(
+                root,
+                prefix,
+                interpreter,
+                options.micropython,
+                flutter_command,
+                linux_path,
+                scenario,
+                seeded=True,
+            )
         coordinated_case(
             root,
             prefix,
@@ -213,18 +212,8 @@ def main() -> None:
             options.micropython,
             flutter_command,
             linux_path,
-            RATE_SCENARIO,
-            seeded=True,
+            scenario,
         )
-    coordinated_case(
-        root,
-        prefix,
-        interpreter,
-        options.micropython,
-        flutter_command,
-        linux_path,
-        RATE_SCENARIO,
-    )
     print(
         json.dumps(
             {

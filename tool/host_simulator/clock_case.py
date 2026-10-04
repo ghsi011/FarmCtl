@@ -51,6 +51,7 @@ class Scenario:
     seed_replacement: str
     seed_acknowledgements: tuple[str, ...]
     require_seed_failure: Callable[[Result], None]
+    service_args: tuple[str, ...] = ()
 
 
 CLOCK_SCENARIO = Scenario(
@@ -91,7 +92,7 @@ def coordinated_case(
             for phase in scenario.seed_acknowledgements:
                 (directory / (phase + ".ack")).write_bytes((phase + "\n").encode())
         with OwnedProcess(
-            prefix + [interpreter, path(scripts / "serve.py")]
+            prefix + [interpreter, path(scripts / "serve.py"), *scenario.service_args]
         ) as service:
             port = json.loads(service.startup_line())["port"]
             if type(port) is not int or not 0 < port < 65536:
