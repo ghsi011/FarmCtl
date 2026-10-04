@@ -1,9 +1,10 @@
-"""Own the additional clock case and reject only its intended mutation failure."""
+"""Own coordinated firmware/app cases and reject only their intended mutations."""
 
 import json
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -40,35 +41,61 @@ def require_clock_seed_failure(result: Result) -> None:
         raise RuntimeError("clock seed failed outside the expected pause assertion")
 
 
-def clock_case(
+@dataclass(frozen=True, slots=True)
+class Scenario:
+    name: str
+    test: str
+    directory_env: str
+    marker: bytes
+    seed_needle: str
+    seed_replacement: str
+    seed_acknowledgements: tuple[str, ...]
+    require_seed_failure: Callable[[Result], None]
+
+
+CLOCK_SCENARIO = Scenario(
+    "clock",
+    "clock_guard_test.dart",
+    "FARMCTL_CLOCK_DIRECTORY",
+    b"FARMCTL_CLOCK_OK",
+    "time_is_trusted=lambda: clock.trusted",
+    "time_is_trusted=lambda: True",
+    ("initial",),
+    require_clock_seed_failure,
+)
+
+
+def coordinated_case(
     root: Path,
     prefix: list[str],
     interpreter: str,
     micropython: str,
     flutter: list[str],
     path: Callable[[Path], str],
+    scenario: Scenario,
     seeded: bool = False,
 ) -> None:
     scripts = root / "tool" / "host_simulator"
-    with TemporaryDirectory(prefix="farmctl-clock-") as temporary:
+    with TemporaryDirectory(prefix="farmctl-" + scenario.name + "-") as temporary:
         directory = Path(temporary)
-        source = scripts / "clock_flow.py"
+        source = scripts / (scenario.name + "_flow.py")
         if seeded:
             text = source.read_text(encoding="utf-8")
-            needle = "time_is_trusted=lambda: clock.trusted"
+            needle = scenario.seed_needle
             if text.count(needle) != 1:
-                raise RuntimeError("clock seed no longer matches the harness")
-            source = directory / "clock-seed.py"
+                raise RuntimeError("scenario seed no longer matches the harness")
+            source = directory / (scenario.name + "-seed.py")
             source.write_text(
-                text.replace(needle, "time_is_trusted=lambda: True"), encoding="utf-8"
+                text.replace(needle, scenario.seed_replacement), encoding="utf-8"
             )
-            (directory / "initial.ack").write_bytes(b"initial\n")
+            for phase in scenario.seed_acknowledgements:
+                (directory / (phase + ".ack")).write_bytes((phase + "\n").encode())
         with OwnedProcess(
             prefix + [interpreter, path(scripts / "serve.py")]
         ) as service:
             port = json.loads(service.startup_line())["port"]
             if type(port) is not int or not 0 < port < 65536:
-                raise RuntimeError("invalid clock service startup")
+                raise RuntimeError("invalid scenario service startup")
             command = prefix + [
                 micropython,
                 "-c",
@@ -85,14 +112,14 @@ def clock_case(
                 if seeded:
                     result = run(command, 30)
                     try:
-                        require_clock_seed_failure(result)
+                        scenario.require_seed_failure(result)
                     except RuntimeError:
                         show(result)
                         raise
                     print(
                         json.dumps(
                             {
-                                "phase": "clock_seed",
+                                "phase": scenario.name + "_seed",
                                 "exit": result.code,
                                 "rejected": True,
                             }
@@ -108,7 +135,7 @@ def clock_case(
                     ):
                         environment.pop(credential, None)
                     environment["FARMCTL_SIMULATOR_PORT"] = str(port)
-                    environment["FARMCTL_CLOCK_DIRECTORY"] = str(directory)
+                    environment[scenario.directory_env] = str(directory)
                     original = Path.cwd()
                     try:
                         with OwnedProcess(command) as firmware:
@@ -121,7 +148,7 @@ def clock_case(
                                     "--no-pub",
                                     "--reporter",
                                     "expanded",
-                                    "test/system/clock_guard_test.dart",
+                                    "test/system/" + scenario.test,
                                 ],
                                 environment,
                             ) as app:
@@ -131,9 +158,23 @@ def clock_case(
                             firmware_result = firmware.finish(10)
                             show(firmware_result)
                             app_result.require_success()
-                            firmware_result.require_success(b"FARMCTL_CLOCK_OK")
+                            firmware_result.require_success(scenario.marker)
                     finally:
                         os.chdir(original)
             finally:
                 service.stop_input()
                 service.finish(5).require_success(b"FARMCTL_SERVICE_STOPPED")
+
+
+def clock_case(
+    root: Path,
+    prefix: list[str],
+    interpreter: str,
+    micropython: str,
+    flutter: list[str],
+    path: Callable[[Path], str],
+    seeded: bool = False,
+) -> None:
+    coordinated_case(
+        root, prefix, interpreter, micropython, flutter, path, CLOCK_SCENARIO, seeded
+    )

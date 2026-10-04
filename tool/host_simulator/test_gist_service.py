@@ -110,6 +110,34 @@ def test_counts_registered_patch_attempts_including_rejections(
 
 
 @pytest.mark.parametrize(
+    "gist,filename", [("a" * 32, "thermostat.txt"), ("b" * 32, "diagnostics.json")]
+)
+def test_rate_limit_returns_retry_hint_without_creating_revision(
+    client: HTTPConnection, gist: str, filename: str
+) -> None:
+    # Given an existing delivered observation for either stream.
+    path = "/gists/" + gist
+    body = json.dumps({"files": {filename: {"content": "delivered"}}})
+    assert request(client, "PATCH", path, body)[0] == 200
+    rejected = json.dumps({"files": {filename: {"content": "undelivered"}}})
+    # When the fixture rejects the next real wire request with a rate limit.
+    client.request("PATCH", path, rejected, HEADERS | {"X-Simulator-Fault": "429"})
+    response = client.getresponse()
+    status, hint, payload = (
+        response.status,
+        response.getheader("Retry-After"),
+        response.read(),
+    )
+    # Then the explicit hint is returned and only the delivered revision remains.
+    assert status == 429
+    assert hint == "120"
+    assert json.loads(payload) == {}
+    assert request(client, "GET", path)[1]["files"][filename]["content"] == "delivered"
+    assert len(request(client, "GET", path + "/commits")[1]) == 1
+    assert request(client, "GET", "/simulator/stats")[1][gist] == 2
+
+
+@pytest.mark.parametrize(
     "method,path,body,headers,status",
     [
         ("PATCH", PATH, None, {}, 401),

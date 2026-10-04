@@ -10,6 +10,7 @@ import pytest
 import clock_case
 from clock_case import require_clock_seed_failure
 from processes import Result
+from rate_case import RATE_SCENARIO
 
 
 def seeded_observation() -> bytes:
@@ -70,15 +71,17 @@ def test_rejects_unrelated_failure_or_false_success(result: Result) -> None:
         require_clock_seed_failure(result)
 
 
+@pytest.mark.parametrize("scenario", [clock_case.CLOCK_SCENARIO, RATE_SCENARIO])
 def test_forced_app_termination_removes_parent_owned_cache(
     monkeypatch: pytest.MonkeyPatch,
+    scenario: clock_case.Scenario,
 ) -> None:
     # Real subprocess deadline kills a child before its own teardown can run.
     with TemporaryDirectory(prefix="farmctl-clock-evidence-") as temporary:
         record = Path(temporary) / "created-directory.txt"
         script = (
             "import os,pathlib,time; "
-            "directory=pathlib.Path(os.environ['FARMCTL_CLOCK_DIRECTORY']); "
+            "directory=pathlib.Path(os.environ[" + repr(scenario.directory_env) + "]); "
             "cache=directory/'cache'; cache.mkdir(); "
             "(cache/'cache.sqlite').write_bytes(b'unfinished'); "
             "pathlib.Path(" + repr(str(record)) + ").write_text(str(directory)); "
@@ -87,13 +90,14 @@ def test_forced_app_termination_removes_parent_owned_cache(
         monkeypatch.setattr(clock_case, "APP_TIMEOUT", 2)
         root = Path(__file__).resolve().parents[2]
         with pytest.raises(RuntimeError, match="phase deadline"):
-            clock_case.clock_case(
+            clock_case.coordinated_case(
                 root,
                 [],
                 sys.executable,
                 sys.executable,
                 [sys.executable, "-c", script],
                 lambda path: str(path.resolve()),
+                scenario,
             )
         assert record.exists(), "child must create the cache before termination"
         assert not Path(record.read_text()).exists()
