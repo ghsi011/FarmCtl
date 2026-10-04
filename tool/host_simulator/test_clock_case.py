@@ -9,6 +9,7 @@ import pytest
 
 import clock_case
 from clock_case import require_clock_seed_failure
+from interrupted_case import INTERRUPTED_SCENARIO
 from processes import Result
 from rate_case import RATE_SCENARIO
 
@@ -71,7 +72,9 @@ def test_rejects_unrelated_failure_or_false_success(result: Result) -> None:
         require_clock_seed_failure(result)
 
 
-@pytest.mark.parametrize("scenario", [clock_case.CLOCK_SCENARIO, RATE_SCENARIO])
+@pytest.mark.parametrize(
+    "scenario", [clock_case.CLOCK_SCENARIO, RATE_SCENARIO, INTERRUPTED_SCENARIO]
+)
 def test_forced_app_termination_removes_parent_owned_cache(
     monkeypatch: pytest.MonkeyPatch,
     scenario: clock_case.Scenario,

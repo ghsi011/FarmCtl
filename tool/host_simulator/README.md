@@ -42,9 +42,12 @@ Unix address regression must fail at its first publication assertion. The clock
 mutation must reach the paused phase, keep sampling, attempt both streams, and
 fail there with no clock success marker. The rate-limit mutation drops parsed
 response headers and must fail at the paused publication invariant after the
-60-second fallback expires. Startup failures do not satisfy any seed.
+60-second fallback expires. The native deadline mutation disables `_remaining`
+only in a temporary harness copy and must reach the stalled request, correct
+wire counters and elapsed-time assertion. Its 2.5-second fixture guard keeps the
+mutation bounded. Startup failures do not satisfy any seed.
 
-Normal `flutter test` skips the four system tests when no shared fixture is supplied.
+Normal `flutter test` skips the five system tests when no shared fixture is supplied.
 Use the driver to execute them. No real credentials are needed. Only the two
 synthetic Gist IDs are accepted; the app adapter restricts requests to their
 allowlisted GitHub paths and rewrites them to loopback without redirects/proxies.
@@ -87,8 +90,21 @@ basedpyright -p tool/host_simulator/pyrightconfig.json
   resume. Transport and wire counters agree; Flutter/Drift retain the original
   stale value/time during the pause and only delivered observations after
   recovery and SQLite reopen. The fixture rejects without creating a revision.
+- A separate interrupted run uses the unchanged native request builder, connect,
+  write/read, poll and absolute deadline loop on real Unix sockets and ticks.
+  Only TLS wrapping and numeric resolution are replaced. After initial delivery,
+  the fixture drops a partial 200 header before its terminator, then holds the
+  same partial response open. Both faults occur before applying the PATCH, so
+  neither creates a revision. A 650 ms request budget ends the held response;
+  the whole poll, including independent diagnostics, must finish below 1.5s.
+  Monitor keeps sampling during backoff: no temperature retry at +5624ms or
+  +11999ms, retries exactly at +5625ms and +12000ms, then fresh delivery recovers.
+  Transport/wire counters agree, diagnostics retain the last delivered sample
+  reference, and actual Flutter/Drift history contains only initial/recovered
+  values and observation times through SQLite reopen. Test scheduling uses a
+  controlled clock distinct from the real transport deadline clock.
 
-The clock and rate-limit cases use private temporary directories for bounded phase snapshots
+The clock, rate-limit and interrupted cases use private temporary directories for bounded phase snapshots
 and acknowledgements. Firmware waits for app assertions at initial and paused
 checkpoints before advancing. Both markers are closed then atomically renamed
 before readers see them. SQLite cache files live under the parent-owned directory
@@ -96,9 +112,12 @@ so forced child termination still allows parent cleanup. A ready file means evid
 still requires both test processes and service cleanup to pass. The deliberate
 mutation supplies an always-trusted callback while the test clock is untrusted;
 production code is never modified, including for the seeds. The shared driver
-owns both coordinated cases; cleanup tests force child termination in each.
-Existing CI's driver command runs all three cases and all three mutations with
-`--verify-regression` (four app tests in total).
+owns all coordinated cases; cleanup tests force child termination in each.
+The interrupted fixture profile accepts only the existing synthetic token, adds
+controlled observation times because the native builder has fixed headers, and
+reuses the service's authentication, body validation and revision handling.
+Existing CI's driver command runs all four cases and all four mutations with
+`--verify-regression` (five app tests in total).
 
 ## Build identity and limits
 
@@ -110,14 +129,23 @@ modules are argparse, requests, mip, ssl, asyncio, and uasyncio. FarmCtl modules
 are loaded from source. The fixture hash is
 `207dfc10f8ac65c56f38999358b08d2300315a56abb05242105ed3e5eb1ac997`.
 
-Sensor, clock, and native HTTPS transport are test substitutions. The transport
+The original, clock and rate-limit cases substitute sensor, clock and the whole
+native HTTPS transport. Their adapter
 uses actual Unix socket addresses from getaddrinfo; this compatibility code
 lives entirely in the harness. This lane makes no claim about verified TLS,
 DNS timing, Wi-Fi/CYW43, Pico memory/stack, peripherals, watchdogs, power loss,
 Android UI/platform behavior, or live GitHub semantics. Host GC figures are
 diagnostic host figures only. Actual header parsing is exercised over plaintext
 loopback HTTP; the native HTTPS request/read loop, body framing, total deadlines,
-and readback reconciliation are not exercised by this adapter.
+and readback reconciliation are not exercised by that adapter. The interrupted
+case additionally exercises the actual native HTTP request/read/poll/deadline
+loop, with a test-only plaintext SSLContext facade and numeric loopback resolver.
+That facade checks the fixed host and CERT_REQUIRED configuration but performs
+no TLS handshake, CA or hostname verification. Its numeric resolver uses the
+actual Unix packed sockaddr and does not qualify production bounded DNS.
+The case qualifies two incomplete-header faults and publisher recovery, not
+PATCH body draining (deliberately unnecessary), readback reconciliation,
+applied-write/lost-ack behavior or a full fragmented-write/body-framing matrix.
 
 Android integration_test, the broader fault/TLS matrix, and hardware qualification
 remain separate work. Issue 51 stays open, as do hardware qualification issues
