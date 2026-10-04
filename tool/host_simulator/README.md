@@ -40,9 +40,11 @@ zero exit status, empty stderr, and unique terminal
 firmware/cleanup markers; the driver prints `FARMCTL_SYSTEM_OK` last. The seeded
 Unix address regression must fail at its first publication assertion. The clock
 mutation must reach the paused phase, keep sampling, attempt both streams, and
-fail there with no clock success marker. Startup failures do not satisfy either seed.
+fail there with no clock success marker. The rate-limit mutation drops parsed
+response headers and must fail at the paused publication invariant after the
+60-second fallback expires. Startup failures do not satisfy any seed.
 
-Normal `flutter test` skips the three system tests when no shared fixture is supplied.
+Normal `flutter test` skips the four system tests when no shared fixture is supplied.
 Use the driver to execute them. No real credentials are needed. Only the two
 synthetic Gist IDs are accepted; the app adapter restricts requests to their
 allowlisted GitHub paths and rewrites them to loopback without redirects/proxies.
@@ -78,16 +80,25 @@ basedpyright -p tool/host_simulator/pyrightconfig.json
   history contains only delivered observations. Trust restoration after backoff
   publishes a newly sampled value and independent diagnostics; app history and
   SQLite reopen retain only the initial and recovered observations.
+- A separate rate-limit run receives a real local HTTP 429 with `Retry-After: 120`
+  at minute 15. The actual project's HTTP header parser supplies the hint to
+  GistPublisher. Both streams make zero additional PATCHes at +60s and +119999ms,
+  while Monitor samples twice. Exactly at +120s, a fresh sample and diagnostics
+  resume. Transport and wire counters agree; Flutter/Drift retain the original
+  stale value/time during the pause and only delivered observations after
+  recovery and SQLite reopen. The fixture rejects without creating a revision.
 
-The clock case uses a private temporary directory for bounded phase snapshots
+The clock and rate-limit cases use private temporary directories for bounded phase snapshots
 and acknowledgements. Firmware waits for app assertions at initial and paused
 checkpoints before advancing. Both markers are closed then atomically renamed
 before readers see them. SQLite cache files live under the parent-owned directory
 so forced child termination still allows parent cleanup. A ready file means evidence is available; success
 still requires both test processes and service cleanup to pass. The deliberate
 mutation supplies an always-trusted callback while the test clock is untrusted;
-production code is never modified, including for the seed. Existing CI runs both
-cases and both mutations with `--verify-regression`.
+production code is never modified, including for the seeds. The shared driver
+owns both coordinated cases; cleanup tests force child termination in each.
+Existing CI's driver command runs all three cases and all three mutations with
+`--verify-regression` (four app tests in total).
 
 ## Build identity and limits
 
@@ -104,7 +115,9 @@ uses actual Unix socket addresses from getaddrinfo; this compatibility code
 lives entirely in the harness. This lane makes no claim about verified TLS,
 DNS timing, Wi-Fi/CYW43, Pico memory/stack, peripherals, watchdogs, power loss,
 Android UI/platform behavior, or live GitHub semantics. Host GC figures are
-diagnostic host figures only. Native readback reconciliation is not exercised.
+diagnostic host figures only. Actual header parsing is exercised over plaintext
+loopback HTTP; the native HTTPS request/read loop, body framing, total deadlines,
+and readback reconciliation are not exercised by this adapter.
 
 Android integration_test, the broader fault/TLS matrix, and hardware qualification
 remain separate work. Issue 51 stays open, as do hardware qualification issues

@@ -15,9 +15,10 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from clock_case import clock_case
+from clock_case import clock_case, coordinated_case
 from fixture import fleet_bytes
 from processes import OwnedProcess, Result, run
+from rate_case import RATE_SCENARIO
 
 
 def linux_path(path: Path) -> str:
@@ -50,7 +51,7 @@ def main() -> None:
     parser.add_argument(
         "--verify-regression",
         action="store_true",
-        help="Prove seeded Unix sockaddr and untrusted-clock regressions are rejected",
+        help="Prove seeded Unix sockaddr, clock and Retry-After regressions are rejected",
     )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
@@ -203,6 +204,26 @@ def main() -> None:
         )
     clock_case(
         root, prefix, interpreter, options.micropython, flutter_command, linux_path
+    )
+    if options.verify_regression:
+        coordinated_case(
+            root,
+            prefix,
+            interpreter,
+            options.micropython,
+            flutter_command,
+            linux_path,
+            RATE_SCENARIO,
+            seeded=True,
+        )
+    coordinated_case(
+        root,
+        prefix,
+        interpreter,
+        options.micropython,
+        flutter_command,
+        linux_path,
+        RATE_SCENARIO,
     )
     print(
         json.dumps(

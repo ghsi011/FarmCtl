@@ -40,11 +40,13 @@ class GistHandler(BaseHTTPRequestHandler):
         # Fixture requests/headers may carry synthetic tokens; keep logs silent.
         return
 
-    def respond(self, status: int, body: bytes) -> None:
+    def respond(self, status: int, body: bytes, retry_after: int | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Connection", "close")
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.end_headers()
         self.wfile.write(body)
 
@@ -88,6 +90,9 @@ class GistHandler(BaseHTTPRequestHandler):
             return
         if self.headers.get("X-Simulator-Fault") == "503":
             self.respond(503, b"{}")
+            return
+        if self.headers.get("X-Simulator-Fault") == "429":
+            self.respond(429, b"{}", retry_after=120)
             return
         content = file["content"]
         revisions = self.fixture.revisions[gist]

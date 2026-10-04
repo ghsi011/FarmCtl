@@ -53,22 +53,27 @@ class LoopbackTransport:
         self.port = port
         self.clock = clock
 
+    def fault(self, gist):
+        return "503" if self.clock.now == 900000 and gist == "b" * 32 else ""
+
+    def failure_headers(self, headers):
+        return headers
+
     def patch_gist(self, gist, body, service=None):
-        from native_https import HttpFailure
+        from native_https import HttpFailure, _parse_headers
 
         at = "2026-01-02T03:%02d:00Z" % (self.clock.now // 60000)
-        fault = self.clock.now == 900000 and gist == "b" * 32
         request = (
             "PATCH /gists/%s HTTP/1.1\r\nHost: api.github.com\r\n"
             "Authorization: token synthetic-host-token\r\n"
             "Content-Type: application/json\r\nContent-Length: %d\r\n"
             "X-Simulator-At: %s\r\nX-Simulator-Fault: %s\r\n"
-            "Connection: close\r\n\r\n" % (gist, len(body), at, "503" if fault else "")
+            "Connection: close\r\n\r\n" % (gist, len(body), at, self.fault(gist))
         ).encode() + body
         response = self.exchange(request)
-        status = int(response.split(b"\r\n", 1)[0].split()[1])
+        status, headers = _parse_headers(response.split(b"\r\n\r\n", 1)[0])
         if status != 200:
-            raise HttpFailure(status, {})
+            raise HttpFailure(status, self.failure_headers(headers))
 
     def exchange(self, request):
         connection = socket.socket()
