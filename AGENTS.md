@@ -163,3 +163,17 @@ Place any temporary research, clones, etc., in a **.gitignored subdirectory** of
 - Be mindful of text encoding in UI strings (use proper UTF‑8 characters, e.g., `°` for degrees).
 - If you need to make a potentially disruptive change (new dependency, refactor, or routing overhaul), ask for confirmation first.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout. See `docs/agents/domain.md`.
+

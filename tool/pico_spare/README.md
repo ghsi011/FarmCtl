@@ -55,6 +55,29 @@ identity only, compares the full SHA-256 UID digest and both exact expected stri
 prints only `IDENTITY_MATCH` on a match; failures print only `BLOCKED`. A match is not
 physical-spare authentication, owner approval, permission, or an issue #43 pass.
 
+## Source-only spare session module
+
+`firmware/pico/spare_session.py` adds an import-inert, credential-free callable
+`run_spare_session`; it is source for a future explicitly invoked session, not a command
+or currently runnable telemetry path. Each invocation checks the full UID SHA-256
+digest and exact `uname()` identity supplied by its identity reader before calling
+the supplied monitor factory. The optional board identity reader imports hardware
+modules lazily. If admitted, the session calls the existing `Monitor.step(10, 60)`
+under a 70-second, 72-iteration cooperative bound. It attempts cleanup after
+construction on every exit and returns a constant status. Importing the module
+does not access a device.
+
+This callable is distinct from the offline `preflight` above and the optional
+identity-only probe: it is not yet an authorized or validated live runner. It does not
+accept credentials, scan ports, or establish permission. An identity match is neither
+attestation nor authorization. No live telemetry, TLS/Gist behavior, or five-minute
+healthy-interruption result is established; automatic flags remain disabled, production
+`main.py` is absent, and #43 remains OPEN. Any operational use needs separate approval,
+an independently verified exact inventory, confirmed wiring and recovery/stop controls,
+and test-account-owned disposable Gists with that account's locally supplied test token.
+The previously created host-owned synthetic Gists are not writable with a test-account
+token. Never place credentials in source or this repository.
+
 The command behavior described here was reviewed against host `mpremote` v1.29.0; other
 host CLI versions are not qualified. An operator must confirm the host CLI version
 before any separately authorized live use. `mpremote` is not installed in this
